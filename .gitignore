@@ -1,0 +1,127 @@
+# ================================
+# Dependencies
+# ================================
+node_modules/
+.pnpm-store/
+
+# ================================
+# Build outputs
+# ================================
+dist/
+dist_electron/
+dist-electron/
+out/
+build/
+*.min.js
+*.min.css
+
+# ================================
+# Testing
+# ================================
+coverage/
+.nyc_output/
+.vitest/
+
+# E2E测试
+tests/e2e/test-results/
+tests/e2e/playwright-report/
+tests/e2e/.playwright/
+tests/e2e/changelogs
+tests/e2e_test_results/
+.qtian-test/
+
+# ================================
+# Logs
+# ================================
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ================================
+# OS files
+# ================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# ================================
+# IDE / Editor
+# ================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# ================================
+# Environment variables
+# ================================
+.env
+.env.local
+.env.development.local
+.env.test
+.env.test.local
+.env.production.local
+.env.*.local
+
+# ================================
+# Database
+# ================================
+*.db
+*.sqlite
+*.sqlite3
+qtian.db
+
+# ================================
+# Temporary files
+# ================================
+.tmp/
+!.tmp/README.md
+
+tmp/
+!tmp/README.md
+
+temp/
+*.tmp
+*.bak
+*.cache
+.pytest_cache/
+__pycache__/
+*.pyc
+
+# ================================
+# Project specific
+# ================================
+qtian.json
+todo.md
+vue.config.js.web
+
+# ================================
+# Claude Code
+# ================================
+.claude/*
+!.claude/skills/
+!.claude/skills/**
+.claude/*.local.*
+.claude/config.json
+
+# ================================
+# Test configuration (sensitive)
+# ================================
+.env.test
+
+# 测试工作目录（运行时生成）
+tests/resource/workspace/

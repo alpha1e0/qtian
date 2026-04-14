@@ -1,0 +1,27 @@
+/**
+ * Electron Builder Configuration
+ */
+{
+  extraResources: [
+    {
+      from: 'backend/data',
+      to: 'data',
+    }
+  ],
+  win: {
+    target: ['nsis'],
+    artifactName: '${productName}-${version}-setup.${ext}'
+  },
+  mac: {
+    target: ['dmg'],
+    artifactName: '${productName}-${version}.${ext}'
+  },
+  linux: {
+    target: ['AppImage'],
+    artifactName: '${productName}-${version}.${ext}'
+  },
+  files: [
+    'dist-electron/**/*',
+    'package.json'
+  ]
+}

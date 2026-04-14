@@ -1,0 +1,40 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"],
+    "outDir": "./dist",
+    "rootDir": ".",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "moduleResolution": "node",
+    "allowSyntheticDefaultImports": true,
+    "declaration": true,
+    "sourceMap": true,
+    "types": ["node", "electron"],
+    "skipDefaultLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/main/*"],
+      "@/main/core/*": ["src/main/core/*"],
+      "@/main/core/common/*": ["src/main/core/common/*"],
+      "@/main/core/models/*": ["src/main/core/models/*"],
+      "@/main/core/services/*": ["src/main/core/services/*"],
+      "@/main/core/utils/*": ["src/main/core/utils/*"],
+      "@/main/core/database/*": ["src/main/core/database/*"],
+      "@/main/core/ipc/*": ["src/main/core/ipc/*"],
+      "@/preload/*": ["src/preload/*"]
+    }
+  },
+  "include": ["src/main/**/*", "src/preload/**/*"],
+  "exclude": ["node_modules", "dist", "dist-electron", "src/renderer"],
+  "ts-node": {
+    "esm": false,
+    "compilerOptions": {
+      "module": "commonjs"
+    }
+  }
+}

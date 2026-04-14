@@ -1,0 +1,3 @@
+-- Qtian Application Database Schema
+-- SQLite database initialization script
+-- Currently no tables are needed; add tables here as features require them.
