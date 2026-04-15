@@ -1,5 +1,5 @@
 <template>
-  <component :is="currentComponent" @navigate="handleNavigate" />
+  <component :is="currentComponent" @navigate="handleNavigate" :initial-message="initialMessage" />
 </template>
 
 <script>
@@ -17,7 +17,17 @@ export default {
   data() {
     return {
       currentComponent: 'Homepage',
+      pendingMessage: '',
     };
+  },
+
+  computed: {
+    /**
+     * 仅在切换到 AiAssistantPage 时传递初始消息
+     */
+    initialMessage() {
+      return this.currentComponent === 'AiAssistantPage' ? this.pendingMessage : '';
+    },
   },
 
   methods: {
@@ -26,6 +36,7 @@ export default {
      */
     switchToHomepage() {
       this.currentComponent = 'Homepage';
+      this.pendingMessage = '';
     },
 
     /**
@@ -47,6 +58,7 @@ export default {
           this.switchToHomepage();
           break;
         case 'ai-assistant':
+          this.pendingMessage = params?.message || '';
           this.switchToAiAssistant();
           break;
         default:

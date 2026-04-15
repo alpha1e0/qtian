@@ -39,6 +39,12 @@ export default {
   name: 'AiAssistantPage',
   emits: ['navigate'],
   components: { ChatSidebar, ChatContent },
+  props: {
+    initialMessage: {
+      type: String,
+      default: '',
+    },
+  },
   data() {
     return {
       scenarios: [],
@@ -59,6 +65,11 @@ export default {
     window.electron.ipcRendererOn('qtian:ai:chat-chunk', this.onChatChunk);
     window.electron.ipcRendererOn('qtian:ai:chat-complete', this.onChatComplete);
     window.electron.ipcRendererOn('qtian:ai:chat-error', this.onChatError);
+
+    // 若从首页携带了初始消息，自动创建对话并发送
+    if (this.initialMessage) {
+      await this.handleInitialMessage(this.initialMessage);
+    }
   },
   unmounted() {
     window.electron.ipcRendererOff('qtian:ai:chat-chunk', this.onChatChunk);
@@ -66,6 +77,25 @@ export default {
     window.electron.ipcRendererOff('qtian:ai:chat-error', this.onChatError);
   },
   methods: {
+    /**
+     * 处理从首页传入的初始消息：选择默认场景、创建对话并发送消息
+     * @param {string} message - 用户输入的初始消息
+     */
+    async handleInitialMessage(message) {
+      if (!message || this.scenarios.length === 0) return;
+
+      // 选择默认场景（第一个场景）
+      this.selectedScenario = this.scenarios[0];
+      await this.loadHistories();
+
+      // 创建新对话，以消息内容作为标题（截取前 20 个字符）
+      const title = message.length > 20 ? message.substring(0, 20) + '...' : message;
+      await this.handleCreateHistory(title);
+
+      // 发送初始消息
+      await this.handleSendMessage(message);
+    },
+
     async loadLlmConfigs() {
       try {
         this.llmConfigs = await window.aiAssistant.listLlmConfigs();
