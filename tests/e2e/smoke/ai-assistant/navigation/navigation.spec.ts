@@ -1,5 +1,14 @@
 import { test, expect } from '../../../fixtures/app.fixture';
 import { waitForAppReady } from '../../../helpers/electron-helper';
+import {
+  navigateToAiAssistant,
+  clickHistoryItem,
+  createAiScenario,
+  createAiLlmConfig,
+  createAiHistory,
+  cleanupAiTestData,
+  cleanAllAiTestData,
+} from '../ai-assistant.helper';
 
 test.describe('AI助手 - 入口与导航', () => {
   test.beforeEach(async ({ window }) => {
@@ -12,56 +21,63 @@ test.describe('AI助手 - 入口与导航', () => {
    * 前置条件：应用已启动，位于首页
    * 操作步骤：
    *   1. 在首页搜索框输入"什么是量子计算"
-   *   2. 点击搜索按钮（或按Enter键）
-   * 预期结果：页面跳转到AI助手页面，搜索内容自动填入输入框
+   *   2. 按 Ctrl+Enter 发送
+   * 预期结果：页面跳转到AI助手页面
    */
   test('首页搜索进入AI助手', async ({ window }) => {
-    const searchInput = window.getByLabel('搜索输入框');
+    const searchInput = window.getByLabel('对话输入框');
     await searchInput.fill('什么是量子计算');
 
-    // 按 Enter 或点击搜索按钮
-    await window.keyboard.press('Enter');
-    await window.waitForTimeout(1500);
+    // 首页使用 Ctrl+Enter 发送消息跳转到 AI 助手
+    await window.keyboard.press('Control+Enter');
+    await window.waitForTimeout(2000);
 
     // 验证跳转到 AI 助手页面
     await expect(window.locator('.ai-assistant-page')).toBeVisible({ timeout: 5000 });
   });
 
   /**
-   * TC-01-02 首页常用命令进入AI助手
+   * TC-01-02 首页快捷键进入AI助手
    *
    * 前置条件：应用已启动，位于首页
    * 操作步骤：
-   *   1. 点击常用命令区域中的"翻译这段文字"标签
-   * 预期结果：页面跳转到AI助手页面，"翻译这段文字"自动填入输入框
-   */
-  test('首页常用命令进入AI助手', async ({ window }) => {
-    const commandTag = window.getByText('翻译这段文字');
-    await commandTag.click();
-    await window.waitForTimeout(1500);
-
-    // 验证跳转到 AI 助手页面
-    await expect(window.locator('.ai-assistant-page')).toBeVisible({ timeout: 5000 });
-  });
-
-  /**
-   * TC-01-03 首页工具卡片进入AI助手
-   *
-   * 前置条件：应用已启动，位于首页
-   * 操作步骤：
-   *   1. 点击常用工具区域的"AI助手"卡片
+   *   1. 按 Ctrl+Alt+A
    * 预期结果：页面跳转到AI助手页面，显示完整的聊天界面
    */
-  test('首页工具卡片进入AI助手', async ({ window }) => {
-    const toolCard = window.getByLabel('AI助手工具');
-    await toolCard.click();
-    await window.waitForTimeout(1500);
+  test('首页快捷键进入AI助手', async ({ window }) => {
+    await window.keyboard.press('Control+Alt+a');
+    await window.waitForTimeout(2000);
+
+    // 验证跳转到 AI 助手页面
+    await expect(window.locator('.ai-assistant-page')).toBeVisible({ timeout: 5000 });
+  });
+
+  /**
+   * TC-01-03 AI助手页面基本布局
+   *
+   * 前置条件：应用已启动，有可用场景
+   * 操作步骤：
+   *   1. 进入AI助手页面
+   * 预期结果：显示侧边栏和主区域
+   */
+  test('AI助手页面应显示基本布局', async ({ window, testWorkspace }) => {
+    cleanAllAiTestData(testWorkspace);
+    const scenarioId = 'e2e_nav_scenario';
+    const llmName = 'e2e_nav_llm';
+    createAiScenario(testWorkspace, scenarioId);
+    createAiLlmConfig(testWorkspace, llmName);
+
+    await window.reload();
+    await waitForAppReady(window);
+    await navigateToAiAssistant(window);
 
     // 验证跳转到 AI 助手页面
     await expect(window.locator('.ai-assistant-page')).toBeVisible({ timeout: 5000 });
 
     // 验证侧边栏可见
-    await expect(window.locator('.chat-sidebar')).toBeVisible();
+    await expect(window.locator('.chat-sidebar')).toBeVisible({ timeout: 5000 });
+
+    cleanupAiTestData(testWorkspace, [scenarioId], [llmName]);
   });
 
   /**
@@ -69,23 +85,46 @@ test.describe('AI助手 - 入口与导航', () => {
    *
    * 前置条件：应用已启动，搜索框中已输入文本
    * 操作步骤：
-   *   1. 点击搜索框右侧的 X 清除按钮
+   *   1. 清空输入框文本
    * 预期结果：搜索框文本被清空
    */
   test('首页搜索框清除', async ({ window }) => {
-    const searchInput = window.getByLabel('搜索输入框');
+    const searchInput = window.getByLabel('对话输入框');
     await searchInput.fill('测试内容');
 
-    // 找到清除按钮并点击
-    const clearButton = window.locator('.search-section .el-input__clear');
-    if (await clearButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await clearButton.click();
-    } else {
-      // 备选：手动清空
-      await searchInput.clear();
-    }
+    // 手动清空
+    await searchInput.clear();
 
     const inputValue = await searchInput.inputValue();
     expect(inputValue).toBe('');
+  });
+
+  /**
+   * TC-01-05 首页场景和模型选择器可见
+   *
+   * 前置条件：应用已启动，有可用场景和模型配置
+   * 操作步骤：
+   *   1. 查看首页输入区域
+   * 预期结果：场景选择器和模型选择器均可见
+   */
+  test('首页应显示场景和模型选择器', async ({ window, testWorkspace }) => {
+    cleanAllAiTestData(testWorkspace);
+    const scenarioId = 'e2e_homepage_selector_scenario';
+    const llmName = 'e2e_homepage_selector_llm';
+    createAiScenario(testWorkspace, scenarioId);
+    createAiLlmConfig(testWorkspace, llmName);
+
+    await window.reload();
+    await waitForAppReady(window);
+
+    // 验证场景选择器可见
+    const scenarioSelector = window.getByLabel('首页选择场景');
+    await expect(scenarioSelector).toBeVisible({ timeout: 5000 });
+
+    // 验证模型选择器可见
+    const llmSelector = window.getByLabel('首页选择模型');
+    await expect(llmSelector).toBeVisible({ timeout: 5000 });
+
+    cleanupAiTestData(testWorkspace, [scenarioId], [llmName]);
   });
 });

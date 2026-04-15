@@ -7,19 +7,53 @@
         type="textarea"
         placeholder="输入你想问的问题..."
         class="chat-input"
-        :autosize="{ minRows: 3, maxRows: 8 }"
+        :rows="3"
+        resize="none"
         @keydown="handleKeyDown"
         aria-label="对话输入框"
       />
-      <el-button
-        type="primary"
-        class="send-button"
-        :disabled="!message.trim()"
-        @click="handleSend"
-        aria-label="发送"
-      >
-        发送
-      </el-button>
+      <!-- 底部操作栏：场景/模型选择 + 发送按钮 -->
+      <div class="input-footer">
+        <div class="input-selectors">
+          <el-select
+            v-model="selectedScenario"
+            placeholder="选择场景"
+            size="small"
+            aria-label="首页选择场景"
+          >
+            <el-option
+              v-for="scenario in scenarioObjects"
+              :key="scenario.id"
+              :label="scenario.name || scenario.id"
+              :value="scenario.id"
+            />
+          </el-select>
+          <el-select
+            v-model="selectedLlmConfig"
+            placeholder="选择模型"
+            size="small"
+            aria-label="首页选择模型"
+          >
+            <el-option
+              v-for="name in llmConfigs"
+              :key="name"
+              :label="name"
+              :value="name"
+            />
+          </el-select>
+        </div>
+        <div class="input-actions">
+          <el-button
+            type="primary"
+            size="small"
+            :disabled="!message.trim()"
+            @click="handleSend"
+            aria-label="发送"
+          >
+            发送
+          </el-button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -33,10 +67,59 @@ export default {
   data() {
     return {
       message: '',
+      scenarios: [],
+      scenarioObjects: [],
+      selectedScenario: '',
+      llmConfigs: [],
+      selectedLlmConfig: '',
     };
   },
 
+  async mounted() {
+    await this.loadScenarios();
+    await this.loadLlmConfigs();
+  },
+
   methods: {
+    /**
+     * 加载场景列表及完整对象
+     */
+    async loadScenarios() {
+      try {
+        this.scenarios = await window.aiAssistant.listScenarios();
+        this.scenarioObjects = await Promise.all(
+          this.scenarios.map(async (id) => {
+            try {
+              return await window.aiAssistant.getScenario(id);
+            } catch {
+              return { id, name: id };
+            }
+          })
+        );
+        // 自动选择第一个场景
+        if (this.scenarioObjects.length > 0) {
+          this.selectedScenario = this.scenarioObjects[0].id;
+        }
+      } catch (err) {
+        console.error('首页加载场景失败:', err);
+      }
+    },
+
+    /**
+     * 加载 LLM 配置列表
+     */
+    async loadLlmConfigs() {
+      try {
+        this.llmConfigs = await window.aiAssistant.listLlmConfigs();
+        // 自动选择第一个模型
+        if (this.llmConfigs.length > 0) {
+          this.selectedLlmConfig = this.llmConfigs[0];
+        }
+      } catch (err) {
+        console.error('首页加载模型配置失败:', err);
+      }
+    },
+
     /**
      * 处理键盘事件，Ctrl+Enter 发送消息
      */
@@ -48,13 +131,17 @@ export default {
     },
 
     /**
-     * 发送消息并跳转到 AI 助手页面
+     * 发送消息并跳转到 AI 助手页面，携带场景和模型选择
      */
     handleSend() {
       const trimmedMessage = this.message.trim();
       if (!trimmedMessage) return;
 
-      this.$emit('navigate', 'ai-assistant', { message: trimmedMessage });
+      this.$emit('navigate', 'ai-assistant', {
+        message: trimmedMessage,
+        scenarioId: this.selectedScenario,
+        llmConfig: this.selectedLlmConfig,
+      });
       this.message = '';
     },
   },
@@ -78,10 +165,10 @@ export default {
 .chat-input-section {
   width: 100%;
   max-width: 640px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  padding: 12px 20px 16px;
 }
 
 .chat-input {
@@ -89,18 +176,33 @@ export default {
 }
 
 .chat-input :deep(.el-textarea__inner) {
-  border-radius: 16px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
   font-size: 16px;
-  padding: 16px;
-  resize: none;
+  padding: 12px;
+  border: none;
+  box-shadow: none;
+  background: #f5f5f5;
 }
 
-.send-button {
-  width: 120px;
-  height: 40px;
-  border-radius: 20px;
-  font-size: 16px;
+.input-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.input-selectors {
+  display: flex;
+  gap: 8px;
+}
+
+.input-selectors .el-select {
+  width: 140px;
+}
+
+.input-actions {
+  display: flex;
+  gap: 8px;
 }
 
 /* 响应式调整 */

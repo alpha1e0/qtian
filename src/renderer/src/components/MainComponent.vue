@@ -1,5 +1,11 @@
 <template>
-  <component :is="currentComponent" @navigate="handleNavigate" :initial-message="initialMessage" />
+  <component
+    :is="currentComponent"
+    @navigate="handleNavigate"
+    :initial-message="initialMessage"
+    :initial-scenario-id="initialScenarioId"
+    :initial-llm-config="initialLlmConfig"
+  />
 </template>
 
 <script>
@@ -18,6 +24,8 @@ export default {
     return {
       currentComponent: 'Homepage',
       pendingMessage: '',
+      pendingScenarioId: '',
+      pendingLlmConfig: '',
     };
   },
 
@@ -28,6 +36,18 @@ export default {
     initialMessage() {
       return this.currentComponent === 'AiAssistantPage' ? this.pendingMessage : '';
     },
+    /**
+     * 仅在切换到 AiAssistantPage 时传递初始场景 ID
+     */
+    initialScenarioId() {
+      return this.currentComponent === 'AiAssistantPage' ? this.pendingScenarioId : '';
+    },
+    /**
+     * 仅在切换到 AiAssistantPage 时传递初始模型配置
+     */
+    initialLlmConfig() {
+      return this.currentComponent === 'AiAssistantPage' ? this.pendingLlmConfig : '';
+    },
   },
 
   methods: {
@@ -37,6 +57,8 @@ export default {
     switchToHomepage() {
       this.currentComponent = 'Homepage';
       this.pendingMessage = '';
+      this.pendingScenarioId = '';
+      this.pendingLlmConfig = '';
     },
 
     /**
@@ -59,6 +81,8 @@ export default {
           break;
         case 'ai-assistant':
           this.pendingMessage = params?.message || '';
+          this.pendingScenarioId = params?.scenarioId || '';
+          this.pendingLlmConfig = params?.llmConfig || '';
           this.switchToAiAssistant();
           break;
         default:

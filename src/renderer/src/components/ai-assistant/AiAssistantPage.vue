@@ -1,28 +1,46 @@
 <template>
   <div class="ai-assistant-page">
-    <!-- 左侧栏 -->
+    <!-- 左侧栏：仅对话历史列表 -->
     <ChatSidebar
-      :scenarios="scenarios"
-      :selected-scenario="selectedScenario"
-      :llm-configs="llmConfigs"
-      :selected-llm-config="selectedLlmConfig"
-      :histories="histories"
+      v-if="selectedScenario"
+      :histories="historySummaries"
       :selected-history="selectedHistory"
-      @scenario-change="handleScenarioChange"
-      @llm-change="handleLlmChange"
       @history-change="handleHistoryChange"
       @create-history="handleCreateHistory"
     />
-    <!-- 右侧对话区域 -->
-    <ChatContent
-      v-if="selectedScenario && selectedHistory"
-      :messages="messages"
-      :is-chatting="isChatting"
-      @send-message="handleSendMessage"
-      @regenerate="handleRegenerate"
-      @pop-message="handlePopMessage"
-      @stop-chat="handleStopChat"
-    />
+
+    <!-- 右侧主区域 -->
+    <div class="main-container" v-if="selectedScenario">
+      <!-- 消息列表（有历史时显示） -->
+      <ChatContent
+        v-if="selectedHistory"
+        ref="chatContentRef"
+        :messages="messages"
+        :is-chatting="isChatting"
+        :scenario-name="currentScenarioName"
+        :llm-config-name="selectedLlmConfig"
+        @edit-message="handleEditMessage"
+        @delete-message="handleDeleteMessage"
+        @regenerate="handleRegenerate"
+      />
+      <!-- 未选择历史时的提示 -->
+      <div class="placeholder-inner" v-else>
+        <el-empty description="请新建对话或选择已有对话" />
+      </div>
+      <!-- 输入区域 -->
+      <ChatInput
+        :scenarios="scenarioObjects"
+        :selected-scenario="selectedScenario"
+        :llm-configs="llmConfigs"
+        :selected-llm-config="selectedLlmConfig"
+        :is-chatting="isChatting"
+        @send-message="handleSendMessage"
+        @scenario-change="handleScenarioChange"
+        @llm-change="handleLlmChange"
+        @stop-chat="handleStopChat"
+      />
+    </div>
+
     <!-- 未选择提示 -->
     <div class="placeholder" v-else>
       <el-empty description="请选择场景并新建对话" />
@@ -33,14 +51,23 @@
 <script>
 import ChatSidebar from './ChatSidebar.vue';
 import ChatContent from './ChatContent.vue';
+import ChatInput from './ChatInput.vue';
 import { ElMessage } from 'element-plus';
 
 export default {
   name: 'AiAssistantPage',
   emits: ['navigate'],
-  components: { ChatSidebar, ChatContent },
+  components: { ChatSidebar, ChatContent, ChatInput },
   props: {
     initialMessage: {
+      type: String,
+      default: '',
+    },
+    initialScenarioId: {
+      type: String,
+      default: '',
+    },
+    initialLlmConfig: {
       type: String,
       default: '',
     },
@@ -48,18 +75,42 @@ export default {
   data() {
     return {
       scenarios: [],
+      scenarioObjects: [],
       selectedScenario: '',
       llmConfigs: [],
       selectedLlmConfig: '',
-      histories: [],
+      historySummaries: [],
       selectedHistory: '',
       messages: [],
       isChatting: false,
     };
   },
+  computed: {
+    /** 当前选中场景的名称 */
+    currentScenarioName() {
+      const scenario = this.scenarioObjects.find((s) => s.id === this.selectedScenario);
+      return scenario ? scenario.name : '';
+    },
+  },
   async mounted() {
     await this.loadLlmConfigs();
     await this.loadScenarios();
+
+    // 若从首页传入了场景 ID，优先使用
+    if (this.initialScenarioId && this.scenarios.includes(this.initialScenarioId)) {
+      this.selectedScenario = this.initialScenarioId;
+    } else if (this.scenarios.length > 0 && !this.selectedScenario) {
+      this.selectedScenario = this.scenarios[0];
+    }
+
+    // 若从首页传入了模型配置，优先使用
+    if (this.initialLlmConfig && this.llmConfigs.includes(this.initialLlmConfig)) {
+      this.selectedLlmConfig = this.initialLlmConfig;
+    }
+
+    if (this.selectedScenario) {
+      await this.loadHistorySummaries();
+    }
 
     // 监听对话流式事件
     window.electron.ipcRendererOn('qtian:ai:chat-chunk', this.onChatChunk);
@@ -84,9 +135,11 @@ export default {
     async handleInitialMessage(message) {
       if (!message || this.scenarios.length === 0) return;
 
-      // 选择默认场景（第一个场景）
-      this.selectedScenario = this.scenarios[0];
-      await this.loadHistories();
+      // 使用已选中的场景（可能来自首页传入的 initialScenarioId）
+      if (!this.selectedScenario) {
+        this.selectedScenario = this.scenarios[0];
+      }
+      await this.loadHistorySummaries();
 
       // 创建新对话，以消息内容作为标题（截取前 20 个字符）
       const title = message.length > 20 ? message.substring(0, 20) + '...' : message;
@@ -109,6 +162,16 @@ export default {
     async loadScenarios() {
       try {
         this.scenarios = await window.aiAssistant.listScenarios();
+        // 加载每个场景的完整对象（包含 name），供 ChatInput 和 ChatMessage 使用
+        this.scenarioObjects = await Promise.all(
+          this.scenarios.map(async (id) => {
+            try {
+              return await window.aiAssistant.getScenario(id);
+            } catch {
+              return { id, name: id };
+            }
+          })
+        );
       } catch (err) {
         console.error('加载场景失败:', err);
       }
@@ -117,7 +180,7 @@ export default {
       this.selectedScenario = scenarioId;
       this.selectedHistory = '';
       this.messages = [];
-      await this.loadHistories();
+      await this.loadHistorySummaries();
     },
     async handleLlmChange(configName) {
       this.selectedLlmConfig = configName;
@@ -130,34 +193,38 @@ export default {
       await this.initChat();
     },
     async handleCreateHistory(historyTitle) {
-      if (!this.selectedScenario || !historyTitle) return;
+      if (!this.selectedScenario) return;
+
+      // 未提供标题时使用默认值
+      const title = historyTitle || '新对话';
 
       try {
         const historyId = `chat_${Date.now()}`;
         const historyData = {
           id: historyId,
           scenario_id: this.selectedScenario,
-          title: historyTitle,
+          title: title,
           messages: [],
           created_at: Date.now(),
           updated_at: Date.now(),
         };
 
         await window.aiAssistant.createHistory(this.selectedScenario, historyId, historyData);
-        await this.loadHistories();
+        await this.loadHistorySummaries();
         this.selectedHistory = historyId;
         await this.initChat();
       } catch (err) {
         console.error('创建对话失败:', err);
       }
     },
-    async loadHistories() {
+    async loadHistorySummaries() {
       if (!this.selectedScenario) return;
 
       try {
-        this.histories = await window.aiAssistant.listHistories(this.selectedScenario);
+        this.historySummaries = await window.aiAssistant.listHistorySummaries(this.selectedScenario);
       } catch (err) {
-        console.error('加载对话历史失败:', err);
+        console.error('加载对话历史摘要失败:', err);
+        this.historySummaries = [];
       }
     },
     async initChat() {
@@ -214,15 +281,68 @@ export default {
         console.error('停止对话失败:', err);
       }
     },
-    async handlePopMessage() {
+    /**
+     * 编辑指定消息的内容并持久化
+     * @param {number} displayIndex - 消息在 displayMessages 中的索引
+     * @param {string} newContent - 新的消息内容
+     */
+    async handleEditMessage(displayIndex, newContent) {
+      // displayIndex 是过滤后 (不含 system/tool) 的索引，需要映射到原始 messages 索引
+      const originalIndex = this.getOriginalMessageIndex(displayIndex);
+      if (originalIndex < 0) return;
+
+      this.messages[originalIndex].content = newContent;
+      this.messages[originalIndex].timestamp = Date.now();
+
+      // 持久化保存
+      await this.persistMessages();
+    },
+    /**
+     * 删除指定消息并持久化
+     * @param {number} displayIndex - 消息在 displayMessages 中的索引
+     */
+    async handleDeleteMessage(displayIndex) {
+      const originalIndex = this.getOriginalMessageIndex(displayIndex);
+      if (originalIndex < 0) return;
+
+      this.messages.splice(originalIndex, 1);
+      await this.persistMessages();
+    },
+    /**
+     * 将 displayMessages 索引映射到原始 messages 数组索引
+     * displayMessages 过滤掉了 system 和 tool 消息
+     */
+    getOriginalMessageIndex(displayIndex) {
+      let displayCount = 0;
+      for (let i = 0; i < this.messages.length; i++) {
+        const msg = this.messages[i];
+        if (msg.role !== 'system' && msg.role !== 'tool') {
+          if (displayCount === displayIndex) return i;
+          displayCount++;
+        }
+      }
+      return -1;
+    },
+    /**
+     * 将当前消息列表持久化到历史文件
+     */
+    async persistMessages() {
       try {
-        await window.aiAssistant.popMessage(this.selectedScenario, this.selectedHistory);
-        this.messages = await window.aiAssistant.getMessages(
+        const history = await window.aiAssistant.getHistory(
           this.selectedScenario,
           this.selectedHistory
         );
+        history.messages = this.messages;
+        history.updated_at = Date.now();
+        await window.aiAssistant.saveHistory(
+          this.selectedScenario,
+          this.selectedHistory,
+          history
+        );
+        // 刷新侧边栏摘要
+        await this.loadHistorySummaries();
       } catch (err) {
-        console.error('回退失败:', err);
+        console.error('保存消息失败:', err);
       }
     },
     onChatChunk({ chunk }) {
@@ -236,12 +356,12 @@ export default {
           timestamp: Date.now(),
         });
       }
-      this.$emit('scroll-to-bottom');
     },
     onChatComplete({ messages }) {
       this.messages = messages;
       this.isChatting = false;
-      this.$emit('scroll-to-bottom');
+      // 刷新侧边栏摘要（时间可能更新）
+      this.loadHistorySummaries();
     },
     onChatError({ error }) {
       this.isChatting = false;
@@ -259,7 +379,21 @@ export default {
   background: #f8f9fa;
 }
 
+.main-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.placeholder-inner {
   flex: 1;
   display: flex;
   align-items: center;
