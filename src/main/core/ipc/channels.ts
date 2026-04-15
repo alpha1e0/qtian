@@ -9,18 +9,11 @@ export const IPC_CHANNELS = {
   GET_CONFIG: 'qtian:get-config',
   READ_CONFIG: 'qtian:read-config',
 
-  // AI Assistant channels - 场景管理
-  AI_LIST_SCENARIOS: 'qtian:ai:list-scenarios',
-  AI_GET_SCENARIO: 'qtian:ai:get-scenario',
-  AI_CREATE_SCENARIO: 'qtian:ai:create-scenario',
-  AI_UPDATE_SCENARIO: 'qtian:ai:update-scenario',
-  AI_DELETE_SCENARIO: 'qtian:ai:delete-scenario',
-
-  // AI Assistant channels - 角色管理
-  AI_LIST_ROLES: 'qtian:ai:list-roles',
-  AI_GET_ROLE: 'qtian:ai:get-role',
-  AI_SAVE_ROLE: 'qtian:ai:save-role',
-  AI_DELETE_ROLE: 'qtian:ai:delete-role',
+  // AI Assistant channels - Agent 管理
+  AI_LIST_AGENTS: 'qtian:ai:list-agents',
+  AI_GET_AGENT: 'qtian:ai:get-agent',
+  AI_SAVE_AGENT: 'qtian:ai:save-agent',
+  AI_DELETE_AGENT: 'qtian:ai:delete-agent',
 
   // AI Assistant channels - LLM 配置管理
   AI_LIST_LLM_CONFIGS: 'qtian:ai:list-llm-configs',
@@ -30,6 +23,7 @@ export const IPC_CHANNELS = {
 
   // AI Assistant channels - 对话历史管理
   AI_LIST_HISTORIES: 'qtian:ai:list-histories',
+  AI_LIST_HISTORY_SUMMARIES: 'qtian:ai:list-history-summaries',
   AI_GET_HISTORY: 'qtian:ai:get-history',
   AI_CREATE_HISTORY: 'qtian:ai:create-history',
   AI_SAVE_HISTORY: 'qtian:ai:save-history',

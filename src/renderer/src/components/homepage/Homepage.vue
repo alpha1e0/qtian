@@ -12,20 +12,20 @@
         @keydown="handleKeyDown"
         aria-label="对话输入框"
       />
-      <!-- 底部操作栏：场景/模型选择 + 发送按钮 -->
+      <!-- 底部操作栏：Agent/模型选择 + 发送按钮 -->
       <div class="input-footer">
         <div class="input-selectors">
           <el-select
-            v-model="selectedScenario"
-            placeholder="选择场景"
+            v-model="selectedAgent"
+            placeholder="选择Agent"
             size="small"
-            aria-label="首页选择场景"
+            aria-label="首页选择Agent"
           >
             <el-option
-              v-for="scenario in scenarioObjects"
-              :key="scenario.id"
-              :label="scenario.name || scenario.id"
-              :value="scenario.id"
+              v-for="agent in agentObjects"
+              :key="agent.id"
+              :label="agent.name || agent.id"
+              :value="agent.id"
             />
           </el-select>
           <el-select
@@ -67,41 +67,41 @@ export default {
   data() {
     return {
       message: '',
-      scenarios: [],
-      scenarioObjects: [],
-      selectedScenario: '',
+      agents: [],
+      agentObjects: [],
+      selectedAgent: '',
       llmConfigs: [],
       selectedLlmConfig: '',
     };
   },
 
   async mounted() {
-    await this.loadScenarios();
+    await this.loadAgents();
     await this.loadLlmConfigs();
   },
 
   methods: {
     /**
-     * 加载场景列表及完整对象
+     * 加载 Agent 列表及完整对象
      */
-    async loadScenarios() {
+    async loadAgents() {
       try {
-        this.scenarios = await window.aiAssistant.listScenarios();
-        this.scenarioObjects = await Promise.all(
-          this.scenarios.map(async (id) => {
+        this.agents = await window.aiAssistant.listAgents();
+        this.agentObjects = await Promise.all(
+          this.agents.map(async (id) => {
             try {
-              return await window.aiAssistant.getScenario(id);
+              return await window.aiAssistant.getAgent(id);
             } catch {
               return { id, name: id };
             }
           })
         );
-        // 自动选择第一个场景
-        if (this.scenarioObjects.length > 0) {
-          this.selectedScenario = this.scenarioObjects[0].id;
+        // 自动选择第一个 Agent
+        if (this.agentObjects.length > 0) {
+          this.selectedAgent = this.agentObjects[0].id;
         }
       } catch (err) {
-        console.error('首页加载场景失败:', err);
+        console.error('首页加载Agent失败:', err);
       }
     },
 
@@ -131,7 +131,7 @@ export default {
     },
 
     /**
-     * 发送消息并跳转到 AI 助手页面，携带场景和模型选择
+     * 发送消息并跳转到 AI 助手页面，携带 Agent 和模型选择
      */
     handleSend() {
       const trimmedMessage = this.message.trim();
@@ -139,7 +139,7 @@ export default {
 
       this.$emit('navigate', 'ai-assistant', {
         message: trimmedMessage,
-        scenarioId: this.selectedScenario,
+        agentId: this.selectedAgent,
         llmConfig: this.selectedLlmConfig,
       });
       this.message = '';

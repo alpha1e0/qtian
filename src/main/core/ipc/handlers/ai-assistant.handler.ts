@@ -1,6 +1,5 @@
 import { ipcMain } from 'electron';
-import { AiScenarioService } from '@/core/services/ai-assistant/ai-scenario.service';
-import { AiRoleService } from '@/core/services/ai-assistant/ai-role.service';
+import { AiAgentService } from '@/core/services/ai-assistant/ai-agent.service';
 import { AiConfigService } from '@/core/services/ai-assistant/ai-config.service';
 import { AiHistoryService } from '@/core/services/ai-assistant/ai-history.service';
 import { AiSkillService } from '@/core/services/ai-assistant/ai-skill.service';
@@ -14,12 +13,11 @@ import { createLogger } from '@/core/utils/logger';
 
 const logger = createLogger('AiAssistantHandler');
 
-// 存储活跃的对话会话 (scenarioId:historyId → ChatService)
+// 存储活跃的对话会话 (agentId:historyId → ChatService)
 const activeChats = new Map<string, AiChatService>();
 
 // 懒加载的服务实例
-let scenarioService: AiScenarioService | null = null;
-let roleService: AiRoleService | null = null;
+let agentService: AiAgentService | null = null;
 let configService: AiConfigService | null = null;
 let historyService: AiHistoryService | null = null;
 let skillService: AiSkillService | null = null;
@@ -29,28 +27,18 @@ let mcpManager: McpManager | null = null;
 /**
  * 生成对话会话 Key
  */
-function getChatKey(scenarioId: string, historyId: string): string {
-  return `${scenarioId}:${historyId}`;
+function getChatKey(agentId: string, historyId: string): string {
+  return `${agentId}:${historyId}`;
 }
 
 /**
- * 获取或创建场景服务
+ * 获取或创建 Agent 服务
  */
-function getScenarioService(): AiScenarioService {
-  if (!scenarioService) {
-    scenarioService = new AiScenarioService();
+function getAgentService(): AiAgentService {
+  if (!agentService) {
+    agentService = new AiAgentService();
   }
-  return scenarioService;
-}
-
-/**
- * 获取或创建角色服务
- */
-function getRoleService(): AiRoleService {
-  if (!roleService) {
-    roleService = new AiRoleService();
-  }
-  return roleService;
+  return agentService;
 }
 
 /**
@@ -104,8 +92,8 @@ function getMcpManager(): McpManager {
 }
 
 /**
- * 根据场景的工具列表构建工具实例数组
- * @param toolNames - 场景中配置的工具名称列表
+ * 根据 Agent 的工具列表构建工具实例数组
+ * @param toolNames - Agent 中配置的工具名称列表
  * @returns 工具实例数组
  */
 function buildTools(toolNames: string[]): ITool[] {
@@ -128,99 +116,46 @@ function buildTools(toolNames: string[]): ITool[] {
  * 注册所有 AI 助手 IPC handlers
  */
 export function registerAiAssistantHandlers(): void {
-  // ========== 场景管理 ==========
+  // ========== Agent 管理 ==========
 
-  ipcMain.handle(IPC_CHANNELS.AI_LIST_SCENARIOS, async () => {
-    logger.debug('List AI scenarios');
+  ipcMain.handle(IPC_CHANNELS.AI_LIST_AGENTS, async () => {
+    logger.debug('List AI agents');
     try {
-      return await getScenarioService().listScenarios();
+      return await getAgentService().listAgents();
     } catch (err) {
-      logger.error('Failed to list AI scenarios', err);
+      logger.error('Failed to list AI agents', err);
       throw err;
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.AI_GET_SCENARIO, async (_event, id: string) => {
-    logger.debug(`Get AI scenario ${id}`);
+  ipcMain.handle(IPC_CHANNELS.AI_GET_AGENT, async (_event, name: string) => {
+    logger.debug(`Get AI agent ${name}`);
     try {
-      return await getScenarioService().getScenario(id);
+      return await getAgentService().getAgent(name);
     } catch (err) {
-      logger.error(`Failed to get AI scenario ${id}`, err);
+      logger.error(`Failed to get AI agent ${name}`, err);
       throw err;
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.AI_CREATE_SCENARIO, async (_event, id: string, data: any) => {
-    logger.info(`Create AI scenario ${id}`);
+  ipcMain.handle(IPC_CHANNELS.AI_SAVE_AGENT, async (_event, name: string, agent: any) => {
+    logger.info(`Save AI agent ${name}`);
     try {
-      await getScenarioService().createScenario(id, data);
+      await getAgentService().saveAgent(name, agent);
       return { success: true };
     } catch (err) {
-      logger.error(`Failed to create AI scenario ${id}`, err);
+      logger.error(`Failed to save AI agent ${name}`, err);
       throw err;
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.AI_UPDATE_SCENARIO, async (_event, id: string, data: any) => {
-    logger.info(`Update AI scenario ${id}`);
+  ipcMain.handle(IPC_CHANNELS.AI_DELETE_AGENT, async (_event, name: string) => {
+    logger.info(`Delete AI agent ${name}`);
     try {
-      await getScenarioService().updateScenario(id, data);
+      await getAgentService().deleteAgent(name);
       return { success: true };
     } catch (err) {
-      logger.error(`Failed to update AI scenario ${id}`, err);
-      throw err;
-    }
-  });
-
-  ipcMain.handle(IPC_CHANNELS.AI_DELETE_SCENARIO, async (_event, id: string) => {
-    logger.info(`Delete AI scenario ${id}`);
-    try {
-      await getScenarioService().deleteScenario(id);
-      return { success: true };
-    } catch (err) {
-      logger.error(`Failed to delete AI scenario ${id}`, err);
-      throw err;
-    }
-  });
-
-  // ========== 角色管理 ==========
-
-  ipcMain.handle(IPC_CHANNELS.AI_LIST_ROLES, async () => {
-    try {
-      return await getRoleService().listRoles();
-    } catch (err) {
-      logger.error('Failed to list AI roles', err);
-      throw err;
-    }
-  });
-
-  ipcMain.handle(IPC_CHANNELS.AI_GET_ROLE, async (_event, name: string) => {
-    try {
-      return await getRoleService().getRole(name);
-    } catch (err) {
-      logger.error(`Failed to get AI role ${name}`, err);
-      throw err;
-    }
-  });
-
-  ipcMain.handle(IPC_CHANNELS.AI_SAVE_ROLE, async (_event, name: string, content: string) => {
-    logger.info(`Save AI role ${name}`);
-    try {
-      await getRoleService().saveRole(name, content);
-      return { success: true };
-    } catch (err) {
-      logger.error(`Failed to save AI role ${name}`, err);
-      throw err;
-    }
-  });
-
-  ipcMain.handle(IPC_CHANNELS.AI_DELETE_ROLE, async (_event, name: string) => {
-    logger.info(`Delete AI role ${name}`);
-    try {
-      await getRoleService().deleteRole(name);
-      return { success: true };
-    } catch (err) {
-      logger.error(`Failed to delete AI role ${name}`, err);
+      logger.error(`Failed to delete AI agent ${name}`, err);
       throw err;
     }
   });
@@ -269,28 +204,37 @@ export function registerAiAssistantHandlers(): void {
 
   // ========== 对话历史管理 ==========
 
-  ipcMain.handle(IPC_CHANNELS.AI_LIST_HISTORIES, async (_event, scenarioId: string) => {
+  ipcMain.handle(IPC_CHANNELS.AI_LIST_HISTORIES, async (_event, agentId: string) => {
     try {
-      return await getHistoryService().listHistories(scenarioId);
+      return await getHistoryService().listHistories(agentId);
     } catch (err) {
-      logger.error(`Failed to list histories for ${scenarioId}`, err);
+      logger.error(`Failed to list histories for ${agentId}`, err);
       throw err;
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.AI_GET_HISTORY, async (_event, scenarioId: string, historyId: string) => {
+  ipcMain.handle(IPC_CHANNELS.AI_LIST_HISTORY_SUMMARIES, async (_event, agentId: string) => {
     try {
-      return await getHistoryService().getHistory(scenarioId, historyId);
+      return await getHistoryService().listHistorySummaries(agentId);
+    } catch (err) {
+      logger.error(`Failed to list history summaries for ${agentId}`, err);
+      throw err;
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.AI_GET_HISTORY, async (_event, agentId: string, historyId: string) => {
+    try {
+      return await getHistoryService().getHistory(agentId, historyId);
     } catch (err) {
       logger.error(`Failed to get history ${historyId}`, err);
       throw err;
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.AI_CREATE_HISTORY, async (_event, scenarioId: string, historyId: string, data: any) => {
+  ipcMain.handle(IPC_CHANNELS.AI_CREATE_HISTORY, async (_event, agentId: string, historyId: string, data: any) => {
     logger.info(`Create AI history ${historyId}`);
     try {
-      await getHistoryService().createHistory(scenarioId, historyId, data);
+      await getHistoryService().createHistory(agentId, historyId, data);
       return { success: true };
     } catch (err) {
       logger.error(`Failed to create AI history ${historyId}`, err);
@@ -298,9 +242,9 @@ export function registerAiAssistantHandlers(): void {
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.AI_SAVE_HISTORY, async (_event, scenarioId: string, historyId: string, data: any) => {
+  ipcMain.handle(IPC_CHANNELS.AI_SAVE_HISTORY, async (_event, agentId: string, historyId: string, data: any) => {
     try {
-      await getHistoryService().saveHistory(scenarioId, historyId, data);
+      await getHistoryService().saveHistory(agentId, historyId, data);
       return { success: true };
     } catch (err) {
       logger.error(`Failed to save AI history ${historyId}`, err);
@@ -308,10 +252,10 @@ export function registerAiAssistantHandlers(): void {
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.AI_DELETE_HISTORY, async (_event, scenarioId: string, historyId: string) => {
+  ipcMain.handle(IPC_CHANNELS.AI_DELETE_HISTORY, async (_event, agentId: string, historyId: string) => {
     logger.info(`Delete AI history ${historyId}`);
     try {
-      await getHistoryService().deleteHistory(scenarioId, historyId);
+      await getHistoryService().deleteHistory(agentId, historyId);
       return { success: true };
     } catch (err) {
       logger.error(`Failed to delete AI history ${historyId}`, err);
@@ -323,33 +267,24 @@ export function registerAiAssistantHandlers(): void {
 
   /**
    * 初始化对话会话
-   * 加载场景、角色、LLM 配置、Skills、Memory，创建 ChatService 实例
-   * Agent 模式下还会根据场景配置的工具列表构建工具实例
+   * 加载 Agent、LLM 配置、Skills、Memory，创建 ChatService 实例
+   * Agent 模式下还会根据 Agent 配置的工具列表构建工具实例
    */
   ipcMain.handle(
     IPC_CHANNELS.AI_INIT_CHAT,
-    async (_event, scenarioId: string, historyId: string, configName?: string) => {
+    async (_event, agentId: string, historyId: string, configName?: string) => {
       try {
-        // 获取场景
-        const scenario = await getScenarioService().getScenario(scenarioId);
+        // 获取 Agent
+        const agent = await getAgentService().getAgent(agentId);
 
         // 获取 LLM 配置
         const llmConfig = configName
           ? await getConfigService().getConfig(configName)
           : await getConfigService().getDefaultConfig();
 
-        // 获取角色内容
-        let roleContent = '';
-        try {
-          const role = await getRoleService().getRole(scenario.role_id);
-          roleContent = role.content;
-        } catch {
-          logger.warn(`Role '${scenario.role_id}' not found, using empty role`);
-        }
-
         // 构建工具列表 (内置工具 + MCP 工具)
-        const builtInTools = scenario.is_agent && scenario.tools.length > 0
-          ? buildTools(scenario.tools)
+        const builtInTools = agent.tools.length > 0
+          ? buildTools(agent.tools)
           : [];
 
         // 加载 MCP 工具
@@ -366,10 +301,10 @@ export function registerAiAssistantHandlers(): void {
 
         const tools = [...builtInTools, ...mcpTools];
 
-        // 加载场景引用的 Skills
+        // 加载 Agent 引用的 Skills
         const skills: any[] = [];
-        if (scenario.skills.length > 0) {
-          for (const skillDirName of scenario.skills) {
+        if (agent.skills && agent.skills.length > 0) {
+          for (const skillDirName of agent.skills) {
             try {
               const skill = await getSkillService().getSkill(skillDirName);
               skills.push(skill);
@@ -379,30 +314,29 @@ export function registerAiAssistantHandlers(): void {
           }
         }
 
-        // 构建记忆文本 (场景记忆 + 全局记忆)
-        const memoryPrompt = await getMemoryService().buildMemoryPrompt(scenarioId);
+        // 构建记忆文本 (Agent 记忆 + 全局记忆)
+        const memoryPrompt = await getMemoryService().buildMemoryPrompt(agentId);
 
         // 创建对话服务
-        const chatService = new AiChatService(llmConfig, scenario, roleContent, {
+        const chatService = new AiChatService(llmConfig, agent, {
           tools,
           skills,
           memoryPrompt,
         });
 
         // 加载历史 (如果存在)
-        const historyExists = await getHistoryService().historyExists(scenarioId, historyId);
+        const historyExists = await getHistoryService().historyExists(agentId, historyId);
         if (historyExists) {
-          const history = await getHistoryService().getHistory(scenarioId, historyId);
+          const history = await getHistoryService().getHistory(agentId, historyId);
           chatService.loadHistory(history.messages);
         }
 
         // 存储会话
-        const key = getChatKey(scenarioId, historyId);
+        const key = getChatKey(agentId, historyId);
         activeChats.set(key, chatService);
 
         return {
           success: true,
-          isAgent: chatService.getIsAgent(),
         };
       } catch (err) {
         logger.error('Failed to initialize AI chat', err);
@@ -415,18 +349,18 @@ export function registerAiAssistantHandlers(): void {
    * 发送对话消息 (事件流推送)
    *
    * 事件类型:
-   * - text_delta: 文本片段 (兼容 Simple Runner 和 Agent 模式)
-   * - tool_start: 工具调用开始 (Agent 模式)
-   * - tool_result: 工具调用结果 (Agent 模式)
+   * - text_delta: 文本片段 (逐 chunk 流式)
+   * - tool_start: 工具调用开始
+   * - tool_result: 工具调用结果
    * - done: 对话完成
    * - error: 错误
    */
   ipcMain.handle(
     IPC_CHANNELS.AI_CHAT_MESSAGE,
-    async (event, scenarioId: string, historyId: string, message: string) => {
-      logger.info(`AI chat message: ${scenarioId}/${historyId}`);
+    async (event, agentId: string, historyId: string, message: string) => {
+      logger.info(`AI chat message: ${agentId}/${historyId}`);
       try {
-        const key = getChatKey(scenarioId, historyId);
+        const key = getChatKey(agentId, historyId);
         const chatService = activeChats.get(key);
 
         if (!chatService) {
@@ -465,8 +399,8 @@ export function registerAiAssistantHandlers(): void {
         }
 
         // 自动保存历史
-        const historyData = chatService.getHistoryData(scenarioId, historyId);
-        await getHistoryService().saveHistory(scenarioId, historyId, historyData);
+        const historyData = chatService.getHistoryData(agentId, historyId);
+        await getHistoryService().saveHistory(agentId, historyId, historyData);
 
         return { success: true };
       } catch (err) {
@@ -480,9 +414,9 @@ export function registerAiAssistantHandlers(): void {
   /**
    * 停止当前对话
    */
-  ipcMain.handle(IPC_CHANNELS.AI_STOP_CHAT, async (_event, scenarioId: string, historyId: string) => {
+  ipcMain.handle(IPC_CHANNELS.AI_STOP_CHAT, async (_event, agentId: string, historyId: string) => {
     try {
-      const key = getChatKey(scenarioId, historyId);
+      const key = getChatKey(agentId, historyId);
       const chatService = activeChats.get(key);
       if (chatService) {
         chatService.abort();
@@ -497,10 +431,10 @@ export function registerAiAssistantHandlers(): void {
   /**
    * 重新生成最后一条回复
    */
-  ipcMain.handle(IPC_CHANNELS.AI_REGENERATE, async (event, scenarioId: string, historyId: string) => {
-    logger.info(`AI regenerate: ${scenarioId}/${historyId}`);
+  ipcMain.handle(IPC_CHANNELS.AI_REGENERATE, async (event, agentId: string, historyId: string) => {
+    logger.info(`AI regenerate: ${agentId}/${historyId}`);
     try {
-      const key = getChatKey(scenarioId, historyId);
+      const key = getChatKey(agentId, historyId);
       const chatService = activeChats.get(key);
 
       if (!chatService) {
@@ -539,8 +473,8 @@ export function registerAiAssistantHandlers(): void {
       }
 
       // 自动保存历史
-      const historyData = chatService.getHistoryData(scenarioId, historyId);
-      await getHistoryService().saveHistory(scenarioId, historyId, historyData);
+      const historyData = chatService.getHistoryData(agentId, historyId);
+      await getHistoryService().saveHistory(agentId, historyId, historyData);
 
       return { success: true };
     } catch (err) {
@@ -553,9 +487,9 @@ export function registerAiAssistantHandlers(): void {
   /**
    * 回退最后一条消息
    */
-  ipcMain.handle(IPC_CHANNELS.AI_POP_MESSAGE, async (_event, scenarioId: string, historyId: string) => {
+  ipcMain.handle(IPC_CHANNELS.AI_POP_MESSAGE, async (_event, agentId: string, historyId: string) => {
     try {
-      const key = getChatKey(scenarioId, historyId);
+      const key = getChatKey(agentId, historyId);
       const chatService = activeChats.get(key);
 
       if (!chatService) {
@@ -566,8 +500,8 @@ export function registerAiAssistantHandlers(): void {
 
       // 自动保存
       if (popped) {
-        const historyData = chatService.getHistoryData(scenarioId, historyId);
-        await getHistoryService().saveHistory(scenarioId, historyId, historyData);
+        const historyData = chatService.getHistoryData(agentId, historyId);
+        await getHistoryService().saveHistory(agentId, historyId, historyData);
       }
 
       return { success: true, popped };
@@ -580,9 +514,9 @@ export function registerAiAssistantHandlers(): void {
   /**
    * 获取当前消息列表
    */
-  ipcMain.handle(IPC_CHANNELS.AI_GET_MESSAGES, async (_event, scenarioId: string, historyId: string) => {
+  ipcMain.handle(IPC_CHANNELS.AI_GET_MESSAGES, async (_event, agentId: string, historyId: string) => {
     try {
-      const key = getChatKey(scenarioId, historyId);
+      const key = getChatKey(agentId, historyId);
       const chatService = activeChats.get(key);
 
       if (!chatService) {
@@ -618,9 +552,9 @@ export function registerAiAssistantHandlers(): void {
 
   // ========== Memory 管理 ==========
 
-  ipcMain.handle(IPC_CHANNELS.AI_LIST_MEMORIES, async (_event, scenarioId?: string) => {
+  ipcMain.handle(IPC_CHANNELS.AI_LIST_MEMORIES, async (_event, agentId?: string) => {
     try {
-      return await getMemoryService().listMemories(scenarioId);
+      return await getMemoryService().listMemories(agentId);
     } catch (err) {
       logger.error('Failed to list AI memories', err);
       throw err;
@@ -637,10 +571,10 @@ export function registerAiAssistantHandlers(): void {
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.AI_DELETE_MEMORY, async (_event, id: string, scenarioId?: string) => {
+  ipcMain.handle(IPC_CHANNELS.AI_DELETE_MEMORY, async (_event, id: string, agentId?: string) => {
     logger.info(`Delete AI memory ${id}`);
     try {
-      return { success: await getMemoryService().deleteMemory(id, scenarioId) };
+      return { success: await getMemoryService().deleteMemory(id, agentId) };
     } catch (err) {
       logger.error(`Failed to delete AI memory ${id}`, err);
       throw err;

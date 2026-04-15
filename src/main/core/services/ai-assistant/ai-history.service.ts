@@ -9,18 +9,18 @@ const logger = createLogger('AiHistoryService');
 
 /**
  * AI 助手对话历史管理服务
- * 历史按场景 ID 分目录存储，每个对话一个 JSON 文件
+ * 历史按 Agent 名称分目录存储，每个对话一个 JSON 文件
  */
 export class AiHistoryService {
   /**
-   * 列出指定场景的所有对话历史
-   * @param scenarioId - 场景 ID
+   * 列出指定 Agent 的所有对话历史
+   * @param agentId - Agent 名称
    * @returns 对话历史 ID 列表 (排序后)
    */
-  async listHistories(scenarioId: string): Promise<string[]> {
-    this.validateScenarioId(scenarioId);
+  async listHistories(agentId: string): Promise<string[]> {
+    this.validateAgentId(agentId);
 
-    const historyDir = path.join(wpath.assistantHistoryDir, scenarioId);
+    const historyDir = path.join(wpath.assistantHistoryDir, agentId);
 
     try {
       const entries = await fs.readdir(historyDir);
@@ -35,16 +35,59 @@ export class AiHistoryService {
   }
 
   /**
+   * 批量获取对话历史摘要（id, title, updated_at），用于侧边栏列表展示
+   * @param agentId - Agent 名称
+   * @returns 摘要列表，按 updated_at 降序排列
+   */
+  async listHistorySummaries(
+    agentId: string
+  ): Promise<Array<{ id: string; title: string; updated_at: number }>> {
+    this.validateAgentId(agentId);
+
+    const historyDir = path.join(wpath.assistantHistoryDir, agentId);
+
+    try {
+      const entries = await fs.readdir(historyDir);
+      const jsonFiles = entries.filter((file) => file.endsWith('.json'));
+
+      const summaries: Array<{ id: string; title: string; updated_at: number }> = [];
+
+      for (const file of jsonFiles) {
+        try {
+          const filePath = path.join(historyDir, file);
+          const data = await fs.readFile(filePath, 'utf-8');
+          const parsed = JSON.parse(data);
+          summaries.push({
+            id: parsed.id || file.replace(/\.json$/, ''),
+            title: parsed.title || '',
+            updated_at: parsed.updated_at || 0,
+          });
+        } catch {
+          // 跳过无法解析的文件
+          logger.warn(`Failed to parse history file: ${file}`);
+        }
+      }
+
+      // 按 updated_at 降序排列
+      summaries.sort((a, b) => b.updated_at - a.updated_at);
+      return summaries;
+    } catch {
+      // 历史目录不存在，返回空列表
+      return [];
+    }
+  }
+
+  /**
    * 获取对话历史详情
-   * @param scenarioId - 场景 ID
+   * @param agentId - 场景 ID
    * @param historyId - 历史 ID
    * @returns 对话历史数据
    */
-  async getHistory(scenarioId: string, historyId: string): Promise<AiChatHistory> {
-    this.validateScenarioId(scenarioId);
+  async getHistory(agentId: string, historyId: string): Promise<AiChatHistory> {
+    this.validateScenarioId(agentId);
     this.validateHistoryId(historyId);
 
-    const historyPath = this.getHistoryPath(scenarioId, historyId);
+    const historyPath = this.getHistoryPath(agentId, historyId);
 
     try {
       const data = await fs.readFile(historyPath, 'utf-8');
@@ -57,15 +100,15 @@ export class AiHistoryService {
 
   /**
    * 创建新对话历史
-   * @param scenarioId - 场景 ID
+   * @param agentId - 场景 ID
    * @param historyId - 历史 ID
    * @param data - 对话历史数据
    */
-  async createHistory(scenarioId: string, historyId: string, data: AiChatHistory): Promise<void> {
-    this.validateScenarioId(scenarioId);
+  async createHistory(agentId: string, historyId: string, data: AiChatHistory): Promise<void> {
+    this.validateScenarioId(agentId);
     this.validateHistoryId(historyId);
 
-    const historyDir = path.join(wpath.assistantHistoryDir, scenarioId);
+    const historyDir = path.join(wpath.assistantHistoryDir, agentId);
     const historyPath = path.join(historyDir, `${historyId}.json`);
 
     // 检查是否已存在
@@ -84,7 +127,7 @@ export class AiHistoryService {
     try {
       await fs.mkdir(historyDir, { recursive: true, mode: 0o755 });
       await fs.writeFile(historyPath, JSON.stringify(data, null, 2), 'utf-8');
-      logger.info(`History '${historyId}' created for scenario '${scenarioId}'`);
+      logger.info(`History '${historyId}' created for scenario '${agentId}'`);
     } catch (err) {
       logger.error(`Failed to create history ${historyId}`, err);
       throw new Error(`Failed to create history '${historyId}': ${err}`);
@@ -93,15 +136,15 @@ export class AiHistoryService {
 
   /**
    * 保存对话历史 (覆盖写入)
-   * @param scenarioId - 场景 ID
+   * @param agentId - 场景 ID
    * @param historyId - 历史 ID
    * @param data - 对话历史数据
    */
-  async saveHistory(scenarioId: string, historyId: string, data: AiChatHistory): Promise<void> {
-    this.validateScenarioId(scenarioId);
+  async saveHistory(agentId: string, historyId: string, data: AiChatHistory): Promise<void> {
+    this.validateScenarioId(agentId);
     this.validateHistoryId(historyId);
 
-    const historyPath = this.getHistoryPath(scenarioId, historyId);
+    const historyPath = this.getHistoryPath(agentId, historyId);
 
     try {
       await fs.writeFile(historyPath, JSON.stringify(data, null, 2), 'utf-8');
@@ -113,18 +156,18 @@ export class AiHistoryService {
 
   /**
    * 删除对话历史
-   * @param scenarioId - 场景 ID
+   * @param agentId - 场景 ID
    * @param historyId - 历史 ID
    */
-  async deleteHistory(scenarioId: string, historyId: string): Promise<void> {
-    this.validateScenarioId(scenarioId);
+  async deleteHistory(agentId: string, historyId: string): Promise<void> {
+    this.validateScenarioId(agentId);
     this.validateHistoryId(historyId);
 
-    const historyPath = this.getHistoryPath(scenarioId, historyId);
+    const historyPath = this.getHistoryPath(agentId, historyId);
 
     try {
       await fs.unlink(historyPath);
-      logger.info(`History '${historyId}' deleted for scenario '${scenarioId}'`);
+      logger.info(`History '${historyId}' deleted for scenario '${agentId}'`);
     } catch (err) {
       logger.error(`Failed to delete history ${historyId}`, err);
       throw new Error(`Failed to delete history '${historyId}': ${err}`);
@@ -133,15 +176,15 @@ export class AiHistoryService {
 
   /**
    * 检查对话历史是否存在
-   * @param scenarioId - 场景 ID
+   * @param agentId - 场景 ID
    * @param historyId - 历史 ID
    * @returns 是否存在
    */
-  async historyExists(scenarioId: string, historyId: string): Promise<boolean> {
-    this.validateScenarioId(scenarioId);
+  async historyExists(agentId: string, historyId: string): Promise<boolean> {
+    this.validateScenarioId(agentId);
     this.validateHistoryId(historyId);
 
-    const historyPath = this.getHistoryPath(scenarioId, historyId);
+    const historyPath = this.getHistoryPath(agentId, historyId);
 
     try {
       await fs.access(historyPath);
@@ -153,12 +196,12 @@ export class AiHistoryService {
 
   /**
    * 获取历史文件路径
-   * @param scenarioId - 场景 ID
+   * @param agentId - 场景 ID
    * @param historyId - 历史 ID
    * @returns 完整文件路径
    */
-  private getHistoryPath(scenarioId: string, historyId: string): string {
-    return path.join(wpath.assistantHistoryDir, scenarioId, `${historyId}.json`);
+  private getHistoryPath(agentId: string, historyId: string): string {
+    return path.join(wpath.assistantHistoryDir, agentId, `${historyId}.json`);
   }
 
   /**
@@ -166,10 +209,10 @@ export class AiHistoryService {
    */
   private validateScenarioId(id: string): void {
     if (!id || id.trim().length === 0) {
-      throw new Error('Scenario ID cannot be empty');
+      throw new Error('Agent ID cannot be empty');
     }
     if (id.includes('..') || id.includes('/') || id.includes('\\')) {
-      throw new Error('Invalid scenario ID');
+      throw new Error('Invalid agent ID');
     }
   }
 

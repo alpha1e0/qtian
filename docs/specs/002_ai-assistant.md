@@ -14,7 +14,7 @@
 
 1. **用户输入**：用户在 UI 选择“操作助手”场景并输入指令。
 2. **场景加载**：应用读取 `scenario/*.json`，注入对应的 `role` Markdown 内容，默认为default.json
-3. **ReAct 循环**：
+3. **Streaming Tool-use Loop 循环**：
     - **Thought**: LLM 分析指令，决定调用哪个 `tool` 或 `skill`。
     - **Action**: 执行工具（如 `git-bash` 获取目录结构）。
     - **Observation**: 获取执行结果。
@@ -25,8 +25,7 @@
 
 - **场景管理器 (Scenario Manager)**：负责调度模型、角色、技能的组装。
 - **执行引擎 (Execution Engine)**：
-    - **Simple Runner**：非 Agent 模式，直接透传 Prompt。
-    - **ReAct Agent**：负责 `Reasoning -> Acting` 的循环控制。
+    - **Streaming Tool-use Loop Agent**：负责 `Reasoning -> Acting` 的循环控制。
     - **上下文管理**：包含上下文压缩、Memory。
 - **工具链 (Toolchain)**：
     - **MCP 集成器**：解析 `mcp.setting.json` 并连接外部服务。

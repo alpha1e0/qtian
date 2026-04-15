@@ -1,29 +1,82 @@
 <template>
   <div class="chat-message" :class="`chat-message-${message.role}`">
-    <!-- 普通消息 (user / assistant) -->
-    <template v-if="message.role === 'user' || message.role === 'assistant'">
-      <div class="message-bubble" v-html="renderedContent"></div>
+    <!-- 消息头部：角色 + 模型 + 时间 -->
+    <div class="message-header">
+      <span class="message-role-icon">{{ roleIcon }}</span>
+      <span class="message-role-name">{{ roleName }}</span>
+      <span v-if="llmConfigName" class="message-model">{{ llmConfigName }}</span>
+      <span v-if="formattedTime" class="message-time">{{ formattedTime }}</span>
+    </div>
+
+    <!-- 展示模式 -->
+    <template v-if="!isEditing">
+      <!-- 普通消息 (user / assistant) -->
+      <template v-if="message.role === 'user' || (message.role === 'assistant' && !hasToolCalls)">
+        <div class="message-bubble" v-html="renderedContent"></div>
+      </template>
+      <!-- 工具调用消息 (assistant with tool_calls) -->
+      <template v-else-if="message.role === 'assistant' && hasToolCalls">
+        <div v-if="message.content" class="message-bubble" v-html="renderedContent"></div>
+        <ToolCallView
+          v-for="tc in message.tool_calls"
+          :key="tc.id"
+          :name="tc.function.name"
+          :arguments="tc.function.arguments"
+          :result="getToolResult(tc.id)"
+          :is-error="getToolResultIsError(tc.id)"
+        />
+      </template>
+      <!-- 独立 tool 消息 (由 tool_calls 关联处理，不需要单独渲染) -->
+      <template v-else-if="message.role === 'tool'">
+      </template>
+
+      <!-- 操作按钮 -->
+      <div class="message-actions" v-if="message.role === 'user' || message.role === 'assistant'">
+        <el-tooltip content="复制" placement="top" :show-after="500">
+          <el-button link size="small" @click="handleCopy">
+            <el-icon><DocumentCopy /></el-icon>
+          </el-button>
+        </el-tooltip>
+        <el-tooltip v-if="message.role === 'user'" content="编辑" placement="top" :show-after="500">
+          <el-button link size="small" @click="startEdit">
+            <el-icon><Edit /></el-icon>
+          </el-button>
+        </el-tooltip>
+        <el-tooltip v-if="message.role === 'assistant'" content="重新生成" placement="top" :show-after="500">
+          <el-button link size="small" @click="$emit('regenerate')">
+            <el-icon><RefreshRight /></el-icon>
+          </el-button>
+        </el-tooltip>
+        <el-tooltip content="删除" placement="top" :show-after="500">
+          <el-button link size="small" @click="$emit('delete-message', messageIndex)">
+            <el-icon><Delete /></el-icon>
+          </el-button>
+        </el-tooltip>
+      </div>
     </template>
-    <!-- 工具调用消息 (assistant with tool_calls) -->
-    <template v-else-if="message.role === 'assistant' && message.tool_calls && message.tool_calls.length > 0">
-      <div v-if="message.content" class="message-bubble" v-html="renderedContent"></div>
-      <ToolCallView
-        v-for="tc in message.tool_calls"
-        :key="tc.id"
-        :name="tc.function.name"
-        :arguments="tc.function.arguments"
-        :result="getToolResult(tc.id)"
-        :is-error="getToolResultIsError(tc.id)"
-      />
-    </template>
-    <!-- 独立 tool 消息 (已由 tool_calls 关联处理，通常不需要单独渲染) -->
-    <template v-else-if="message.role === 'tool'">
-      <!-- tool 角色的消息由 ToolCallView 在 assistant 消息中展示，此处不单独渲染 -->
+
+    <!-- 编辑模式 -->
+    <template v-else>
+      <div class="message-edit">
+        <el-input
+          v-model="editContent"
+          type="textarea"
+          :rows="3"
+          resize="none"
+          aria-label="编辑消息"
+        />
+        <div class="edit-actions">
+          <el-button size="small" @click="cancelEdit">取消</el-button>
+          <el-button type="primary" size="small" @click="saveEdit">保存</el-button>
+        </div>
+      </div>
     </template>
   </div>
 </template>
 
 <script>
+import { DocumentCopy, Edit, RefreshRight, Delete } from '@element-plus/icons-vue';
+import { ElMessage } from 'element-plus';
 import ToolCallView from './ToolCallView.vue';
 
 /**
@@ -74,17 +127,60 @@ function renderMarkdown(text) {
   return html;
 }
 
+/**
+ * 格式化时间戳为可读字符串
+ * @param {number} timestamp - Unix 时间戳 (毫秒)
+ * @returns {string} 格式化后的时间字符串
+ */
+function formatTimestamp(timestamp) {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  const y = date.getFullYear();
+  const m = date.getMonth() + 1;
+  const d = date.getDate();
+  const h = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${d} ${h}:${min}`;
+}
+
 export default {
   name: 'ChatMessage',
-  components: { ToolCallView },
+  components: { ToolCallView, DocumentCopy, Edit, RefreshRight, Delete },
   props: {
     message: { type: Object, required: true },
+    /** 消息在 displayMessages 中的索引 (用于编辑/删除) */
+    messageIndex: { type: Number, default: -1 },
     /** 所有消息列表 (用于查找 tool result) */
     allMessages: { type: Array, default: () => [] },
+    /** Agent 名称 */
+    agentName: { type: String, default: '' },
+    /** LLM 配置名称 */
+    llmConfigName: { type: String, default: '' },
+  },
+  emits: ['edit-message', 'delete-message', 'regenerate'],
+  data() {
+    return {
+      isEditing: false,
+      editContent: '',
+    };
   },
   computed: {
     renderedContent() {
       return renderMarkdown(this.message.content);
+    },
+    hasToolCalls() {
+      return this.message.tool_calls && this.message.tool_calls.length > 0;
+    },
+    roleIcon() {
+      return this.message.role === 'user' ? '\u{1F9D1}' : '\u{1F916}';
+    },
+    roleName() {
+      if (this.message.role === 'user') return 'User';
+      if (this.message.role === 'assistant') return this.agentName || 'AI 助手';
+      return '';
+    },
+    formattedTime() {
+      return formatTimestamp(this.message.timestamp);
     },
   },
   methods: {
@@ -106,13 +202,82 @@ export default {
       );
       return toolMsg ? toolMsg.content.startsWith('Error:') : false;
     },
+    /** 复制消息内容到剪贴板 */
+    handleCopy() {
+      navigator.clipboard.writeText(this.message.content).then(() => {
+        ElMessage.success('已复制');
+      }).catch(() => {
+        ElMessage.error('复制失败');
+      });
+    },
+    /** 进入编辑模式 */
+    startEdit() {
+      this.editContent = this.message.content;
+      this.isEditing = true;
+    },
+    /** 取消编辑 */
+    cancelEdit() {
+      this.isEditing = false;
+      this.editContent = '';
+    },
+    /** 保存编辑 */
+    saveEdit() {
+      if (!this.editContent.trim()) {
+        ElMessage.warning('消息内容不能为空');
+        return;
+      }
+      this.$emit('edit-message', this.messageIndex, this.editContent.trim());
+      this.isEditing = false;
+      this.editContent = '';
+    },
   },
 };
 </script>
 
 <style scoped>
 .chat-message {
-  margin-bottom: 8px;
+  margin-bottom: 16px;
+  max-width: 80%;
+}
+
+.chat-message-user {
+  margin-left: auto;
+}
+
+.chat-message-assistant {
+  margin-right: auto;
+}
+
+.message-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: #999;
+}
+
+.message-role-icon {
+  font-size: 14px;
+}
+
+.message-role-name {
+  font-weight: 600;
+  color: #666;
+}
+
+.message-model {
+  color: #aaa;
+}
+
+.message-time {
+  color: #bbb;
+}
+
+.message-bubble {
+  word-break: break-word;
+  line-height: 1.6;
+  font-size: 14px;
 }
 
 .chat-message-user .message-bubble {
@@ -130,10 +295,32 @@ export default {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
-.message-bubble {
-  word-break: break-word;
-  line-height: 1.6;
-  font-size: 14px;
+/* 操作按钮 */
+.message-actions {
+  display: flex;
+  gap: 2px;
+  margin-top: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.chat-message:hover .message-actions {
+  opacity: 1;
+}
+
+/* 编辑模式 */
+.message-edit {
+  background: white;
+  border-radius: 8px;
+  padding: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 /* Markdown 渲染样式 */

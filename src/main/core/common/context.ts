@@ -16,8 +16,7 @@ export class WPath {
   readonly logDirectory: string;
   readonly tempDirectory: string;
   readonly assistantDir: string;
-  readonly assistantScenarioDir: string;
-  readonly assistantRoleDir: string;
+  readonly assistantAgentDir: string;
   readonly assistantLlmDir: string;
   readonly assistantSkillDir: string;
   readonly assistantToolDir: string;
@@ -95,11 +94,8 @@ export class WPath {
     this.assistantDir = path.join(this.workspace, 'assistant');
     this.ensureDirectory(this.assistantDir);
 
-    this.assistantScenarioDir = path.join(this.assistantDir, 'scenario');
-    this.ensureDirectory(this.assistantScenarioDir);
-
-    this.assistantRoleDir = path.join(this.assistantDir, 'role');
-    this.ensureDirectory(this.assistantRoleDir);
+    this.assistantAgentDir = path.join(this.assistantDir, 'agent');
+    this.ensureDirectory(this.assistantAgentDir);
 
     this.assistantLlmDir = path.join(this.assistantDir, 'llm');
     this.ensureDirectory(this.assistantLlmDir);
@@ -159,7 +155,7 @@ export class WPath {
  * AI Assistant configuration
  */
 export interface AiAssistantConfig {
-  default_scenario?: string;
+  default_agent?: string;
   default_llm_config?: string;
   /** Agent 模式最大工具调用轮数 */
   max_tool_rounds?: number;
@@ -177,7 +173,7 @@ export interface ConfigData {
 export class Config {
   // AI Assistant config
   aiAssistant: {
-    defaultScenario: string;
+    defaultAgent: string;
     defaultLlmConfig: string;
     maxToolRounds: number;
     toolTimeoutMs: number;
@@ -185,7 +181,7 @@ export class Config {
 
   constructor() {
     this.aiAssistant = {
-      defaultScenario: 'default',
+      defaultAgent: 'default',
       defaultLlmConfig: 'default',
       maxToolRounds: 10,
       toolTimeoutMs: 30000,
@@ -202,7 +198,7 @@ export class Config {
 
       // Initialize ai_assistant config
       if (cfgObj.ai_assistant) {
-        this.aiAssistant.defaultScenario = cfgObj.ai_assistant.default_scenario ?? 'default';
+        this.aiAssistant.defaultAgent = cfgObj.ai_assistant.default_agent ?? 'default';
         this.aiAssistant.defaultLlmConfig = cfgObj.ai_assistant.default_llm_config ?? 'default';
         this.aiAssistant.maxToolRounds = cfgObj.ai_assistant.max_tool_rounds ?? 10;
         this.aiAssistant.toolTimeoutMs = cfgObj.ai_assistant.tool_timeout_ms ?? 30000;

@@ -31,13 +31,13 @@ export class AiMemoryService {
 
   /**
    * 列出记忆条目
-   * @param scenarioId - 场景 ID，不传则返回所有记忆 (全局 + 所有场景)
+   * @param agentId - 场景 ID，不传则返回所有记忆 (全局 + 所有场景)
    * @returns 记忆条目列表 (按创建时间倒序)
    */
-  async listMemories(scenarioId?: string): Promise<AiMemory[]> {
-    if (scenarioId) {
+  async listMemories(agentId?: string): Promise<AiMemory[]> {
+    if (agentId) {
       // 指定场景: 返回该场景记忆 + 全局记忆
-      const scenarioMemories = await this.readMemoryFile(this.getMemoryFileName(scenarioId));
+      const scenarioMemories = await this.readMemoryFile(this.getMemoryFileName(agentId));
       const globalMemories = await this.readMemoryFile(GLOBAL_MEMORY_FILE);
       return [...scenarioMemories, ...globalMemories].sort((a, b) => b.created_at - a.created_at);
     }
@@ -63,41 +63,41 @@ export class AiMemoryService {
    * @param data - 记忆数据 (不含 id 和 created_at)
    * @returns 新增的记忆条目 (含自动生成的 id 和 created_at)
    */
-  async addMemory(data: { content: string; tags?: string[]; scenario_id?: string }): Promise<AiMemory> {
+  async addMemory(data: { content: string; tags?: string[]; agent_id?: string }): Promise<AiMemory> {
     const memory: AiMemory = {
       id: crypto.randomUUID(),
       content: data.content,
       tags: data.tags || [],
-      scenario_id: data.scenario_id,
+      agent_id: data.agent_id,
       created_at: Date.now(),
     };
 
-    const fileName = memory.scenario_id
-      ? this.getMemoryFileName(memory.scenario_id)
+    const fileName = memory.agent_id
+      ? this.getMemoryFileName(memory.agent_id)
       : GLOBAL_MEMORY_FILE;
 
     await this.appendMemoryToFile(fileName, memory);
 
-    logger.info(`Memory added: ${memory.id} (scenario: ${memory.scenario_id || 'global'})`);
+    logger.info(`Memory added: ${memory.id} (scenario: ${memory.agent_id || 'global'})`);
     return memory;
   }
 
   /**
    * 删除记忆条目
    * @param id - 记忆 ID
-   * @param scenarioId - 场景 ID (可选，加速定位)
+   * @param agentId - 场景 ID (可选，加速定位)
    * @returns 是否成功删除
    */
-  async deleteMemory(id: string, scenarioId?: string): Promise<boolean> {
+  async deleteMemory(id: string, agentId?: string): Promise<boolean> {
     // 确定要搜索的文件
     const filesToSearch: string[] = [];
-    if (scenarioId) {
-      filesToSearch.push(this.getMemoryFileName(scenarioId));
+    if (agentId) {
+      filesToSearch.push(this.getMemoryFileName(agentId));
     }
     filesToSearch.push(GLOBAL_MEMORY_FILE);
 
     // 如果没有指定场景，搜索所有文件
-    if (!scenarioId) {
+    if (!agentId) {
       try {
         const entries = await fs.readdir(this.memoryDir);
         for (const entry of entries) {
@@ -141,11 +141,11 @@ export class AiMemoryService {
 
   /**
    * 构建记忆文本段，用于注入 System Prompt
-   * @param scenarioId - 场景 ID
+   * @param agentId - 场景 ID
    * @returns 格式化的记忆文本，无记忆时返回空字符串
    */
-  async buildMemoryPrompt(scenarioId?: string): Promise<string> {
-    const memories = await this.listMemories(scenarioId);
+  async buildMemoryPrompt(agentId?: string): Promise<string> {
+    const memories = await this.listMemories(agentId);
 
     if (memories.length === 0) {
       return '';
@@ -162,10 +162,10 @@ export class AiMemoryService {
   /**
    * 获取记忆文件的文件名
    */
-  private getMemoryFileName(scenarioId: string): string {
+  private getMemoryFileName(agentId: string): string {
     // 校验场景 ID 防止路径穿越
-    this.validateMemoryFileName(scenarioId);
-    return `${scenarioId}.jsonl`;
+    this.validateMemoryFileName(agentId);
+    return `${agentId}.jsonl`;
   }
 
   /**

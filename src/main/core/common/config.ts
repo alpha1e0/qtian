@@ -50,29 +50,27 @@ export interface IPCResponse<T = any> {
 // ============================================================================
 
 /**
- * AI 助手场景定义
+ * AI 助手 Agent 定义
+ * 合并原 AiScenario + AiRole，使用 YAML front-matter + Markdown 格式
+ * 文件: assistant/agent/{name}.md
  */
-export interface AiScenario {
-  /** 场景唯一标识 */
-  id: string;
-  /** 场景显示名称 */
+export interface AiAgent {
+  /** Agent 名称 (frontmatter name，必选) */
   name: string;
-  /** 场景描述 */
-  description?: string;
-  /** 是否启用 Agent 模式 */
-  is_agent: boolean;
-  /** 引用的角色 ID，对应 role/{role_id}.md */
-  role_id: string;
-  /** 引用的 LLM 配置名，对应 llm/{llm_config}.json */
-  llm_config: string;
-  /** 引用的 Skill 名称列表 */
-  skills: string[];
-  /** 引用的工具名称列表 */
+  /** Agent 描述 (frontmatter description，必选) */
+  description: string;
+  /** 引用的工具名称列表 (frontmatter tools，默认 []) */
   tools: string[];
-  /** 是否启用记忆 */
+  /** 建议的 LLM 配置名 (frontmatter model，可选) */
+  model?: string;
+  /** 引用的 Skill 名称列表 (frontmatter skills，可选) */
+  skills?: string[];
+  /** 是否启用记忆 (frontmatter enable_memory，可选) */
   enable_memory?: boolean;
-  /** 最大上下文轮数 */
+  /** 最大上下文轮数 (frontmatter max_context_rounds，可选) */
   max_context_rounds?: number;
+  /** Markdown body (原 role content，注入 System Prompt) */
+  instructions: string;
 }
 
 /**
@@ -130,8 +128,8 @@ export interface AiToolCall {
 export interface AiChatHistory {
   /** 历史记录 ID */
   id: string;
-  /** 关联的场景 ID */
-  scenario_id: string;
+  /** 关联的 Agent 名称 */
+  agent_id: string;
   /** 对话标题 */
   title: string;
   /** 消息列表 */
@@ -140,16 +138,6 @@ export interface AiChatHistory {
   created_at: number;
   /** 最后更新时间 */
   updated_at: number;
-}
-
-/**
- * AI 助手角色定义 (Markdown 文件解析后)
- */
-export interface AiRole {
-  /** 角色文件名 (不含 .md 后缀) */
-  name: string;
-  /** 完整的 Markdown 内容 */
-  content: string;
 }
 
 /**
@@ -184,8 +172,8 @@ export interface AiSkill extends AiSkillMeta {
 export interface AiMemory {
   /** 记忆 ID */
   id: string;
-  /** 关联的场景 ID (空表示全局记忆) */
-  scenario_id?: string;
+  /** 关联的 Agent 名称 (空表示全局记忆) */
+  agent_id?: string;
   /** 记忆内容 */
   content: string;
   /** 标签 */

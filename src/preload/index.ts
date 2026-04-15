@@ -15,20 +15,16 @@ const IPC_CHANNELS = {
   SEND_CONSOLE_MESSAGE: 'qtian:send-console-message',
 
   // AI Assistant channels
-  AI_LIST_SCENARIOS: 'qtian:ai:list-scenarios',
-  AI_GET_SCENARIO: 'qtian:ai:get-scenario',
-  AI_CREATE_SCENARIO: 'qtian:ai:create-scenario',
-  AI_UPDATE_SCENARIO: 'qtian:ai:update-scenario',
-  AI_DELETE_SCENARIO: 'qtian:ai:delete-scenario',
-  AI_LIST_ROLES: 'qtian:ai:list-roles',
-  AI_GET_ROLE: 'qtian:ai:get-role',
-  AI_SAVE_ROLE: 'qtian:ai:save-role',
-  AI_DELETE_ROLE: 'qtian:ai:delete-role',
+  AI_LIST_AGENTS: 'qtian:ai:list-agents',
+  AI_GET_AGENT: 'qtian:ai:get-agent',
+  AI_SAVE_AGENT: 'qtian:ai:save-agent',
+  AI_DELETE_AGENT: 'qtian:ai:delete-agent',
   AI_LIST_LLM_CONFIGS: 'qtian:ai:list-llm-configs',
   AI_GET_LLM_CONFIG: 'qtian:ai:get-llm-config',
   AI_SAVE_LLM_CONFIG: 'qtian:ai:save-llm-config',
   AI_DELETE_LLM_CONFIG: 'qtian:ai:delete-llm-config',
   AI_LIST_HISTORIES: 'qtian:ai:list-histories',
+  AI_LIST_HISTORY_SUMMARIES: 'qtian:ai:list-history-summaries',
   AI_GET_HISTORY: 'qtian:ai:get-history',
   AI_CREATE_HISTORY: 'qtian:ai:create-history',
   AI_SAVE_HISTORY: 'qtian:ai:save-history',
@@ -84,18 +80,11 @@ const api = {
 
   // AI Assistant APIs
   ai: {
-    // 场景管理
-    listScenarios: () => ipcRenderer.invoke(IPC_CHANNELS.AI_LIST_SCENARIOS),
-    getScenario: (id) => ipcRenderer.invoke(IPC_CHANNELS.AI_GET_SCENARIO, id),
-    createScenario: (id, data) => ipcRenderer.invoke(IPC_CHANNELS.AI_CREATE_SCENARIO, id, data),
-    updateScenario: (id, data) => ipcRenderer.invoke(IPC_CHANNELS.AI_UPDATE_SCENARIO, id, data),
-    deleteScenario: (id) => ipcRenderer.invoke(IPC_CHANNELS.AI_DELETE_SCENARIO, id),
-
-    // 角色管理
-    listRoles: () => ipcRenderer.invoke(IPC_CHANNELS.AI_LIST_ROLES),
-    getRole: (name) => ipcRenderer.invoke(IPC_CHANNELS.AI_GET_ROLE, name),
-    saveRole: (name, content) => ipcRenderer.invoke(IPC_CHANNELS.AI_SAVE_ROLE, name, content),
-    deleteRole: (name) => ipcRenderer.invoke(IPC_CHANNELS.AI_DELETE_ROLE, name),
+    // Agent 管理
+    listAgents: () => ipcRenderer.invoke(IPC_CHANNELS.AI_LIST_AGENTS),
+    getAgent: (name) => ipcRenderer.invoke(IPC_CHANNELS.AI_GET_AGENT, name),
+    saveAgent: (name, agent) => ipcRenderer.invoke(IPC_CHANNELS.AI_SAVE_AGENT, name, agent),
+    deleteAgent: (name) => ipcRenderer.invoke(IPC_CHANNELS.AI_DELETE_AGENT, name),
 
     // LLM 配置管理
     listLlmConfigs: () => ipcRenderer.invoke(IPC_CHANNELS.AI_LIST_LLM_CONFIGS),
@@ -105,6 +94,7 @@ const api = {
 
     // 对话历史管理
     listHistories: (scenarioId) => ipcRenderer.invoke(IPC_CHANNELS.AI_LIST_HISTORIES, scenarioId),
+    listHistorySummaries: (scenarioId) => ipcRenderer.invoke(IPC_CHANNELS.AI_LIST_HISTORY_SUMMARIES, scenarioId),
     getHistory: (scenarioId, historyId) => ipcRenderer.invoke(IPC_CHANNELS.AI_GET_HISTORY, scenarioId, historyId),
     createHistory: (scenarioId, historyId, data) => ipcRenderer.invoke(IPC_CHANNELS.AI_CREATE_HISTORY, scenarioId, historyId, data),
     saveHistory: (scenarioId, historyId, data) => ipcRenderer.invoke(IPC_CHANNELS.AI_SAVE_HISTORY, scenarioId, historyId, data),

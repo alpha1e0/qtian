@@ -38,14 +38,54 @@
 - 消息气泡可以展示、也可以编辑
 - User message 靠右展示，Assistant message靠左展示
 
+
+### 交互输入布局
+
+交互输入是用户表达自己意图的地方，包含文本、图像、语音输入，以及一些常用功能，例如模型选择、场景选择、复制、翻译等
+
+布局如下：
+
+```xml
+<ChatInput>
+	<TextArea>
+	<TextArea>
+	<Row>
+		<ItemLeft>
+			<OperationList (flex-start)>
+				<Select>
+					场景选择下拉列表
+				</Select>
+				<Select>
+					模型选择下拉列表
+				</Select>
+			</OperationList>
+		</ItemLeft>
+		<ItemRight>
+			<IconButton>
+				提交
+			</IconButton>
+		</ItemRight>
+	</Row>
+</ChatInput>
+```
+
+
 ### 对话区域设计
 
 对话区域UI布局：
 
 ```xml
-<FlexColumn>
-    <BuddleContainer/>
-    <BuddleContainer/>
-    ...
-</FlexColumn>
+<SideBar>
+	<List 对话历史>
+	</List>
+</SideBar>
+<MainContainer 对话区域>
+	<FlexColumn>
+		<BuddleContainer/>
+		<BuddleContainer/>
+		...
+	</FlexColumn>
+	<ChatInput>
+	</ChatInput>
+</MainContainer>
 ```

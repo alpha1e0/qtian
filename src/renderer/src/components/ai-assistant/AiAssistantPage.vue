@@ -2,7 +2,7 @@
   <div class="ai-assistant-page">
     <!-- 左侧栏：仅对话历史列表 -->
     <ChatSidebar
-      v-if="selectedScenario"
+      v-if="selectedAgent"
       :histories="historySummaries"
       :selected-history="selectedHistory"
       @history-change="handleHistoryChange"
@@ -10,14 +10,14 @@
     />
 
     <!-- 右侧主区域 -->
-    <div class="main-container" v-if="selectedScenario">
+    <div class="main-container" v-if="selectedAgent">
       <!-- 消息列表（有历史时显示） -->
       <ChatContent
         v-if="selectedHistory"
         ref="chatContentRef"
         :messages="messages"
         :is-chatting="isChatting"
-        :scenario-name="currentScenarioName"
+        :agent-name="currentAgentName"
         :llm-config-name="selectedLlmConfig"
         @edit-message="handleEditMessage"
         @delete-message="handleDeleteMessage"
@@ -29,13 +29,13 @@
       </div>
       <!-- 输入区域 -->
       <ChatInput
-        :scenarios="scenarioObjects"
-        :selected-scenario="selectedScenario"
+        :agents="agentObjects"
+        :selected-agent="selectedAgent"
         :llm-configs="llmConfigs"
         :selected-llm-config="selectedLlmConfig"
         :is-chatting="isChatting"
         @send-message="handleSendMessage"
-        @scenario-change="handleScenarioChange"
+        @agent-change="handleAgentChange"
         @llm-change="handleLlmChange"
         @stop-chat="handleStopChat"
       />
@@ -43,7 +43,7 @@
 
     <!-- 未选择提示 -->
     <div class="placeholder" v-else>
-      <el-empty description="请选择场景并新建对话" />
+      <el-empty description="请选择Agent并新建对话" />
     </div>
   </div>
 </template>
@@ -63,7 +63,7 @@ export default {
       type: String,
       default: '',
     },
-    initialScenarioId: {
+    initialAgentId: {
       type: String,
       default: '',
     },
@@ -74,9 +74,9 @@ export default {
   },
   data() {
     return {
-      scenarios: [],
-      scenarioObjects: [],
-      selectedScenario: '',
+      agents: [],
+      agentObjects: [],
+      selectedAgent: '',
       llmConfigs: [],
       selectedLlmConfig: '',
       historySummaries: [],
@@ -86,21 +86,21 @@ export default {
     };
   },
   computed: {
-    /** 当前选中场景的名称 */
-    currentScenarioName() {
-      const scenario = this.scenarioObjects.find((s) => s.id === this.selectedScenario);
-      return scenario ? scenario.name : '';
+    /** 当前选中 Agent 的名称 */
+    currentAgentName() {
+      const agent = this.agentObjects.find((s) => s.id === this.selectedAgent);
+      return agent ? agent.name : '';
     },
   },
   async mounted() {
     await this.loadLlmConfigs();
-    await this.loadScenarios();
+    await this.loadAgents();
 
-    // 若从首页传入了场景 ID，优先使用
-    if (this.initialScenarioId && this.scenarios.includes(this.initialScenarioId)) {
-      this.selectedScenario = this.initialScenarioId;
-    } else if (this.scenarios.length > 0 && !this.selectedScenario) {
-      this.selectedScenario = this.scenarios[0];
+    // 若从首页传入了 Agent ID，优先使用
+    if (this.initialAgentId && this.agents.includes(this.initialAgentId)) {
+      this.selectedAgent = this.initialAgentId;
+    } else if (this.agents.length > 0 && !this.selectedAgent) {
+      this.selectedAgent = this.agents[0];
     }
 
     // 若从首页传入了模型配置，优先使用
@@ -108,7 +108,7 @@ export default {
       this.selectedLlmConfig = this.initialLlmConfig;
     }
 
-    if (this.selectedScenario) {
+    if (this.selectedAgent) {
       await this.loadHistorySummaries();
     }
 
@@ -129,15 +129,15 @@ export default {
   },
   methods: {
     /**
-     * 处理从首页传入的初始消息：选择默认场景、创建对话并发送消息
+     * 处理从首页传入的初始消息：选择默认 Agent、创建对话并发送消息
      * @param {string} message - 用户输入的初始消息
      */
     async handleInitialMessage(message) {
-      if (!message || this.scenarios.length === 0) return;
+      if (!message || this.agents.length === 0) return;
 
-      // 使用已选中的场景（可能来自首页传入的 initialScenarioId）
-      if (!this.selectedScenario) {
-        this.selectedScenario = this.scenarios[0];
+      // 使用已选中的 Agent（可能来自首页传入的 initialAgentId）
+      if (!this.selectedAgent) {
+        this.selectedAgent = this.agents[0];
       }
       await this.loadHistorySummaries();
 
@@ -159,32 +159,32 @@ export default {
         console.error('加载 LLM 配置失败:', err);
       }
     },
-    async loadScenarios() {
+    async loadAgents() {
       try {
-        this.scenarios = await window.aiAssistant.listScenarios();
-        // 加载每个场景的完整对象（包含 name），供 ChatInput 和 ChatMessage 使用
-        this.scenarioObjects = await Promise.all(
-          this.scenarios.map(async (id) => {
+        this.agents = await window.aiAssistant.listAgents();
+        // 加载每个 Agent 的完整对象（包含 name），供 ChatInput 和 ChatMessage 使用
+        this.agentObjects = await Promise.all(
+          this.agents.map(async (id) => {
             try {
-              return await window.aiAssistant.getScenario(id);
+              return await window.aiAssistant.getAgent(id);
             } catch {
               return { id, name: id };
             }
           })
         );
       } catch (err) {
-        console.error('加载场景失败:', err);
+        console.error('加载Agent失败:', err);
       }
     },
-    async handleScenarioChange(scenarioId) {
-      this.selectedScenario = scenarioId;
+    async handleAgentChange(agentId) {
+      this.selectedAgent = agentId;
       this.selectedHistory = '';
       this.messages = [];
       await this.loadHistorySummaries();
     },
     async handleLlmChange(configName) {
       this.selectedLlmConfig = configName;
-      if (this.selectedScenario && this.selectedHistory) {
+      if (this.selectedAgent && this.selectedHistory) {
         await this.initChat();
       }
     },
@@ -193,7 +193,7 @@ export default {
       await this.initChat();
     },
     async handleCreateHistory(historyTitle) {
-      if (!this.selectedScenario) return;
+      if (!this.selectedAgent) return;
 
       // 未提供标题时使用默认值
       const title = historyTitle || '新对话';
@@ -202,14 +202,14 @@ export default {
         const historyId = `chat_${Date.now()}`;
         const historyData = {
           id: historyId,
-          scenario_id: this.selectedScenario,
+          agent_id: this.selectedAgent,
           title: title,
           messages: [],
           created_at: Date.now(),
           updated_at: Date.now(),
         };
 
-        await window.aiAssistant.createHistory(this.selectedScenario, historyId, historyData);
+        await window.aiAssistant.createHistory(this.selectedAgent, historyId, historyData);
         await this.loadHistorySummaries();
         this.selectedHistory = historyId;
         await this.initChat();
@@ -218,10 +218,10 @@ export default {
       }
     },
     async loadHistorySummaries() {
-      if (!this.selectedScenario) return;
+      if (!this.selectedAgent) return;
 
       try {
-        this.historySummaries = await window.aiAssistant.listHistorySummaries(this.selectedScenario);
+        this.historySummaries = await window.aiAssistant.listHistorySummaries(this.selectedAgent);
       } catch (err) {
         console.error('加载对话历史摘要失败:', err);
         this.historySummaries = [];
@@ -230,12 +230,12 @@ export default {
     async initChat() {
       try {
         await window.aiAssistant.initChat(
-          this.selectedScenario,
+          this.selectedAgent,
           this.selectedHistory,
           this.selectedLlmConfig
         );
         this.messages = await window.aiAssistant.getMessages(
-          this.selectedScenario,
+          this.selectedAgent,
           this.selectedHistory
         );
       } catch (err) {
@@ -255,7 +255,7 @@ export default {
 
       try {
         await window.aiAssistant.chatMessage(
-          this.selectedScenario,
+          this.selectedAgent,
           this.selectedHistory,
           message
         );
@@ -267,7 +267,7 @@ export default {
     async handleRegenerate() {
       this.isChatting = true;
       try {
-        await window.aiAssistant.regenerate(this.selectedScenario, this.selectedHistory);
+        await window.aiAssistant.regenerate(this.selectedAgent, this.selectedHistory);
       } catch (err) {
         this.isChatting = false;
         console.error('重新生成失败:', err);
@@ -275,7 +275,7 @@ export default {
     },
     async handleStopChat() {
       try {
-        await window.aiAssistant.stopChat(this.selectedScenario, this.selectedHistory);
+        await window.aiAssistant.stopChat(this.selectedAgent, this.selectedHistory);
         this.isChatting = false;
       } catch (err) {
         console.error('停止对话失败:', err);
@@ -329,13 +329,13 @@ export default {
     async persistMessages() {
       try {
         const history = await window.aiAssistant.getHistory(
-          this.selectedScenario,
+          this.selectedAgent,
           this.selectedHistory
         );
         history.messages = this.messages;
         history.updated_at = Date.now();
         await window.aiAssistant.saveHistory(
-          this.selectedScenario,
+          this.selectedAgent,
           this.selectedHistory,
           history
         );

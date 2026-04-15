@@ -165,7 +165,19 @@ export function removeAiLlmConfig(workspace: string, configName: string): void {
 }
 
 /**
- * 清理所有测试数据（场景 + LLM配置）
+ * 清理整个 assistant 目录（所有场景、LLM配置、历史）
+ *
+ * 用于 beforeEach 中确保测试环境干净，避免残留数据干扰自动选择。
+ */
+export function cleanAllAiTestData(workspace: string): void {
+  const assistantDir = path.join(workspace, ASSISTANT_DIR);
+  if (fs.existsSync(assistantDir)) {
+    fs.rmSync(assistantDir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * 清理指定测试数据（场景 + LLM配置）
  */
 export function cleanupAiTestData(
   workspace: string,
@@ -208,21 +220,40 @@ export function setupAiTestEnvironment(
 
 /**
  * 导航到 AI 助手页面
+ *
+ * 使用 Ctrl+Alt+A 快捷键导航，避免触发消息发送和自动创建对话。
+ * 如果快捷键不可用，回退到首页搜索框发送消息。
  */
 export async function navigateToAiAssistant(page: any): Promise<void> {
-  const tool = page.getByLabel('AI助手工具');
+  // 检查是否已在 AI 助手页面
+  const isAssistant = await page.locator('.ai-assistant-page').isVisible({ timeout: 1000 }).catch(() => false);
+  if (isAssistant) return;
+
+  // 优先使用快捷键 Ctrl+Alt+A（不触发消息发送）
+  await page.keyboard.press('Control+Alt+a');
+  await page.waitForTimeout(2000);
+
+  // 验证是否成功跳转
+  const nowAssistant = await page.locator('.ai-assistant-page').isVisible({ timeout: 1000 }).catch(() => false);
+  if (nowAssistant) return;
+
+  // 回退：使用首页对话输入框发送消息
+  const searchInput = page.getByLabel('对话输入框');
   try {
-    await tool.click({ timeout: 3000 });
+    await searchInput.waitFor({ state: 'visible', timeout: 3000 });
+    await searchInput.fill('e2e 导航测试');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(2000);
   } catch {
-    // 可能已在AI助手页面
+    // 可能已在 AI 助手页面或搜索框不可见
   }
-  await page.waitForTimeout(1000);
 }
 
 /**
  * 侧边栏通用选择操作：点击 el-select 并选择指定选项
  *
  * Element Plus 的 el-select 需要精确坐标点击才能触发。
+ * 用于 ChatInput 中的场景/模型选择器。
  *
  * @param page - Playwright Page 对象
  * @param ariaLabel - 目标 select 的 aria-label
@@ -233,15 +264,9 @@ export async function selectOption(
   ariaLabel: string,
   optionText: string
 ): Promise<void> {
-  // Element Plus el-select 的 DOM 结构：
-  //   .el-select > .el-select__wrapper > (placeholder div, input[combobox])
-  //   input[combobox] 和 dropdown listbox 共享同一 aria-label。
-  // 使用 getByRole('combobox') 精确定位 input，再定位其父级 wrapper。
-  // placeholder div 会遮挡 input 点击，所以通过 wrapper 坐标点击。
   const combobox = page.getByRole('combobox', { name: ariaLabel });
   await expect(combobox).toBeVisible({ timeout: 5000 });
 
-  // 定位 combobox 的父级 .el-select__wrapper
   const wrapper = combobox.locator('xpath=ancestor::div[contains(@class,"el-select__wrapper")]');
   const box = await wrapper.boundingBox();
   if (!box) throw new Error(`Select wrapper with aria-label="${ariaLabel}" not found`);
@@ -249,23 +274,38 @@ export async function selectOption(
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await page.waitForTimeout(500);
 
-  // 选择选项
-  const option = page.locator('.el-select-dropdown__item').filter({ hasText: optionText });
-  await expect(option).toBeVisible({ timeout: 5000 });
+  // 等待下拉菜单出现
+  const dropdown = page.locator('.el-select-dropdown:visible');
+  await dropdown.waitFor({ state: 'visible', timeout: 3000 });
+  await page.waitForTimeout(500);
 
-  const optBox = await option.boundingBox();
-  if (optBox) {
-    await page.mouse.click(optBox.x + optBox.width / 2, optBox.y + optBox.height / 2);
-  } else {
-    await option.click();
+  // 使用 evaluate 在下拉菜单中查找并点击选项
+  // 绕过 Playwright 定位器与 Element Plus 虚拟列表的兼容性问题
+  const clicked = await page.evaluate(({ targetText, label }) => {
+    const dropdowns = document.querySelectorAll('.el-select-dropdown');
+    for (const dd of dropdowns) {
+      const el = dd as HTMLElement;
+      if (el.style.display === 'none' || el.style.visibility === 'hidden') continue;
+      // 查找所有后代元素，检查文本内容
+      const allElements = dd.querySelectorAll('*');
+      for (const item of allElements) {
+        if (item.textContent && item.textContent.trim() === targetText && item.offsetParent !== null) {
+          (item as HTMLElement).click();
+          return true;
+        }
+      }
+    }
+    return false;
+  }, { targetText: optionText, label: ariaLabel });
+
+  if (!clicked) {
+    throw new Error(`Option "${optionText}" not found in dropdown for "${ariaLabel}"`);
   }
   await page.waitForTimeout(500);
 }
 
 /**
  * 点击 el-select 下拉框（仅打开，不选择）
- *
- * 用于需要打开下拉框查看选项列表的场景。
  */
 export async function clickSelect(page: any, ariaLabel: string): Promise<void> {
   const combobox = page.getByRole('combobox', { name: ariaLabel });
@@ -277,23 +317,43 @@ export async function clickSelect(page: any, ariaLabel: string): Promise<void> {
 
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await page.waitForTimeout(500);
+
+  // 等待 listbox 出现
+  await page.getByRole('listbox', { name: ariaLabel }).waitFor({ state: 'visible', timeout: 3000 }).catch(() => {});
+}
+
+/**
+ * 点击侧边栏中的对话历史项
+ *
+ * 侧边栏使用可点击的 .history-item 列表项代替下拉菜单。
+ *
+ * @param page - Playwright Page 对象
+ * @param historyTitle - 历史项标题文本
+ */
+export async function clickHistoryItem(page: any, historyTitle: string): Promise<void> {
+  const item = page.locator('.history-item').filter({ hasText: historyTitle });
+  await expect(item).toBeVisible({ timeout: 5000 });
+  await item.click();
+  await page.waitForTimeout(1000);
 }
 
 /**
  * 填充聊天输入框
  *
- * Element Plus el-input type="textarea" 将 aria-label 放在外层 wrapper 上，
- * Playwright 的 getByLabel 定位到 wrapper 而非原生 textarea。
- * 此函数直接定位原生 textarea 并 fill，确保 Vue v-model 正确更新。
+ * 输入区域现在在独立的 .chat-input 组件中。
  */
 export async function fillChatInput(page: any, text: string): Promise<void> {
-  const textarea = page.locator('.input-container textarea');
+  const textarea = page.locator('.chat-input textarea');
   await textarea.waitFor({ state: 'visible', timeout: 5000 });
   await textarea.fill(text);
 }
 
 /**
- * 通用前置：选择场景 → 历史，等待对话界面就绪
+ * 通用前置：通过 ChatInput 选择场景，点击侧边栏历史项，等待对话界面就绪
+ *
+ * @param page - Playwright Page 对象
+ * @param scenarioId - 场景 ID
+ * @param historyId - 历史 ID（也用作标题匹配文本）
  */
 export async function setupChatSession(
   page: any,
@@ -301,7 +361,7 @@ export async function setupChatSession(
   historyId: string
 ): Promise<void> {
   await selectOption(page, '选择场景', scenarioId);
-  await selectOption(page, '选择对话历史', historyId);
+  await clickHistoryItem(page, historyId);
   await page.waitForTimeout(1500);
 }
 
@@ -310,7 +370,7 @@ export async function setupChatSession(
  */
 export async function waitForSendButtonReady(page: any, timeout = 60000): Promise<void> {
   await page.waitForFunction(() => {
-    const buttons = document.querySelectorAll('.input-actions .el-button');
+    const buttons = document.querySelectorAll('.chat-input .input-actions .el-button');
     for (const btn of buttons) {
       if (btn.textContent?.trim() === '发送') {
         return !btn.classList.contains('is-loading') && !btn.hasAttribute('disabled');

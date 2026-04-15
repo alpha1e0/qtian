@@ -1,130 +1,115 @@
 <template>
   <div class="chat-sidebar">
-    <!-- 场景选择 -->
-    <div class="sidebar-section">
-      <div class="section-title">场景</div>
-      <el-select
-        :model-value="selectedScenario"
-        placeholder="选择场景"
-        @update:model-value="$emit('scenario-change', $event)"
-        style="width: 100%"
-        aria-label="选择场景"
-      >
-        <el-option
-          v-for="id in scenarios"
-          :key="id"
-          :label="id"
-          :value="id"
-        />
-      </el-select>
+    <!-- 新建对话按钮 -->
+    <div class="sidebar-header">
+      <el-button type="primary" size="small" @click="$emit('create-history')" style="width: 100%">
+        + 新建对话
+      </el-button>
     </div>
 
-    <!-- LLM 配置 -->
-    <div class="sidebar-section" v-if="scenarios.length > 0">
-      <div class="section-title">模型</div>
-      <el-select
-        :model-value="selectedLlmConfig"
-        placeholder="选择模型"
-        @update:model-value="$emit('llm-change', $event)"
-        style="width: 100%"
-        aria-label="选择模型"
+    <!-- 对话历史列表 -->
+    <div class="history-list" v-if="histories.length > 0">
+      <div
+        v-for="item in histories"
+        :key="item.id"
+        class="history-item"
+        :class="{ active: selectedHistory === item.id }"
+        @click="$emit('history-change', item.id)"
       >
-        <el-option
-          v-for="name in llmConfigs"
-          :key="name"
-          :label="name"
-          :value="name"
-        />
-      </el-select>
-    </div>
-
-    <!-- 对话历史 -->
-    <div class="sidebar-section" v-if="selectedScenario">
-      <div class="section-title">
-        对话历史
-        <el-button size="small" type="primary" @click="showNewDialog = true">+ 新建</el-button>
+        <div class="history-title">{{ item.title || '未命名对话' }}</div>
+        <div class="history-time" v-if="item.updated_at">{{ formatTime(item.updated_at) }}</div>
       </div>
-      <el-select
-        :model-value="selectedHistory"
-        placeholder="选择对话"
-        @update:model-value="$emit('history-change', $event)"
-        style="width: 100%"
-        aria-label="选择对话历史"
-      >
-        <el-option
-          v-for="id in histories"
-          :key="id"
-          :label="id"
-          :value="id"
-        />
-      </el-select>
     </div>
-
-    <!-- 新建对话弹窗 -->
-    <el-dialog v-model="showNewDialog" title="新建对话" width="400px">
-      <el-input v-model="newHistoryTitle" placeholder="输入对话标题" />
-      <template #footer>
-        <el-button @click="showNewDialog = false">取消</el-button>
-        <el-button type="primary" @click="createHistory">创建</el-button>
-      </template>
-    </el-dialog>
+    <div v-else class="history-empty">
+      暂无对话历史
+    </div>
   </div>
 </template>
 
 <script>
+/**
+ * 格式化时间戳为短格式
+ * @param {number} timestamp - Unix 时间戳 (毫秒)
+ * @returns {string} 格式化后的时间字符串 (MM-DD HH:mm)
+ */
+function formatTime(timestamp) {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const h = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  return `${m}-${d} ${h}:${min}`;
+}
+
 export default {
   name: 'ChatSidebar',
   props: {
-    scenarios: { type: Array, default: () => [] },
-    selectedScenario: { type: String, default: '' },
-    llmConfigs: { type: Array, default: () => [] },
-    selectedLlmConfig: { type: String, default: '' },
+    /** 对话历史摘要列表 Array<{ id, title, updated_at }> */
     histories: { type: Array, default: () => [] },
     selectedHistory: { type: String, default: '' },
   },
-  emits: ['scenario-change', 'llm-change', 'history-change', 'create-history'],
-  data() {
-    return {
-      showNewDialog: false,
-      newHistoryTitle: '',
-    };
-  },
+  emits: ['history-change', 'create-history'],
   methods: {
-    createHistory() {
-      if (!this.newHistoryTitle.trim()) {
-        this.$message.warning('请输入对话标题');
-        return;
-      }
-      this.$emit('create-history', this.newHistoryTitle.trim());
-      this.newHistoryTitle = '';
-      this.showNewDialog = false;
-    },
+    formatTime,
   },
 };
 </script>
 
 <style scoped>
 .chat-sidebar {
-  width: 250px;
+  width: 220px;
   background: #f5f5f5;
-  padding: 20px;
   border-right: 1px solid #ddd;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  height: 100vh;
 }
 
-.sidebar-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.sidebar-header {
+  padding: 16px 12px 8px;
 }
 
-.section-title {
-  font-weight: 600;
-  font-size: 14px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.history-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 8px;
+}
+
+.history-item {
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-bottom: 2px;
+  transition: background 0.15s;
+}
+
+.history-item:hover {
+  background: #e8e8e8;
+}
+
+.history-item.active {
+  background: #d4e4ff;
+}
+
+.history-title {
+  font-size: 13px;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-time {
+  font-size: 11px;
+  color: #999;
+  margin-top: 2px;
+}
+
+.history-empty {
+  padding: 20px 12px;
+  text-align: center;
+  color: #999;
+  font-size: 13px;
 }
 </style>

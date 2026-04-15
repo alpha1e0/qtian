@@ -10,7 +10,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AiChatService } from '@/core/services/ai-assistant/ai-chat.service';
-import { AiLLMConfig, AiScenario, AiChatMessage, AiChatEvent, AiSkill } from '@/core/common/config';
+import { AiLLMConfig, AiAgent, AiChatMessage, AiChatEvent, AiSkill } from '@/core/common/config';
 import { ITool } from '@/core/services/ai-assistant/tools';
 
 vi.mock('@/core/utils/logger', () => ({
@@ -35,29 +35,19 @@ const mockConfig: AiLLMConfig = {
   max_tokens: 2000,
 };
 
-const mockScenario: AiScenario = {
-  id: 'default',
-  name: '默认助手',
-  description: '测试用场景',
-  is_agent: false,
-  role_id: 'default',
-  llm_config: 'default',
-  skills: [],
+const mockAgent: AiAgent = {
+  name: 'default',
+  description: '测试用助手',
   tools: [],
+  instructions: '# Role: 测试助手\n\n你是一个测试用的 AI 助手。',
 };
 
-const mockAgentScenario: AiScenario = {
-  id: 'coder',
-  name: '编程助手',
+const mockAgentWithTools: AiAgent = {
+  name: 'coder',
   description: 'Agent 模式编程助手',
-  is_agent: true,
-  role_id: 'coder',
-  llm_config: 'default',
-  skills: [],
   tools: ['shell_execute'],
+  instructions: '# Role: 编程助手\n\n你是一个专业的编程助手。',
 };
-
-const mockRoleContent = '# Role: 测试助手\n\n你是一个测试用的 AI 助手。';
 
 /** 创建 mock 工具 */
 function createMockTool(name: string, executeResult: string): ITool {
@@ -87,7 +77,7 @@ describe('AiChatService', () => {
   let service: AiChatService;
 
   beforeEach(() => {
-    service = new AiChatService(mockConfig, mockScenario, mockRoleContent);
+    service = new AiChatService(mockConfig, mockAgent);
   });
 
   describe('constructor', () => {
@@ -107,42 +97,41 @@ describe('AiChatService', () => {
         ...mockConfig,
         system_prefix: '重要提示：请用中文回答。',
       };
-      const serviceWithPrefix = new AiChatService(configWithPrefix, mockScenario, mockRoleContent);
+      const serviceWithPrefix = new AiChatService(configWithPrefix, mockAgent);
       const messages = serviceWithPrefix.getMessages();
       expect(messages[0].content).toContain('重要提示');
       expect(messages[0].content).toContain('测试助手');
     });
 
-    it('should handle empty role content', () => {
-      const serviceEmptyRole = new AiChatService(mockConfig, mockScenario, '');
+    it('should handle empty instructions', () => {
+      const emptyAgent: AiAgent = { ...mockAgent, instructions: '' };
+      const serviceEmptyRole = new AiChatService(mockConfig, emptyAgent);
       const messages = serviceEmptyRole.getMessages();
       expect(messages).toHaveLength(0);
     });
 
-    it('should handle only system_prefix without role', () => {
+    it('should handle only system_prefix without instructions', () => {
       const configWithPrefix: AiLLMConfig = {
         ...mockConfig,
         system_prefix: '只回答是或否。',
       };
-      const servicePrefixOnly = new AiChatService(configWithPrefix, mockScenario, '');
+      const emptyAgent: AiAgent = { ...mockAgent, instructions: '' };
+      const servicePrefixOnly = new AiChatService(configWithPrefix, emptyAgent);
       const messages = servicePrefixOnly.getMessages();
       expect(messages).toHaveLength(1);
       expect(messages[0].content).toContain('只回答是或否');
     });
 
-    it('should initialize with tools in Agent mode', () => {
+    it('should register tools when provided', () => {
       const tools = [createMockTool('mock_tool', 'result')];
-      const agentService = new AiChatService(mockConfig, mockAgentScenario, mockRoleContent, { tools });
-      expect(agentService.getIsAgent()).toBe(true);
+      const agentService = new AiChatService(mockConfig, mockAgentWithTools, { tools });
+      // 工具已注册，可通过 executeTool 验证 (内部有工具注册表)
+      expect(agentService.getAgent().tools).toContain('shell_execute');
     });
 
-    it('should not be Agent mode when is_agent is false', () => {
-      expect(service.getIsAgent()).toBe(false);
-    });
-
-    it('should not be Agent mode when no tools provided', () => {
-      const agentService = new AiChatService(mockConfig, mockAgentScenario, mockRoleContent, { tools: [] });
-      expect(agentService.getIsAgent()).toBe(false);
+    it('should have no tools when none provided', () => {
+      const agentService = new AiChatService(mockConfig, mockAgentWithTools, { tools: [] });
+      expect(agentService.getAgent().tools).toEqual(['shell_execute']);
     });
   });
 
@@ -227,27 +216,28 @@ describe('AiChatService', () => {
   });
 
   describe('buildSystemPrompt', () => {
-    it('should combine system_prefix and role content', () => {
+    it('should combine system_prefix and agent instructions', () => {
       const configWithPrefix: AiLLMConfig = {
         ...mockConfig,
         system_prefix: 'PREFIX',
       };
-      const serviceWithPrefix = new AiChatService(configWithPrefix, mockScenario, 'ROLE_CONTENT');
+      const agentWithRole: AiAgent = { ...mockAgent, instructions: 'ROLE_CONTENT' };
+      const serviceWithPrefix = new AiChatService(configWithPrefix, agentWithRole);
       const prompt = serviceWithPrefix.buildSystemPrompt();
       expect(prompt).toContain('PREFIX');
       expect(prompt).toContain('ROLE_CONTENT');
     });
 
     it('should include memory prompt in system prompt', () => {
-      const serviceWithMemory = new AiChatService(mockConfig, mockScenario, 'ROLE', {
+      const serviceWithMemory = new AiChatService(mockConfig, mockAgent, {
         memoryPrompt: '## 记忆\n\n- 用户偏好中文',
       });
       const prompt = serviceWithMemory.buildSystemPrompt();
       expect(prompt).toContain('用户偏好中文');
-      // Memory 应在 role 之前
+      // Memory 应在 instructions 之前
       const memoryIdx = prompt.indexOf('用户偏好中文');
-      const roleIdx = prompt.indexOf('ROLE');
-      expect(memoryIdx).toBeLessThan(roleIdx);
+      const instructionsIdx = prompt.indexOf('测试助手');
+      expect(memoryIdx).toBeLessThan(instructionsIdx);
     });
 
     it('should include skills instructions in system prompt', () => {
@@ -262,18 +252,18 @@ describe('AiChatService', () => {
           has_templates: false,
         },
       ];
-      const serviceWithSkills = new AiChatService(mockConfig, mockScenario, 'ROLE', { skills });
+      const serviceWithSkills = new AiChatService(mockConfig, mockAgent, { skills });
       const prompt = serviceWithSkills.buildSystemPrompt();
       expect(prompt).toContain('## 技能');
       expect(prompt).toContain('翻译助手');
       expect(prompt).toContain('请进行准确翻译');
-      // Skills 应在 role 之后
+      // Skills 应在 instructions 之后
       const skillIdx = prompt.indexOf('翻译助手');
-      const roleIdx = prompt.indexOf('ROLE');
-      expect(skillIdx).toBeGreaterThan(roleIdx);
+      const instructionsIdx = prompt.indexOf('测试助手');
+      expect(skillIdx).toBeGreaterThan(instructionsIdx);
     });
 
-    it('should follow order: system_prefix → memory → role → skills', () => {
+    it('should follow order: system_prefix → memory → instructions → skills', () => {
       const skills: AiSkill[] = [
         {
           name: 'Skill1',
@@ -286,7 +276,8 @@ describe('AiChatService', () => {
         },
       ];
       const configWithPrefix: AiLLMConfig = { ...mockConfig, system_prefix: 'SYS' };
-      const serviceFull = new AiChatService(configWithPrefix, mockScenario, 'ROLE', {
+      const agentWithRole: AiAgent = { ...mockAgent, instructions: 'ROLE' };
+      const serviceFull = new AiChatService(configWithPrefix, agentWithRole, {
         memoryPrompt: '## 记忆\n\n- MEM',
         skills,
       });
@@ -303,7 +294,7 @@ describe('AiChatService', () => {
     });
   });
 
-  describe('sendMessage (Simple Runner mode)', () => {
+  describe('sendMessage', () => {
     it('should add user message to messages', async () => {
       const events = await collectEvents(service.sendMessage('测试输入'));
 
@@ -333,15 +324,12 @@ describe('AiChatService', () => {
       );
       expect(hasTerminal).toBe(true);
     });
-  });
 
-  describe('sendMessage (Agent mode)', () => {
-    it('should identify as Agent mode when scenario.is_agent and tools provided', async () => {
+    it('should work with tools provided (tool-use loop)', async () => {
       const tools = [createMockTool('test_tool', 'ok')];
-      const agentService = new AiChatService(mockConfig, mockAgentScenario, mockRoleContent, { tools });
-      expect(agentService.getIsAgent()).toBe(true);
+      const agentService = new AiChatService(mockConfig, mockAgentWithTools, { tools });
 
-      // 发送消息应该走 Agent 模式 (由于没有真实 API key 会得到 error 事件)
+      // 发送消息 (由于没有真实 API key 会得到 error 事件)
       const events = await collectEvents(agentService.sendMessage('hello'));
       const hasTerminal = events.some(
         (e) => e.type === 'done' || e.type === 'error'

@@ -84,6 +84,48 @@ describe('AiHistoryService', () => {
     });
   });
 
+  describe('listHistorySummaries', () => {
+    it('should return empty array when no histories exist', async () => {
+      const summaries = await service.listHistorySummaries('test-scenario');
+      expect(summaries).toEqual([]);
+    });
+
+    it('should return summaries sorted by updated_at descending', async () => {
+      const oldHistory = { ...mockHistory, id: 'old-chat', title: '旧对话', updated_at: 1000 };
+      const newHistory = { ...mockHistory, id: 'new-chat', title: '新对话', updated_at: 2000 };
+      await createTestAssistantHistory(testHistoryDir, 'test-scenario', 'old-chat', oldHistory);
+      await createTestAssistantHistory(testHistoryDir, 'test-scenario', 'new-chat', newHistory);
+
+      const summaries = await service.listHistorySummaries('test-scenario');
+      expect(summaries).toHaveLength(2);
+      expect(summaries[0].id).toBe('new-chat');
+      expect(summaries[0].title).toBe('新对话');
+      expect(summaries[1].id).toBe('old-chat');
+      expect(summaries[1].title).toBe('旧对话');
+    });
+
+    it('should skip malformed JSON files', async () => {
+      await createTestAssistantHistory(testHistoryDir, 'test-scenario', 'good', mockHistory);
+      // 创建一个损坏的 JSON 文件
+      const badPath = path.join(testHistoryDir, 'test-scenario', 'bad.json');
+      await fs.writeFile(badPath, 'not json', 'utf-8');
+
+      const summaries = await service.listHistorySummaries('test-scenario');
+      expect(summaries).toHaveLength(1);
+      expect(summaries[0].id).toBe('test-history');
+    });
+
+    it('should handle missing fields gracefully', async () => {
+      const minimalHistory = { id: 'minimal' };
+      await createTestAssistantHistory(testHistoryDir, 'test-scenario', 'minimal', minimalHistory);
+
+      const summaries = await service.listHistorySummaries('test-scenario');
+      expect(summaries).toHaveLength(1);
+      expect(summaries[0].title).toBe('');
+      expect(summaries[0].updated_at).toBe(0);
+    });
+  });
+
   describe('getHistory', () => {
     it('should return history data', async () => {
       await createTestAssistantHistory(testHistoryDir, 'test-scenario', 'chat_1', mockHistory);

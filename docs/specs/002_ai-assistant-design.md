@@ -1,13 +1,13 @@
 # 002 AI 助手 — 完善设计文档
 
-> 基于需求文档 `002_ai-assistant.md` 的补充设计，包含模块划分、接口定义、数据结构、ReAct 引擎、MCP 集成等详细方案。
+> 基于需求文档 `002_ai-assistant.md` 的补充设计，包含模块划分、接口定义、数据结构、Streaming Tool-use Loop 引擎、MCP 集成等详细方案。
 
 ## 1 需求分析 & 关键决策
 
 | 决策项 | 结论 | 理由 |
 | :--- | :--- | :--- |
 | MCP 集成 | 第一版包含 | 通过 `mcp.setting.json` + stdio transport 实现外部工具扩展 |
-| Agent 模式 | 完整 ReAct 引擎 | 支持 function calling + 多轮工具调用 + 上下文压缩 |
+| Agent 模式 | 统一 Streaming Tool-use Loop 引擎 | 有工具时多轮工具调用，无工具时等价于纯流式对话 |
 | Skill 注入 | System Prompt 预加载 | 场景声明依赖 Skill，对话创建时一次性注入 System Prompt |
 | 模型适配 | OpenAI SDK (兼容协议) | OpenAI API 已是事实标准 |
 
@@ -17,13 +17,10 @@
 
 ```
 assistant/                        # 助手根目录
-├── scenario/                     # 场景文件目录
-│   ├── default.json              # 默认场景
-│   ├── translator.json           # 示例：翻译场景
-│   └── coder.json                # 示例：编程助手场景
-├── role/                         # 角色定义目录
-│   ├── default.md                # 默认角色
-│   └── translator.md             # 翻译专家角色
+├── agent/                        # Agent 定义目录 (YAML front-matter + Markdown)
+│   ├── default.md                # 默认 Agent
+│   ├── translator.md             # 示例：翻译 Agent
+│   └── coder.md                  # 示例：编程助手 Agent
 ├── llm/                          # LLM 模型配置目录
 │   ├── default.json              # 默认模型配置
 │   └── gpt-4o.json               # 其他模型配置
@@ -36,11 +33,11 @@ assistant/                        # 助手根目录
 ├── tool/                         # 工具配置目录
 │   └── mcp.setting.json          # MCP 服务定义
 ├── history/                      # 对话历史目录
-│   └── {scenarioId}/             # 按场景分组
+│   └── {agentId}/                # 按 Agent 分组
 │       ├── {historyId}.json      # 单次对话历史
 │       └── ...
 └── memory/                       # 记忆存储目录
-    └── {scenarioId}/             # 按场景分组
+    └── {agentId}/                # 按 Agent 分组
         └── {memoryId}.json       # 单条记忆
 ```
 
@@ -50,12 +47,11 @@ assistant/                        # 助手根目录
 src/main/core/
 ├── services/ai-assistant/
 │   ├── index.ts                              # 模块导出
-│   ├── ai-scenario.service.ts                # 场景 CRUD
-│   ├── ai-role.service.ts                    # 角色 CRUD
+│   ├── ai-agent.service.ts                   # Agent CRUD (YAML front-matter + Markdown)
 │   ├── ai-config.service.ts                  # LLM 配置 CRUD
 │   ├── ai-skill.service.ts                   # Skill 加载与解析
 │   ├── ai-history.service.ts                 # 对话历史 CRUD
-│   ├── ai-chat.service.ts                    # 核心对话服务 (Simple + Agent)
+│   ├── ai-chat.service.ts                    # 核心对话服务 (Streaming Tool-use Loop)
 │   ├── ai-context.service.ts                 # 上下文管理 (Token 计数、压缩)
 │   ├── ai-memory.service.ts                  # 记忆管理
 │   ├── tools/                                # 工具实现目录
@@ -70,8 +66,7 @@ src/main/core/
 │   │       ├── mcp-client.ts                 # MCP 客户端 (stdio transport)
 │   │       ├── mcp-tool-adapter.ts           # MCP 工具适配器 (ITool 适配)
 │   │       └── mcp-manager.ts                # MCP 服务生命周期管理
-│   ├── ai-scenario.service.test.ts
-│   ├── ai-role.service.test.ts
+│   ├── ai-agent.service.test.ts
 │   ├── ai-config.service.test.ts
 │   ├── ai-skill.service.test.ts
 │   ├── ai-history.service.test.ts
@@ -102,55 +97,38 @@ src/renderer/src/components/ai-assistant/
 ├── ChatMessage.vue                           # 单条消息气泡 (支持 Markdown)
 ├── ChatInput.vue                             # 输入区域 (多行 + 发送)
 ├── ToolCallView.vue                          # 工具调用展示 (折叠面板)
-├── ScenarioSelector.vue                      # 场景选择下拉框
+├── AgentSelector.vue                        # Agent 选择下拉框
 └── composables/
     └── useAiChat.ts                          # 对话逻辑 composable
 ```
 
 ## 3 完整类型定义
 
-### 3.1 场景 (`AiScenario`)
+### 3.1 Agent (`AiAgent`)
 
 ```typescript
 /**
- * AI 助手场景定义
+ * AI 助手 Agent 定义
+ * 合并原 AiScenario + AiRole，使用 YAML front-matter + Markdown 格式
+ * 文件: assistant/agent/{name}.md
  */
-interface AiScenario {
-  /** 场景唯一标识 */
-  id: string;
-  /** 场景显示名称 */
+interface AiAgent {
+  /** Agent 名称 (frontmatter name，必选) */
   name: string;
-  /** 场景描述 */
-  description?: string;
-  /** 是否启用 Agent 模式（启用后走 ReAct 循环） */
-  is_agent: boolean;
-  /** 引用的角色 ID，对应 role/{role_id}.md */
-  role_id: string;
-  /** 引用的 LLM 配置名，对应 llm/{llm_config}.json */
-  llm_config: string;
-  /** 引用的 Skill 名称列表，对应 skill/{name}/SKILL.md */
-  skills: string[];
-  /** 引用的工具名称列表，内置工具名 或 MCP 工具名 */
+  /** Agent 描述 (frontmatter description，必选) */
+  description: string;
+  /** 引用的工具名称列表 (frontmatter tools，默认 []) */
   tools: string[];
-  /** 是否记忆跨对话 */
+  /** 建议的 LLM 配置名 (frontmatter model，可选) */
+  model?: string;
+  /** 引用的 Skill 名称列表 (frontmatter skills，可选) */
+  skills?: string[];
+  /** 是否启用记忆 (frontmatter enable_memory，可选) */
   enable_memory?: boolean;
-  /** 最大上下文轮数 (超出后触发压缩) */
+  /** 最大上下文轮数 (frontmatter max_context_rounds，可选) */
   max_context_rounds?: number;
-}
-```
-
-### 3.2 角色 (`AiRole`)
-
-```typescript
-/**
- * AI 助手角色定义
- * markdown 文件，完整内容注入 System Prompt
- */
-interface AiRole {
-  /** 角色文件名 (不含 .md 后缀) */
-  name: string;
-  /** 完整的 Markdown 内容 */
-  content: string;
+  /** Markdown body (原 role content，注入 System Prompt) */
+  instructions: string;
 }
 ```
 
@@ -252,8 +230,8 @@ interface AiChatMessage {
 interface AiChatHistory {
   /** 历史记录 ID (UUID) */
   id: string;
-  /** 关联的场景 ID */
-  scenario_id: string;
+  /** 关联的 Agent 名称 */
+  agent_id: string;
   /** 对话标题 (自动生成或用户指定) */
   title: string;
   /** 消息列表 */
@@ -274,8 +252,8 @@ interface AiChatHistory {
 interface AiMemory {
   /** 记忆 ID (UUID) */
   id: string;
-  /** 关联的场景 ID (空表示全局记忆) */
-  scenario_id?: string;
+  /** 关联的 Agent 名称 (空表示全局记忆) */
+  agent_id?: string;
   /** 记忆内容 */
   content: string;
   /** 标签 (用于检索) */
@@ -491,34 +469,25 @@ class McpManager {
 
 ## 5 核心服务设计
 
-### 5.1 场景服务 (`AiScenarioService`)
+### 5.1 Agent 服务 (`AiAgentService`)
 
-与 `RoleplayScenarioService` 模式一致，文件级 CRUD。
+与 `AiSkillService` 模式一致，解析 YAML front-matter + Markdown。
 
 ```typescript
-class AiScenarioService {
-  async listScenarios(): Promise<AiScenario[]>;
-  async getScenario(id: string): Promise<AiScenario>;
-  async createScenario(id: string, data: AiScenario): Promise<void>;
-  async updateScenario(id: string, data: AiScenario): Promise<void>;
-  async deleteScenario(id: string): Promise<void>;
-  async scenarioExists(id: string): Promise<boolean>;
+class AiAgentService {
+  async listAgents(): Promise<string[]>;
+  async getAgent(name: string): Promise<AiAgent>;
+  async saveAgent(name: string, agent: AiAgent): Promise<void>;
+  async deleteAgent(name: string): Promise<void>;
+  async agentExists(name: string): Promise<boolean>;
 }
 ```
 
-### 5.2 角色/配置/Skill/历史服务
+### 5.2 配置/Skill/历史服务
 
 均沿用相同 CRUD 模式。
 
 ```typescript
-// 角色
-class AiRoleService {
-  async listRoles(): Promise<string[]>;
-  async getRole(name: string): Promise<AiRole>;
-  async saveRole(name: string, content: string): Promise<void>;
-  async deleteRole(name: string): Promise<void>;
-}
-
 // LLM 配置
 class AiConfigService {
   async listConfigs(): Promise<string[]>;
@@ -537,87 +506,87 @@ class AiSkillService {
 
 // 历史
 class AiHistoryService {
-  async listHistories(scenarioId: string): Promise<AiChatHistory[]>;
-  async getHistory(scenarioId: string, historyId: string): Promise<AiChatHistory>;
+  async listHistories(agentId: string): Promise<AiChatHistory[]>;
+  async getHistory(agentId: string, historyId: string): Promise<AiChatHistory>;
   async createHistory(data: AiChatHistory): Promise<void>;
-  async saveHistory(scenarioId: string, historyId: string, data: AiChatHistory): Promise<void>;
-  async deleteHistory(scenarioId: string, historyId: string): Promise<void>;
+  async saveHistory(agentId: string, historyId: string, data: AiChatHistory): Promise<void>;
+  async deleteHistory(agentId: string, historyId: string): Promise<void>;
 }
 
 // 记忆
 class AiMemoryService {
-  async listMemories(scenarioId?: string): Promise<AiMemory[]>;
+  async listMemories(agentId?: string): Promise<AiMemory[]>;
   async addMemory(data: AiMemory): Promise<void>;
   async deleteMemory(id: string): Promise<void>;
   /** 构建记忆文本段，用于注入 System Prompt */
-  buildMemoryPrompt(scenarioId?: string): Promise<string>;
+  buildMemoryPrompt(agentId?: string): Promise<string>;
 }
 ```
 
 ### 5.3 核心对话服务 (`AiChatService`) — 重点设计
 
-这是整个模块的核心，负责 Simple Runner 和 ReAct Agent 两种模式。
+这是整个模块的核心，统一使用 Streaming Tool-use Loop。有工具时支持多轮工具调用循环，无工具时等价于纯流式对话（loop 只执行一轮）。
 
 ```typescript
 /**
  * AI 助手核心对话服务
+ *
+ * 统一使用 streaming tool-use loop:
+ * - 有工具时: 流式文本 → tool_calls → 执行工具 → 继续循环
+ * - 无工具时: 流式文本 → 结束 (等价于 loop 只执行一轮)
  */
 class AiChatService {
-  private llmAdapter: ILLMAdapter;
+  private client: OpenAI;
   private toolRegistry: ToolRegistry;
-  private contextService: AiContextService;
   private messages: AiChatMessage[];
-  private scenario: AiScenario;
-  private isAgent: boolean;
-  private abortController: AbortController | null;
-  /** ReAct 最大循环次数，防止死循环 */
+  private agent: AiAgent;
+  /** 是否有可用工具 */
+  private hasTools: boolean;
+  /** Streaming Tool-use Loop 最大循环次数，防止死循环 */
   private maxToolRounds: number;
 
   constructor(
     llmConfig: AiLLMConfig,
-    scenario: AiScenario,
-    roleContent: string,
-    skillInstructions: string[],
-    memoryPrompt: string,
-    tools: ITool[]
+    agent: AiAgent,
+    options?: {
+      tools?: ITool[];
+      maxToolRounds?: number;
+      skills?: AiSkill[];
+      memoryPrompt?: string;
+    }
   );
 
   /**
    * 初始化对话上下文
-   * 组装顺序：llm.system_prefix → memory → role → skills → tools description
+   * 组装顺序：llm.system_prefix → memory → agent.instructions → skills
    */
   private buildSystemPrompt(): string;
 
   /**
    * 发送消息 (对外统一入口)
-   * 根据 scenario.is_agent 自动选择 Simple Runner 或 ReAct Agent
+   * 统一走 Streaming Tool-use Loop，有工具时多轮循环，无工具时单轮结束
    */
   async *sendMessage(userInput: string): AsyncGenerator<AiChatEvent>;
 
   /**
-   * Simple Runner 模式：直接对话，不调用工具
-   */
-  private async *runSimple(userInput: string): AsyncGenerator<AiChatEvent>;
-
-  /**
-   * ReAct Agent 模式：支持多轮工具调用的循环
+   * Streaming Tool-use Loop：统一的对话循环
    *
    * 核心流程：
-   * 1. 组装当前 messages + tools 定义
-   * 2. 调用 LLM 流式请求
+   * 1. 调用 LLM 流式请求 (有工具时带 tools definitions)
+   * 2. 逐 chunk yield text_delta，同时收集 tool_calls
    * 3. 根据 finish_reason 分发：
-   *    - 'stop': 输出最终文本，结束循环
-   *    - 'tool_calls': 执行工具 → 收集结果 → 追加到 messages → 回到步骤 1
-   *    - 'length': 触发上下文压缩 → 回到步骤 1
+   *    - 'stop': 追加助手消息到 messages，结束循环
+   *    - 'tool_calls': 追加助手消息 → 执行工具 → yield tool_start/tool_result → 回到步骤 1
+   *    - 'length': yield error，结束循环
    * 4. 循环次数超过 maxToolRounds 时强制终止
    */
-  private async *runAgent(userInput: string): AsyncGenerator<AiChatEvent>;
+  private async *runToolUseLoop(): AsyncGenerator<AiChatEvent>;
 
   /**
    * 执行单个工具调用
    * @returns 工具执行结果文本
    */
-  private async executeToolCall(toolCall: AiToolCall): Promise<string>;
+  private async executeTool(name: string, argsStr: string): Promise<string>;
 
   /** 中止当前对话 */
   abort(): void;
@@ -629,7 +598,7 @@ class AiChatService {
   getMessages(): AiChatMessage[];
 
   /** 获取历史保存数据 */
-  getHistoryData(scenarioId: string): Omit<AiChatHistory, 'id' | 'title' | 'created_at' | 'updated_at'>;
+  getHistoryData(agentId: string): Omit<AiChatHistory, 'id' | 'title' | 'created_at' | 'updated_at'>;
 }
 ```
 
@@ -650,7 +619,7 @@ type AiChatEvent =
   | { type: 'error'; message: string };
 ```
 
-## 6 ReAct 引擎详细流程
+## 6 Streaming Tool-use Loop 引擎详细流程
 
 ```
 用户输入 "帮我查看当前目录的文件结构"
@@ -659,7 +628,7 @@ type AiChatEvent =
 ┌─────────────────────────────────────┐
 │ 1. 构建 System Prompt               │
 │    system_prefix + memory + role    │
-│    + skills + tools description     │
+│    + skills                         │
 ├─────────────────────────────────────┤
 │ 2. 追加 user message                │
 │    messages.push({role:'user', ...})│
@@ -668,7 +637,8 @@ type AiChatEvent =
                ▼
 ┌─────────────────────────────────────┐
 │ 3. 调用 LLM (stream)                │
-│    带 tools function definitions    │
+│    有工具时带 tools definitions     │
+│    逐 chunk yield text_delta        │
 └──────────────┬──────────────────────┘
                │
         ┌──────┴──────┐
@@ -677,10 +647,10 @@ type AiChatEvent =
         │stop  │tools │length
         ▼      ▼      ▼
      ┌─────┐ ┌───────────────────┐ ┌──────────────┐
-     │输出 │ │ 4. 逐个执行工具   │ │ 5. 上下文压缩 │
-     │完成 │ │ emit tool_start   │ │ 压缩中间消息  │
-     │emit │ │ await tool.exec() │ │ 回到步骤 3   │
-     │done │ │ emit tool_result  │ │              │
+     │输出 │ │ 4. 逐个执行工具   │ │ 5. yield error│
+     │完成 │ │ yield tool_start  │ │ 长度截断提示  │
+     │emit │ │ await tool.exec() │ │ 结束循环      │
+     │done │ │ yield tool_result │ │              │
      └─────┘ │ append results    │ └──────────────┘
              │ → 回到步骤 3       │
              │ (最多 N 轮)       │
@@ -689,16 +659,18 @@ type AiChatEvent =
 
 ### 关键设计点
 
-1. **流式输出**: LLM 响应实时推送 `text_delta` 事件给渲染进程，工具调用信息通过 `tool_start` / `tool_result` 事件推送。
+1. **统一引擎**: 不区分 Simple Runner / Agent 模式。无工具时 `finish_reason` 只会是 `stop`，loop 自然执行一轮结束；有工具时自动进入多轮工具调用循环。
 
-2. **工具执行安全**:
+2. **逐 chunk 流式输出**: LLM 响应在流式消费过程中实时 yield `text_delta` 事件给渲染进程，确保前端逐字显示。
+
+3. **工具执行安全**:
    - Shell 工具默认限制在工作目录内执行
    - 单次命令执行超时 30s
    - 危险命令 (`rm -rf /`, `format`, `del /f /s`) 前置拦截
 
-3. **死循环防护**: `maxToolRounds` 默认 10 次，超过后强制输出当前结果并提示用户。
+4. **死循环防护**: `maxToolRounds` 默认 10 次，超过后强制输出当前结果并提示用户。
 
-4. **上下文压缩触发条件**: 当 `estimateTokens(messages) > model_max_tokens * 0.75` 时触发，压缩策略为保留 system + 最近 4 轮 + 中间摘要。
+5. **上下文压缩触发条件**: 当 `estimateTokens(messages) > model_max_tokens * 0.75` 时触发，压缩策略为保留 system + 最近 4 轮 + 中间摘要。
 
 ## 7 MCP 集成设计
 
@@ -764,6 +736,12 @@ class McpToolAdapter implements ITool {
 ### 8.2 Channel 列表
 
 ```typescript
+// ===== Agent 管理 =====
+'qtian:ai:list-agents'             // → string[]
+'qtian:ai:get-agent'               // (name) → AiAgent
+'qtian:ai:save-agent'              // (name, agent) → void
+'qtian:ai:delete-agent'            // (name) → void
+
 // ===== LLM 配置管理 =====
 'qtian:ai:list-llm-configs'        // → string[]
 'qtian:ai:get-llm-config'          // (name) → AiLLMConfig
@@ -775,22 +753,23 @@ class McpToolAdapter implements ITool {
 'qtian:ai:get-skill'               // (dirName) → AiSkill
 
 // ===== 对话历史管理 =====
-'qtian:ai:list-histories'          // (scenarioId) → AiChatHistory[]
-'qtian:ai:get-history'             // (scenarioId, historyId) → AiChatHistory
-'qtian:ai:create-history'          // (data) → void
-'qtian:ai:save-history'            // (scenarioId, historyId, data) → void
-'qtian:ai:delete-history'          // (scenarioId, historyId) → void
+'qtian:ai:list-histories'          // (agentId) → string[]
+'qtian:ai:list-history-summaries'  // (agentId) → Array<{ id, title, updated_at }>
+'qtian:ai:get-history'             // (agentId, historyId) → AiChatHistory
+'qtian:ai:create-history'          // (agentId, historyId, data) → void
+'qtian:ai:save-history'            // (agentId, historyId, data) → void
+'qtian:ai:delete-history'          // (agentId, historyId) → void
 
 // ===== 对话会话 =====
-'qtian:ai:init-chat'               // (scenarioId, historyId?, configName?) → void
-'qtian:ai:chat-message'            // (scenarioId, historyId, message) → void (通过事件推送)
-'qtian:ai:stop-chat'               // (scenarioId, historyId) → void
-'qtian:ai:regenerate'              // (scenarioId, historyId) → void
-'qtian:ai:pop-message'             // (scenarioId, historyId) → void
-'qtian:ai:get-messages'            // (scenarioId, historyId) → AiChatMessage[]
+'qtian:ai:init-chat'               // (agentId, historyId?, configName?) → void
+'qtian:ai:chat-message'            // (agentId, historyId, message) → void (通过事件推送)
+'qtian:ai:stop-chat'               // (agentId, historyId) → void
+'qtian:ai:regenerate'              // (agentId, historyId) → void
+'qtian:ai:pop-message'             // (agentId, historyId) → void
+'qtian:ai:get-messages'            // (agentId, historyId) → AiChatMessage[]
 
 // ===== 记忆管理 =====
-'qtian:ai:list-memories'           // (scenarioId?) → AiMemory[]
+'qtian:ai:list-memories'           // (agentId?) → AiMemory[]
 'qtian:ai:add-memory'              // (data) → void
 'qtian:ai:delete-memory'           // (id) → void
 
@@ -800,7 +779,7 @@ class McpToolAdapter implements ITool {
 'qtian:ai:mcp-reload'              // → void (重新加载所有 MCP 服务器)
 
 // ===== 对话事件 (Main → Renderer 单向推送) =====
-'qtian:ai:chat-event'              // (scenarioId, historyId, event: AiChatEvent)
+'qtian:ai:chat-event'              // (agentId, historyId, event: AiChatEvent)
 ```
 
 ### 8.3 对话流 IPC 交互时序
@@ -808,7 +787,7 @@ class McpToolAdapter implements ITool {
 ```
 Renderer                          Main Process
   │                                    │
-  ├─ init-chat(scenarioId, histId) ──→ │ 初始化 ChatService
+  ├─ init-chat(agentId, histId) ────→ │ 初始化 ChatService
   │                                    │ 组装 System Prompt
   │                                    │ 加载 tools, skills, memory
   │←──────── success ─────────────────┤
@@ -820,13 +799,12 @@ Renderer                          Main Process
   │← chat-event: done ────────────────┤
   │                                    │ auto-save history
   │                                    │
-  ├─ chat-message(..., "查看目录") ──→ │ (Agent 模式)
+  ├─ chat-message(..., "查看目录") ──→ │ (有工具时进入工具调用循环)
   │                                    │ LLM 决定调用 shell__execute
-  │← chat-event: thinking ────────────┤
   │← chat-event: tool_start ──────────┤  name: "shell__execute"
   │                                    │ 执行中...
   │← chat-event: tool_result ─────────┤  result: "dir listing..."
-  │                                    │ 再次调用 LLM
+  │                                    │ 再次调用 LLM (下一轮 loop)
   │← chat-event: text_delta ──────────┤
   │← chat-event: done ────────────────┤
   │                                    │
@@ -838,18 +816,11 @@ Renderer                          Main Process
 ```typescript
 // 在 preload/index.ts 中新增
 const aiAssistant = {
-  // 场景
-  listScenarios: () => ipcRenderer.invoke('qtian:ai:list-scenarios'),
-  getScenario: (id) => ipcRenderer.invoke('qtian:ai:get-scenario', id),
-  createScenario: (id, data) => ipcRenderer.invoke('qtian:ai:create-scenario', id, data),
-  updateScenario: (id, data) => ipcRenderer.invoke('qtian:ai:update-scenario', id, data),
-  deleteScenario: (id) => ipcRenderer.invoke('qtian:ai:delete-scenario', id),
-
-  // 角色
-  listRoles: () => ipcRenderer.invoke('qtian:ai:list-roles'),
-  getRole: (name) => ipcRenderer.invoke('qtian:ai:get-role', name),
-  saveRole: (name, content) => ipcRenderer.invoke('qtian:ai:save-role', name, content),
-  deleteRole: (name) => ipcRenderer.invoke('qtian:ai:delete-role', name),
+  // Agent
+  listAgents: () => ipcRenderer.invoke('qtian:ai:list-agents'),
+  getAgent: (name) => ipcRenderer.invoke('qtian:ai:get-agent', name),
+  saveAgent: (name, agent) => ipcRenderer.invoke('qtian:ai:save-agent', name, agent),
+  deleteAgent: (name) => ipcRenderer.invoke('qtian:ai:delete-agent', name),
 
   // LLM 配置
   listLlmConfigs: () => ipcRenderer.invoke('qtian:ai:list-llm-configs'),
@@ -862,22 +833,22 @@ const aiAssistant = {
   getSkill: (dirName) => ipcRenderer.invoke('qtian:ai:get-skill', dirName),
 
   // 对话历史
-  listHistories: (scenarioId) => ipcRenderer.invoke('qtian:ai:list-histories', scenarioId),
-  getHistory: (scenarioId, historyId) => ipcRenderer.invoke('qtian:ai:get-history', scenarioId, historyId),
+  listHistories: (agentId) => ipcRenderer.invoke('qtian:ai:list-histories', agentId),
+  getHistory: (agentId, historyId) => ipcRenderer.invoke('qtian:ai:get-history', agentId, historyId),
   createHistory: (data) => ipcRenderer.invoke('qtian:ai:create-history', data),
-  saveHistory: (scenarioId, historyId, data) => ipcRenderer.invoke('qtian:ai:save-history', scenarioId, historyId, data),
-  deleteHistory: (scenarioId, historyId) => ipcRenderer.invoke('qtian:ai:delete-history', scenarioId, historyId),
+  saveHistory: (agentId, historyId, data) => ipcRenderer.invoke('qtian:ai:save-history', agentId, historyId, data),
+  deleteHistory: (agentId, historyId) => ipcRenderer.invoke('qtian:ai:delete-history', agentId, historyId),
 
   // 对话会话
-  initChat: (scenarioId, historyId?, configName?) => ipcRenderer.invoke('qtian:ai:init-chat', scenarioId, historyId, configName),
-  chatMessage: (scenarioId, historyId, message) => ipcRenderer.invoke('qtian:ai:chat-message', scenarioId, historyId, message),
-  stopChat: (scenarioId, historyId) => ipcRenderer.invoke('qtian:ai:stop-chat', scenarioId, historyId),
-  regenerate: (scenarioId, historyId) => ipcRenderer.invoke('qtian:ai:regenerate', scenarioId, historyId),
-  popMessage: (scenarioId, historyId) => ipcRenderer.invoke('qtian:ai:pop-message', scenarioId, historyId),
-  getMessages: (scenarioId, historyId) => ipcRenderer.invoke('qtian:ai:get-messages', scenarioId, historyId),
+  initChat: (agentId, historyId?, configName?) => ipcRenderer.invoke('qtian:ai:init-chat', agentId, historyId, configName),
+  chatMessage: (agentId, historyId, message) => ipcRenderer.invoke('qtian:ai:chat-message', agentId, historyId, message),
+  stopChat: (agentId, historyId) => ipcRenderer.invoke('qtian:ai:stop-chat', agentId, historyId),
+  regenerate: (agentId, historyId) => ipcRenderer.invoke('qtian:ai:regenerate', agentId, historyId),
+  popMessage: (agentId, historyId) => ipcRenderer.invoke('qtian:ai:pop-message', agentId, historyId),
+  getMessages: (agentId, historyId) => ipcRenderer.invoke('qtian:ai:get-messages', agentId, historyId),
 
   // 记忆
-  listMemories: (scenarioId?) => ipcRenderer.invoke('qtian:ai:list-memories', scenarioId),
+  listMemories: (agentId?) => ipcRenderer.invoke('qtian:ai:list-memories', agentId),
   addMemory: (data) => ipcRenderer.invoke('qtian:ai:add-memory', data),
   deleteMemory: (id) => ipcRenderer.invoke('qtian:ai:delete-memory', id),
 
@@ -894,9 +865,9 @@ const aiAssistant = {
 
 ## 10 UI 组件设计补充
 
-### 10.1 Agent 模式下的消息展示
+### 10.1 工具调用消息展示
 
-Agent 模式的 AI 回复可能包含多轮工具调用，UI 需要支持：
+当对话配置了工具时，AI 回复可能包含多轮工具调用，UI 需要支持：
 
 ```
 ┌──────────────────────────────────────┐
@@ -921,7 +892,7 @@ Agent 模式的 AI 回复可能包含多轮工具调用，UI 需要支持：
 
 ### 10.2 停止按钮
 
-Agent 模式下工具调用可能耗时较长，输入区域发送按钮旁边需要一个"停止"按钮，调用 `stop-chat` 中止当前执行。
+工具调用可能耗时较长，输入区域发送按钮旁边需要一个"停止"按钮，调用 `stop-chat` 中止当前执行。
 
 ## 11 全局配置扩展
 
@@ -930,7 +901,7 @@ Agent 模式下工具调用可能耗时较长，输入区域发送按钮旁边�
 ```json
 {
   "ai_assistant": {
-    "default_scenario": "default",
+    "default_agent": "default",
     "default_llm_config": "default",
     "max_tool_rounds": 10,
     "context_compress_threshold": 0.75,
@@ -941,21 +912,20 @@ Agent 模式下工具调用可能耗时较长，输入区域发送按钮旁边�
 
 ## 12 实现分期建议
 
-### Phase 1: 基础框架 (Simple Runner)
+### Phase 1: 基础框架 (Streaming Tool-use Loop)
 - 数据目录初始化 (`WPath` 扩展)
 - 全局配置扩展
 - 类型定义 (`config.ts`)
 - 基础 CRUD 服务 (Scenario, Role, Config, History)
-- `AiChatService` Simple Runner 模式
+- `AiChatService` 统一 Streaming Tool-use Loop 引擎
 - IPC Handler + Preload 桥接
 - 基础 UI (页面布局、对话、历史)
 - 单元测试
 
-### Phase 2: 工具链 & Agent
+### Phase 2: 工具链
 - `ITool` 接口 + `ToolRegistry`
 - 内置工具 (Shell 执行)
-- `AiChatService` ReAct Agent 模式
-- 工具调用事件推送
+- 工具调用事件推送 (`tool_start` / `tool_result`)
 - UI 工具调用展示 (`ToolCallView.vue`)
 - 停止按钮
 
@@ -971,3 +941,50 @@ Agent 模式下工具调用可能耗时较长，输入区域发送按钮旁边�
 - `McpToolAdapter`
 - MCP 配置管理 UI
 - 更多内置工具 (Tavily 搜索, Local RAG)
+
+## 13 UI 重构 (002 AI 助手对话页面 UI)
+
+### 13.1 新增接口：`AI_LIST_HISTORY_SUMMARIES`
+
+**问题**：侧边栏需要展示对话标题和时间，而 `listHistories` 只返回 ID 列表。
+
+**方案**：新增 IPC channel，读取场景历史目录下所有 JSON 文件，提取摘要字段。
+
+- **Channel**: `qtian:ai:list-history-summaries`
+- **参数**: `(agentId: string)`
+- **返回**: `Array<{ id: string; title: string; updated_at: number }>`
+- **排序**: 按 `updated_at` 降序
+
+**后端实现**:
+- `AiHistoryService.listHistorySummaries(agentId)` — 遍历目录 JSON 文件，解析摘要，按时间降序排列
+- `ai-assistant.handler.ts` — 注册 `AI_LIST_HISTORY_SUMMARIES` handler
+
+**Preload API**:
+- `window.aiAssistant.listHistorySummaries(agentId)` → `Array<{ id, title, updated_at }>`
+
+### 13.2 组件重构
+
+| 组件 | 变更说明 |
+|------|----------|
+| `ChatSidebar.vue` | 移除 Agent/模型选择器，仅保留对话历史列表（标题+时间），新增"新建对话"按钮 |
+| `ChatContent.vue` | 移除输入区域，仅保留消息列表展示，新增 `agentName` / `llmConfigName` props |
+| `ChatInput.vue` | 新建组件。textarea + 左侧 Agent/模型选择 + 右侧发送按钮，Ctrl+Enter 发送 |
+| `ChatMessage.vue` | 新增消息头部（角色+模型+时间），新增操作按钮（复制/编辑/删除/重新生成），支持编辑模式 |
+| `AiAssistantPage.vue` | 布局调整：ChatInput 从 ChatContent 移出；加载 Agent 完整对象；使用 `listHistorySummaries`；新增消息编辑/删除方法 |
+
+### 13.3 数据流
+
+```
+AiAssistantPage
+  ├── ChatSidebar (对话历史列表)
+  │     ├── historySummaries: Array<{id, title, updated_at}>
+  │     ├── selectedHistory
+  │     └── emits: history-change, create-history
+  ├── ChatContent (消息列表)
+  │     ├── messages, agentName, llmConfigName
+  │     └── emits: edit-message, delete-message, regenerate
+  └── ChatInput (输入区域)
+        ├── agents, selectedAgent
+        ├── llmConfigs, selectedLlmConfig
+        └── emits: send-message, agent-change, llm-change, stop-chat
+```
