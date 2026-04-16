@@ -13,5 +13,5 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
   },
-  outputDir: path.join(__dirname, '../e2e_test_results'),
+  outputDir: path.join(__dirname, '../test-results'),
 });
