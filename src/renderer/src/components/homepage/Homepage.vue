@@ -23,9 +23,9 @@
           >
             <el-option
               v-for="agent in agentObjects"
-              :key="agent.id"
-              :label="agent.name || agent.id"
-              :value="agent.id"
+              :key="agent.name"
+              :label="agent.alias || agent.name"
+              :value="agent.name"
             />
           </el-select>
           <el-select
@@ -35,10 +35,10 @@
             aria-label="首页选择模型"
           >
             <el-option
-              v-for="name in llmConfigs"
-              :key="name"
-              :label="name"
-              :value="name"
+              v-for="config in llmConfigObjects"
+              :key="config._configName"
+              :label="config.alias || config.model"
+              :value="config._configName"
             />
           </el-select>
         </div>
@@ -71,6 +71,7 @@ export default {
       agentObjects: [],
       selectedAgent: '',
       llmConfigs: [],
+      llmConfigObjects: [],
       selectedLlmConfig: '',
     };
   },
@@ -92,13 +93,13 @@ export default {
             try {
               return await window.aiAssistant.getAgent(id);
             } catch {
-              return { id, name: id };
+              return { name: id, description: id, tools: [], instructions: '' };
             }
           })
         );
         // 自动选择第一个 Agent
         if (this.agentObjects.length > 0) {
-          this.selectedAgent = this.agentObjects[0].id;
+          this.selectedAgent = this.agentObjects[0].name;
         }
       } catch (err) {
         console.error('首页加载Agent失败:', err);
@@ -106,11 +107,21 @@ export default {
     },
 
     /**
-     * 加载 LLM 配置列表
+     * 加载 LLM 配置列表及完整对象
      */
     async loadLlmConfigs() {
       try {
         this.llmConfigs = await window.aiAssistant.listLlmConfigs();
+        this.llmConfigObjects = await Promise.all(
+          this.llmConfigs.map(async (name) => {
+            try {
+              const config = await window.aiAssistant.getLlmConfig(name);
+              return { ...config, _configName: name };
+            } catch {
+              return { _configName: name, model: name };
+            }
+          })
+        );
         // 自动选择第一个模型
         if (this.llmConfigs.length > 0) {
           this.selectedLlmConfig = this.llmConfigs[0];

@@ -154,6 +154,7 @@ export class AiAgentService {
 
     const name = this.extractYamlValue(frontMatter, 'name') || '';
     const description = this.extractYamlValue(frontMatter, 'description') || '';
+    const alias = this.extractYamlValue(frontMatter, 'alias') || undefined;
 
     if (!name) {
       throw new Error('Agent front-matter must contain a "name" field');
@@ -173,6 +174,7 @@ export class AiAgentService {
     return {
       name,
       description,
+      ...(alias !== undefined && { alias }),
       tools,
       ...(model !== undefined && { model }),
       ...(skills.length > 0 && { skills }),
@@ -192,6 +194,10 @@ export class AiAgentService {
 
     lines.push(`name: ${agent.name}`);
     lines.push(`description: ${agent.description}`);
+
+    if (agent.alias) {
+      lines.push(`alias: ${agent.alias}`);
+    }
 
     if (agent.tools && agent.tools.length > 0) {
       lines.push('tools:');

@@ -24,6 +24,7 @@ const TEST_FILE_NAME = 'test_ai-agent.service';
 const FULL_AGENT_MD = `---
 name: coder
 description: 编程助手
+alias: 代码专家
 skills:
   - code-review
 tools:
@@ -43,6 +44,15 @@ description: 最简描述
 ---
 
 你是一个助手。`;
+
+/** 含 alias 但无其他可选字段的 Agent */
+const ALIAS_AGENT_MD = `---
+name: translator
+description: 翻译助手
+alias: 翻译官
+---
+
+你是一个翻译助手。`;
 
 vi.mock('@/core/utils/logger', () => ({
   createLogger: vi.fn(() => ({
@@ -145,6 +155,7 @@ describe('AiAgentService', () => {
 
       expect(agent.name).toBe('coder');
       expect(agent.description).toBe('编程助手');
+      expect(agent.alias).toBe('代码专家');
       expect(agent.tools).toEqual(['shell_execute', 'file_read']);
       expect(agent.model).toBe('default');
       expect(agent.skills).toEqual(['code-review']);
@@ -159,6 +170,7 @@ describe('AiAgentService', () => {
 
       expect(agent.name).toBe('minimal');
       expect(agent.description).toBe('最简描述');
+      expect(agent.alias).toBeUndefined();
       expect(agent.tools).toEqual([]);
       expect(agent.model).toBeUndefined();
       expect(agent.skills).toBeUndefined();
@@ -198,6 +210,15 @@ name: has-name
       await createTestAgentMd(testAgentDir, 'no-desc', content);
       await expect(service.getAgent('no-desc')).rejects.toThrow('must contain a "description" field');
     });
+
+    it('should parse alias field correctly', async () => {
+      await createTestAgentMd(testAgentDir, 'translator', ALIAS_AGENT_MD);
+      const agent = await service.getAgent('translator');
+
+      expect(agent.name).toBe('translator');
+      expect(agent.alias).toBe('翻译官');
+      expect(agent.instructions).toBe('你是一个翻译助手。');
+    });
   });
 
   // =========================================================================
@@ -224,6 +245,32 @@ name: has-name
       expect(content).toContain('name: new-agent');
       expect(content).toContain('description: 新 Agent');
       expect(content).toContain('你是一个调试助手。');
+    });
+
+    it('should persist alias field and round-trip correctly', async () => {
+      const agentWithAlias: AiAgent = {
+        ...newAgent,
+        name: 'alias-agent',
+        alias: '别名助手',
+      };
+      await service.saveAgent('alias-agent', agentWithAlias);
+
+      // 验证文件包含 alias 行
+      const filePath = path.join(testAgentDir, 'alias-agent.md');
+      const content = await fs.readFile(filePath, 'utf-8');
+      expect(content).toContain('alias: 别名助手');
+
+      // 重新读取验证解析正确
+      const loaded = await service.getAgent('alias-agent');
+      expect(loaded.alias).toBe('别名助手');
+    });
+
+    it('should not write alias line when alias is undefined', async () => {
+      await service.saveAgent('no-alias', newAgent);
+
+      const filePath = path.join(testAgentDir, 'no-alias.md');
+      const content = await fs.readFile(filePath, 'utf-8');
+      expect(content).not.toContain('alias:');
     });
 
     it('should overwrite existing agent file', async () => {

@@ -25,9 +25,9 @@
         >
           <el-option
             v-for="agent in agents"
-            :key="agent.id"
-            :label="agent.name || agent.id"
-            :value="agent.id"
+            :key="agent.name"
+            :label="agent.alias || agent.name"
+            :value="agent.name"
           />
         </el-select>
         <el-select
@@ -38,10 +38,10 @@
           aria-label="选择模型"
         >
           <el-option
-            v-for="name in llmConfigs"
-            :key="name"
-            :label="name"
-            :value="name"
+            v-for="config in llmConfigs"
+            :key="config._configName"
+            :label="config.alias || config.model"
+            :value="config._configName"
           />
         </el-select>
       </div>

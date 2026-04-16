@@ -18,7 +18,7 @@
         :messages="messages"
         :is-chatting="isChatting"
         :agent-name="currentAgentName"
-        :llm-config-name="selectedLlmConfig"
+        :llm-config-name="currentLlmConfigDisplayName"
         @edit-message="handleEditMessage"
         @delete-message="handleDeleteMessage"
         @regenerate="handleRegenerate"
@@ -31,7 +31,7 @@
       <ChatInput
         :agents="agentObjects"
         :selected-agent="selectedAgent"
-        :llm-configs="llmConfigs"
+        :llm-configs="llmConfigObjects"
         :selected-llm-config="selectedLlmConfig"
         :is-chatting="isChatting"
         @send-message="handleSendMessage"
@@ -78,6 +78,7 @@ export default {
       agentObjects: [],
       selectedAgent: '',
       llmConfigs: [],
+      llmConfigObjects: [],
       selectedLlmConfig: '',
       historySummaries: [],
       selectedHistory: '',
@@ -88,8 +89,13 @@ export default {
   computed: {
     /** 当前选中 Agent 的名称 */
     currentAgentName() {
-      const agent = this.agentObjects.find((s) => s.id === this.selectedAgent);
-      return agent ? agent.name : '';
+      const agent = this.agentObjects.find((a) => a.name === this.selectedAgent);
+      return agent ? agent.alias || agent.name : '';
+    },
+    /** 当前选中 LLM 配置的展示名称 (alias > model) */
+    currentLlmConfigDisplayName() {
+      const config = this.llmConfigObjects.find((c) => c._configName === this.selectedLlmConfig);
+      return config ? (config.alias || config.model) : '';
     },
   },
   async mounted() {
@@ -152,6 +158,18 @@ export default {
     async loadLlmConfigs() {
       try {
         this.llmConfigs = await window.aiAssistant.listLlmConfigs();
+        // 加载每个 LLM 配置的完整对象（包含 alias、model），供下拉列表展示
+        this.llmConfigObjects = await Promise.all(
+          this.llmConfigs.map(async (name) => {
+            try {
+              const config = await window.aiAssistant.getLlmConfig(name);
+              // 附加配置文件名作为内部标识
+              return { ...config, _configName: name };
+            } catch {
+              return { _configName: name, model: name };
+            }
+          })
+        );
         if (this.llmConfigs.length > 0 && !this.selectedLlmConfig) {
           this.selectedLlmConfig = this.llmConfigs[0];
         }
@@ -168,7 +186,7 @@ export default {
             try {
               return await window.aiAssistant.getAgent(id);
             } catch {
-              return { id, name: id };
+              return { name: id, description: id, tools: [], instructions: '' };
             }
           })
         );

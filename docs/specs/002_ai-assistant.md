@@ -41,8 +41,7 @@
 
 ```
 assistant/          # 助手根目录
-    scenario/          # 场景目录，存放编辑好的场景文件，场景文件为json文件，其中引用role、llm、skill、tool
-    role/              # 存放角色定义文件，定义system prompt，每个角色文件为一个markdown文件
+    agent/             # 存放Agent定义文件
     llm/               # 存放模型文件，定义模型基本信息 base_url、key、model_id
     skill/             # 存放skill文件，遵循skill标准
     tool/              # 工具文件
@@ -51,48 +50,33 @@ assistant/          # 助手根目录
     memory/            # 记忆存储位置
 ```
 
-### 4.2 场景文件 (`scenario/*.json`)
+### 4.2 Agent文件 (`agent/*.md`)
+
+agent定义用Yaml-frontmatter + markdown，其中frontmatter支持如下字段：
+
+	  name: 必选，字符串，名称，使用大小写、下划线、减号、数字字符组成
+    alias: 可选，字符串，该Agent的别名，用于展示
+	  description: 必选，字符串，agent功能描述
+	  tools: 可选，列表，可用工具列表
+	  model: 可选，字符串，建议的模型provider（llm/目录下的配置文件文件名（不包含后缀））
+
+### 4.3 LLM数据
 
 参考：
 ```json
 {
-  "id": "trans-01",
-  "name": "中英翻译",
-  "is_agent": false,
-  "role_id": "translator", // 对应 role/translator.md
-  "llm_config": "gpt-4o",   // 对应 llm/gpt-4o.json
-  "skills": [],
-  "tools": []
+  "base_url": "https://api.xxx.com/v1",  // 必选，模型base url
+  "model": "Qwen/Qwen3.5-9B",            // 必选，模型ID
+  "key": "api-key",                      // 必选，api_key
+  "alias": "qwen",                       // 可选，模型别名，用于展示
+  "temperature": 0.7,                    // 可选，模型温度
+  "max_tokens": 2000,                    // 可选，模型最大输出token
+  "proxy": ""                            // 可选，代理服务器
 }
 ```
 
 
-### 4.3 角色定义 (`role/*.md`)
-
-markdown格式，内容会直接注入到SystemPrompt
-
-```
-# Role: 翻译专家
-## System Prompt
-你是一个精通多国语言的翻译官，请将用户输入翻译为目标语言...
-```
-
-### 4.4 LLM数据
-
-参考：
-```json
-{
-  "base_url": "https://api.xxx.com/v1",
-  "model": "Qwen/Qwen3.5-9B",
-  "key": "api-key",
-  "temperature": 0.7,
-  "max_tokens": 2000,
-  "proxy": ""
-}
-```
-
-
-### 4.5 Skill数据
+### 4.4 Skill数据
 
 一个标准的 AI Skill 通常以一个独立的文件夹形式存在。
 

@@ -117,6 +117,8 @@ interface AiAgent {
   name: string;
   /** Agent 描述 (frontmatter description，必选) */
   description: string;
+  /** Agent 别名 (frontmatter alias，可选，用于 UI 展示) */
+  alias?: string;
   /** 引用的工具名称列表 (frontmatter tools，默认 []) */
   tools: string[];
   /** 建议的 LLM 配置名 (frontmatter model，可选) */
@@ -132,6 +134,27 @@ interface AiAgent {
 }
 ```
 
+示例文件 (`assistant/agent/coder.md`):
+
+```markdown
+---
+name: coder
+description: 编程助手，擅长代码编写和调试
+alias: 代码专家
+tools:
+  - shell_execute
+model: default
+skills:
+  - code-review
+enable_memory: true
+max_context_rounds: 20
+---
+
+你是一个专业的编程助手，擅长多种编程语言...
+```
+
+> **UI 展示规则**: Agent 选择下拉列表优先展示 `alias`，若未设置则展示 `name`。
+
 ### 3.3 LLM 配置 (`AiLLMConfig`)
 
 ```typescript
@@ -143,6 +166,8 @@ interface AiLLMConfig {
   base_url: string;
   /** 模型标识 */
   model: string;
+  /** 模型别名 (可选，用于 UI 展示) */
+  alias?: string;
   /** API Key */
   key: string;
   /** 温度参数 */
@@ -155,6 +180,21 @@ interface AiLLMConfig {
   system_prefix?: string;
 }
 ```
+
+示例文件 (`assistant/llm/default.json`):
+
+```json
+{
+  "base_url": "https://api.openai.com/v1",
+  "model": "gpt-4o",
+  "alias": "GPT-4o",
+  "key": "",
+  "temperature": 0.7,
+  "max_tokens": 2000
+}
+```
+
+> **UI 展示规则**: 模型选择下拉列表优先展示 `alias`，若未设置则展示 `model`。消息头部的模型标签同理。
 
 ### 3.4 Skill (`AiSkillMeta`)
 

@@ -22,6 +22,15 @@ const TEST_FILE_NAME = 'test_ai-config.service';
 const mockConfig: AiLLMConfig = {
   base_url: 'https://api.test.com/v1',
   model: 'test-model',
+  alias: '测试模型',
+  key: 'test-key',
+  temperature: 0.7,
+  max_tokens: 2000,
+};
+
+const mockConfigWithoutAlias: AiLLMConfig = {
+  base_url: 'https://api.test.com/v1',
+  model: 'test-model',
   key: 'test-key',
   temperature: 0.7,
   max_tokens: 2000,
@@ -85,6 +94,19 @@ describe('AiConfigService', () => {
       await createTestAssistantLlmConfig(testLlmDir, 'test', mockConfig);
       const config = await service.getConfig('test');
       expect(config).toEqual(mockConfig);
+    });
+
+    it('should return config with alias field', async () => {
+      await createTestAssistantLlmConfig(testLlmDir, 'with-alias', mockConfig);
+      const config = await service.getConfig('with-alias');
+      expect(config.alias).toBe('测试模型');
+    });
+
+    it('should return config without alias when not set', async () => {
+      await createTestAssistantLlmConfig(testLlmDir, 'no-alias', mockConfigWithoutAlias);
+      const config = await service.getConfig('no-alias');
+      expect(config.alias).toBeUndefined();
+      expect(config.model).toBe('test-model');
     });
 
     it('should throw for empty name', async () => {

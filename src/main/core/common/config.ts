@@ -59,6 +59,8 @@ export interface AiAgent {
   name: string;
   /** Agent 描述 (frontmatter description，必选) */
   description: string;
+  /** Agent 别名 (frontmatter alias，可选，用于 UI 展示) */
+  alias?: string;
   /** 引用的工具名称列表 (frontmatter tools，默认 []) */
   tools: string[];
   /** 建议的 LLM 配置名 (frontmatter model，可选) */
@@ -81,6 +83,8 @@ export interface AiLLMConfig {
   base_url: string;
   /** 模型标识 */
   model: string;
+  /** 模型别名 (可选，用于 UI 展示) */
+  alias?: string;
   /** API Key */
   key: string;
   /** 温度参数 */
