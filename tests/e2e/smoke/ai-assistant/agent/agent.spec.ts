@@ -2,7 +2,7 @@ import { test, expect } from '../../../fixtures/app.fixture';
 import { waitForAppReady } from '../../../helpers/electron-helper';
 import {
   navigateToAiAssistant,
-  createAiScenario,
+  createAiAgent,
   createAiLlmConfig,
   createAiHistory,
   cleanupAiTestData,
@@ -10,33 +10,33 @@ import {
   clickHistoryItem,
 } from '../ai-assistant.helper';
 
-const SCENARIO_AGENT = 'e2e_agent_scenario';
+const AGENT_ID = 'e2e_agent_scenario';
 const HISTORY_AGENT = 'e2e_agent_history';
 const LLM_AGENT = 'e2e_agent_llm';
 
 test.describe('AI助手 - Agent模式', () => {
   test.afterEach(async ({ testWorkspace }) => {
-    cleanupAiTestData(testWorkspace, [SCENARIO_AGENT], [LLM_AGENT]);
+    cleanupAiTestData(testWorkspace, [AGENT_ID], [LLM_AGENT]);
   });
 
   /**
    * TC-08-01 Agent模式 - 工具调用流程
    *
    * TODO: 需要有效 LLM API 且场景配置了工具才能完整测试 Agent 工具调用流程。
-   *       当前测试验证 Agent 场景能正常创建和加载。
+   *       当前测试验证 Agent 能正常创建和加载。
    */
-  test('Agent场景应可正常创建和加载', async ({ window, testWorkspace }) => {
+  test('Agent应可正常创建和加载', async ({ window, testWorkspace }) => {
     cleanAllAiTestData(testWorkspace);
-    createAiScenario(testWorkspace, SCENARIO_AGENT, {
+    createAiAgent(testWorkspace, AGENT_ID, {
       is_agent: true,
       tools: ['shell_execute'],
     });
     createAiLlmConfig(testWorkspace, LLM_AGENT);
-    createAiHistory(testWorkspace, SCENARIO_AGENT, HISTORY_AGENT);
+    createAiHistory(testWorkspace, AGENT_ID, HISTORY_AGENT);
 
     await waitForAppReady(window);
     await navigateToAiAssistant(window);
-    // 依赖自动选择第一个场景
+    // 依赖自动选择第一个Agent
     await window.waitForTimeout(2000);
     await clickHistoryItem(window, HISTORY_AGENT);
     await window.waitForTimeout(1500);
@@ -53,12 +53,12 @@ test.describe('AI助手 - Agent模式', () => {
    */
   test('包含工具调用消息的历史应可正常加载', async ({ window, testWorkspace }) => {
     cleanAllAiTestData(testWorkspace);
-    createAiScenario(testWorkspace, SCENARIO_AGENT, {
+    createAiAgent(testWorkspace, AGENT_ID, {
       is_agent: true,
       tools: ['shell_execute'],
     });
     createAiLlmConfig(testWorkspace, LLM_AGENT);
-    createAiHistory(testWorkspace, SCENARIO_AGENT, HISTORY_AGENT, [
+    createAiHistory(testWorkspace, AGENT_ID, HISTORY_AGENT, [
       {
         role: 'assistant',
         content: '',
@@ -83,7 +83,7 @@ test.describe('AI助手 - Agent模式', () => {
 
     await waitForAppReady(window);
     await navigateToAiAssistant(window);
-    // 依赖自动选择第一个场景
+    // 依赖自动选择第一个Agent
     await window.waitForTimeout(2000);
     await clickHistoryItem(window, HISTORY_AGENT);
     await window.waitForTimeout(1500);
@@ -102,12 +102,12 @@ test.describe('AI助手 - Agent模式', () => {
    */
   test('包含工具错误的历史应可加载', async ({ window, testWorkspace }) => {
     cleanAllAiTestData(testWorkspace);
-    createAiScenario(testWorkspace, SCENARIO_AGENT, {
+    createAiAgent(testWorkspace, AGENT_ID, {
       is_agent: true,
       tools: ['shell_execute'],
     });
     createAiLlmConfig(testWorkspace, LLM_AGENT);
-    createAiHistory(testWorkspace, SCENARIO_AGENT, HISTORY_AGENT, [
+    createAiHistory(testWorkspace, AGENT_ID, HISTORY_AGENT, [
       {
         role: 'assistant',
         content: '',
@@ -132,7 +132,7 @@ test.describe('AI助手 - Agent模式', () => {
 
     await waitForAppReady(window);
     await navigateToAiAssistant(window);
-    // 依赖自动选择第一个场景
+    // 依赖自动选择第一个Agent
     await window.waitForTimeout(2000);
     await clickHistoryItem(window, HISTORY_AGENT);
     await window.waitForTimeout(1500);
@@ -149,16 +149,16 @@ test.describe('AI助手 - Agent模式', () => {
    */
   test('非执行状态下停止按钮不应显示', async ({ window, testWorkspace }) => {
     cleanAllAiTestData(testWorkspace);
-    createAiScenario(testWorkspace, SCENARIO_AGENT, {
+    createAiAgent(testWorkspace, AGENT_ID, {
       is_agent: true,
       tools: ['shell_execute'],
     });
     createAiLlmConfig(testWorkspace, LLM_AGENT);
-    createAiHistory(testWorkspace, SCENARIO_AGENT, HISTORY_AGENT);
+    createAiHistory(testWorkspace, AGENT_ID, HISTORY_AGENT);
 
     await waitForAppReady(window);
     await navigateToAiAssistant(window);
-    // 依赖自动选择第一个场景
+    // 依赖自动选择第一个Agent
     await window.waitForTimeout(2000);
     await clickHistoryItem(window, HISTORY_AGENT);
     await window.waitForTimeout(1500);

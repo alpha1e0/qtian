@@ -21,7 +21,7 @@ const TEST_FILE_NAME = 'test_ai-history.service';
 
 const mockHistory: AiChatHistory = {
   id: 'test-history',
-  scenario_id: 'test-scenario',
+  agent_id: 'test-scenario',
   title: '测试对话',
   messages: [
     { role: 'system', content: 'You are a helpful assistant.', timestamp: Date.now(), model: 'gpt-4', time: '2025-1-1 12:0:0' },

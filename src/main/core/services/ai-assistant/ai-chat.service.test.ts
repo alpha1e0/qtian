@@ -182,7 +182,7 @@ describe('AiChatService', () => {
   describe('getHistoryData', () => {
     it('should return correct structure', () => {
       const data = service.getHistoryData('default', 'chat_1');
-      expect(data.scenario_id).toBe('default');
+      expect(data.agent_id).toBe('default');
       expect(data.messages).toBeInstanceOf(Array);
       expect(data.updated_at).toBeGreaterThan(0);
     });
@@ -208,10 +208,10 @@ describe('AiChatService', () => {
     });
   });
 
-  describe('getScenario', () => {
-    it('should return current scenario', () => {
-      const scenario = service.getScenario();
-      expect(scenario.id).toBe('default');
+  describe('getAgent', () => {
+    it('should return current agent', () => {
+      const agent = service.getAgent();
+      expect(agent.name).toBe('default');
     });
   });
 
@@ -371,7 +371,7 @@ describe('AiChatService', () => {
         model: 'new-model',
       };
       service.updateLlmConfig(newConfig);
-      expect(service.getScenario().llm_config).toBe('default');
+      expect(service.getAgent().name).toBe('default');
     });
   });
 });

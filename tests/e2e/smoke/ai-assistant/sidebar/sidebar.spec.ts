@@ -2,20 +2,20 @@ import { test, expect } from '../../../fixtures/app.fixture';
 import { waitForAppReady } from '../../../helpers/electron-helper';
 import {
   navigateToAiAssistant,
-  createAiScenario,
+  createAiAgent,
   createAiLlmConfig,
   createAiHistory,
   cleanupAiTestData,
   cleanAllAiTestData,
   clickHistoryItem,
-  getScenarioFilePath,
+  getAgentFilePath,
   getHistoryFilePath,
 } from '../ai-assistant.helper';
 import fs from 'fs';
 
 // 测试数据标识
-const SCENARIO_A = 'e2e_sidebar_scenario_a';
-const SCENARIO_B = 'e2e_sidebar_scenario_b';
+const AGENT_A = 'e2e_sidebar_scenario_a';
+const AGENT_B = 'e2e_sidebar_scenario_b';
 const LLM_CONFIG = 'e2e_sidebar_llm';
 const HISTORY_A1 = 'e2e_sidebar_hist_a1';
 const HISTORY_A2 = 'e2e_sidebar_hist_a2';
@@ -23,11 +23,11 @@ const HISTORY_A2 = 'e2e_sidebar_hist_a2';
 test.describe('AI助手 - ChatInput 场景选择', () => {
   test.beforeEach(async ({ window, testWorkspace }) => {
     cleanAllAiTestData(testWorkspace);
-    createAiScenario(testWorkspace, SCENARIO_A);
-    createAiScenario(testWorkspace, SCENARIO_B);
+    createAiAgent(testWorkspace, AGENT_A);
+    createAiAgent(testWorkspace, AGENT_B);
     createAiLlmConfig(testWorkspace, LLM_CONFIG);
-    createAiHistory(testWorkspace, SCENARIO_A, HISTORY_A1);
-    createAiHistory(testWorkspace, SCENARIO_A, HISTORY_A2);
+    createAiHistory(testWorkspace, AGENT_A, HISTORY_A1);
+    createAiHistory(testWorkspace, AGENT_A, HISTORY_A2);
 
     await waitForAppReady(window);
     await navigateToAiAssistant(window);
@@ -36,7 +36,7 @@ test.describe('AI助手 - ChatInput 场景选择', () => {
   });
 
   test.afterEach(async ({ testWorkspace }) => {
-    cleanupAiTestData(testWorkspace, [SCENARIO_A, SCENARIO_B], [LLM_CONFIG]);
+    cleanupAiTestData(testWorkspace, [AGENT_A, AGENT_B], [LLM_CONFIG]);
   });
 
   /**
@@ -68,8 +68,8 @@ test.describe('AI助手 - ChatInput 场景选择', () => {
    */
   test('场景数据应正确持久化', async ({ window, testWorkspace }) => {
     // 验证文件存在
-    expect(fs.existsSync(getScenarioFilePath(testWorkspace, SCENARIO_A))).toBe(true);
-    expect(fs.existsSync(getHistoryFilePath(testWorkspace, SCENARIO_A, HISTORY_A1))).toBe(true);
+    expect(fs.existsSync(getAgentFilePath(testWorkspace, AGENT_A))).toBe(true);
+    expect(fs.existsSync(getHistoryFilePath(testWorkspace, AGENT_A, HISTORY_A1))).toBe(true);
   });
 
   /**
@@ -82,7 +82,7 @@ test.describe('AI助手 - ChatInput 场景选择', () => {
    */
   test('无场景时显示占位符', async ({ window, testWorkspace }) => {
     // 清理所有场景后重载
-    cleanupAiTestData(testWorkspace, [SCENARIO_A, SCENARIO_B], [LLM_CONFIG]);
+    cleanupAiTestData(testWorkspace, [AGENT_A, AGENT_B], [LLM_CONFIG]);
     await window.reload();
     await waitForAppReady(window);
     await navigateToAiAssistant(window);
@@ -95,15 +95,15 @@ test.describe('AI助手 - ChatInput 场景选择', () => {
 test.describe('AI助手 - ChatInput LLM模型选择', () => {
   const LLM_ALPHA = 'e2e_llm_alpha';
   const LLM_BETA = 'e2e_llm_beta';
-  const SCENARIO_FOR_LLM = 'e2e_llm_scenario';
+  const AGENT_FOR_LLM = 'e2e_llm_scenario';
   const HISTORY_FOR_LLM = 'e2e_llm_history';
 
   test.beforeEach(async ({ window, testWorkspace }) => {
     cleanAllAiTestData(testWorkspace);
     createAiLlmConfig(testWorkspace, LLM_ALPHA);
     createAiLlmConfig(testWorkspace, LLM_BETA);
-    createAiScenario(testWorkspace, SCENARIO_FOR_LLM);
-    createAiHistory(testWorkspace, SCENARIO_FOR_LLM, HISTORY_FOR_LLM);
+    createAiAgent(testWorkspace, AGENT_FOR_LLM);
+    createAiHistory(testWorkspace, AGENT_FOR_LLM, HISTORY_FOR_LLM);
 
     await waitForAppReady(window);
     await navigateToAiAssistant(window);
@@ -111,7 +111,7 @@ test.describe('AI助手 - ChatInput LLM模型选择', () => {
   });
 
   test.afterEach(async ({ testWorkspace }) => {
-    cleanupAiTestData(testWorkspace, [SCENARIO_FOR_LLM], [LLM_ALPHA, LLM_BETA]);
+    cleanupAiTestData(testWorkspace, [AGENT_FOR_LLM], [LLM_ALPHA, LLM_BETA]);
   });
 
   /**
@@ -136,19 +136,19 @@ test.describe('AI助手 - ChatInput LLM模型选择', () => {
 });
 
 test.describe('AI助手 - 侧边栏对话历史管理', () => {
-  const SCENARIO_HIST = 'e2e_hist_scenario';
+  const AGENT_HIST = 'e2e_hist_scenario';
   const HISTORY_H1 = 'e2e_hist_h1';
   const HISTORY_H2 = 'e2e_hist_h2';
   const LLM_HIST = 'e2e_hist_llm';
 
   test.beforeEach(async ({ window, testWorkspace }) => {
     cleanAllAiTestData(testWorkspace);
-    createAiScenario(testWorkspace, SCENARIO_HIST);
+    createAiAgent(testWorkspace, AGENT_HIST);
     createAiLlmConfig(testWorkspace, LLM_HIST);
-    createAiHistory(testWorkspace, SCENARIO_HIST, HISTORY_H1, [
+    createAiHistory(testWorkspace, AGENT_HIST, HISTORY_H1, [
       { role: 'assistant', content: '这是历史1的初始消息' },
     ]);
-    createAiHistory(testWorkspace, SCENARIO_HIST, HISTORY_H2, [
+    createAiHistory(testWorkspace, AGENT_HIST, HISTORY_H2, [
       { role: 'assistant', content: '这是历史2的初始消息' },
     ]);
 
@@ -158,7 +158,7 @@ test.describe('AI助手 - 侧边栏对话历史管理', () => {
   });
 
   test.afterEach(async ({ testWorkspace }) => {
-    cleanupAiTestData(testWorkspace, [SCENARIO_HIST], [LLM_HIST]);
+    cleanupAiTestData(testWorkspace, [AGENT_HIST], [LLM_HIST]);
   });
 
   /**
@@ -242,11 +242,11 @@ test.describe('AI助手 - 侧边栏对话历史管理', () => {
 });
 
 test.describe('AI助手 - 侧边栏持久化', () => {
-  const SCENARIO_PERSIST = 'e2e_persist_scenario';
+  const AGENT_PERSIST = 'e2e_persist_scenario';
   const LLM_PERSIST = 'e2e_persist_llm';
 
   test.afterEach(async ({ testWorkspace }) => {
-    cleanupAiTestData(testWorkspace, [SCENARIO_PERSIST], [LLM_PERSIST]);
+    cleanupAiTestData(testWorkspace, [AGENT_PERSIST], [LLM_PERSIST]);
   });
 
   /**
@@ -254,10 +254,10 @@ test.describe('AI助手 - 侧边栏持久化', () => {
    */
   test('场景数据应正确持久化到文件', async ({ window, testWorkspace }) => {
     cleanAllAiTestData(testWorkspace);
-    createAiScenario(testWorkspace, SCENARIO_PERSIST);
+    createAiAgent(testWorkspace, AGENT_PERSIST);
     createAiLlmConfig(testWorkspace, LLM_PERSIST);
 
-    expect(fs.existsSync(getScenarioFilePath(testWorkspace, SCENARIO_PERSIST))).toBe(true);
+    expect(fs.existsSync(getAgentFilePath(testWorkspace, AGENT_PERSIST))).toBe(true);
   });
 
   /**
@@ -266,9 +266,9 @@ test.describe('AI助手 - 侧边栏持久化', () => {
   test('历史文件应正确创建并可在页面加载', async ({ window, testWorkspace }) => {
     cleanAllAiTestData(testWorkspace);
     const historyId = 'e2e_persist_hist';
-    createAiScenario(testWorkspace, SCENARIO_PERSIST);
+    createAiAgent(testWorkspace, AGENT_PERSIST);
     createAiLlmConfig(testWorkspace, LLM_PERSIST);
-    createAiHistory(testWorkspace, SCENARIO_PERSIST, historyId, [
+    createAiHistory(testWorkspace, AGENT_PERSIST, historyId, [
       { role: 'user', content: '测试消息1' },
       { role: 'assistant', content: '测试回复1' },
     ]);
@@ -295,12 +295,12 @@ test.describe('AI助手 - 侧边栏持久化', () => {
     const histA = 'e2e_iso_hist_a';
     const histB = 'e2e_iso_hist_b';
 
-    createAiScenario(testWorkspace, SCENARIO_PERSIST);
+    createAiAgent(testWorkspace, AGENT_PERSIST);
     createAiLlmConfig(testWorkspace, LLM_PERSIST);
-    createAiHistory(testWorkspace, SCENARIO_PERSIST, histA, [
+    createAiHistory(testWorkspace, AGENT_PERSIST, histA, [
       { role: 'assistant', content: '历史A的消息' },
     ]);
-    createAiHistory(testWorkspace, SCENARIO_PERSIST, histB, [
+    createAiHistory(testWorkspace, AGENT_PERSIST, histB, [
       { role: 'assistant', content: '历史B的消息' },
     ]);
 

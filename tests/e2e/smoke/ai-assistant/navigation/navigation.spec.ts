@@ -3,7 +3,7 @@ import { waitForAppReady } from '../../../helpers/electron-helper';
 import {
   navigateToAiAssistant,
   clickHistoryItem,
-  createAiScenario,
+  createAiAgent,
   createAiLlmConfig,
   createAiHistory,
   cleanupAiTestData,
@@ -62,9 +62,9 @@ test.describe('AI助手 - 入口与导航', () => {
    */
   test('AI助手页面应显示基本布局', async ({ window, testWorkspace }) => {
     cleanAllAiTestData(testWorkspace);
-    const scenarioId = 'e2e_nav_scenario';
+    const agentId = 'e2e_nav_scenario';
     const llmName = 'e2e_nav_llm';
-    createAiScenario(testWorkspace, scenarioId);
+    createAiAgent(testWorkspace, agentId);
     createAiLlmConfig(testWorkspace, llmName);
 
     await window.reload();
@@ -77,7 +77,7 @@ test.describe('AI助手 - 入口与导航', () => {
     // 验证侧边栏可见
     await expect(window.locator('.chat-sidebar')).toBeVisible({ timeout: 5000 });
 
-    cleanupAiTestData(testWorkspace, [scenarioId], [llmName]);
+    cleanupAiTestData(testWorkspace, [agentId], [llmName]);
   });
 
   /**
@@ -109,22 +109,22 @@ test.describe('AI助手 - 入口与导航', () => {
    */
   test('首页应显示场景和模型选择器', async ({ window, testWorkspace }) => {
     cleanAllAiTestData(testWorkspace);
-    const scenarioId = 'e2e_homepage_selector_scenario';
+    const agentId = 'e2e_homepage_selector_scenario';
     const llmName = 'e2e_homepage_selector_llm';
-    createAiScenario(testWorkspace, scenarioId);
+    createAiAgent(testWorkspace, agentId);
     createAiLlmConfig(testWorkspace, llmName);
 
     await window.reload();
     await waitForAppReady(window);
 
     // 验证场景选择器可见
-    const scenarioSelector = window.getByLabel('首页选择场景');
-    await expect(scenarioSelector).toBeVisible({ timeout: 5000 });
+    const agentSelector = window.getByLabel('首页选择Agent');
+    await expect(agentSelector).toBeVisible({ timeout: 5000 });
 
     // 验证模型选择器可见
     const llmSelector = window.getByLabel('首页选择模型');
     await expect(llmSelector).toBeVisible({ timeout: 5000 });
 
-    cleanupAiTestData(testWorkspace, [scenarioId], [llmName]);
+    cleanupAiTestData(testWorkspace, [agentId], [llmName]);
   });
 });

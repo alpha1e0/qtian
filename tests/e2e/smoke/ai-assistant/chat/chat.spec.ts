@@ -2,7 +2,7 @@ import { test, expect } from '../../../fixtures/app.fixture';
 import { waitForAppReady } from '../../../helpers/electron-helper';
 import {
   navigateToAiAssistant,
-  createAiScenario,
+  createAiAgent,
   createAiLlmConfig,
   createAiHistory,
   cleanupAiTestData,
@@ -12,7 +12,7 @@ import {
   setupAiTestEnvironment,
 } from '../ai-assistant.helper';
 
-const SCENARIO_CHAT = 'e2e_chat_scenario';
+const AGENT_CHAT = 'e2e_chat_scenario';
 const HISTORY_CHAT = 'e2e_chat_history';
 const LLM_CHAT = 'e2e_chat_llm';
 
@@ -20,7 +20,7 @@ test.describe('AI助手 - 发送消息', () => {
   test.beforeEach(async ({ window, testWorkspace }) => {
     cleanAllAiTestData(testWorkspace);
     setupAiTestEnvironment(testWorkspace, {
-      scenarioId: SCENARIO_CHAT,
+      agentId: AGENT_CHAT,
       historyId: HISTORY_CHAT,
       llmConfigName: LLM_CHAT,
       historyMessages: [
@@ -37,7 +37,7 @@ test.describe('AI助手 - 发送消息', () => {
   });
 
   test.afterEach(async ({ testWorkspace }) => {
-    cleanupAiTestData(testWorkspace, [SCENARIO_CHAT], [LLM_CHAT]);
+    cleanupAiTestData(testWorkspace, [AGENT_CHAT], [LLM_CHAT]);
   });
 
   /**
@@ -155,8 +155,8 @@ test.describe('AI助手 - 发送消息', () => {
    * TC-05-08 未选择对话历史时发送消息
    */
   test('未选择对话历史时应显示占位符', async ({ window, testWorkspace }) => {
-    const emptyScenario = 'e2e_empty_scenario';
-    createAiScenario(testWorkspace, emptyScenario);
+    const emptyAgent = 'e2e_empty_scenario';
+    createAiAgent(testWorkspace, emptyAgent);
 
     await window.reload();
     await waitForAppReady(window);
@@ -166,19 +166,19 @@ test.describe('AI助手 - 发送消息', () => {
     // 自动选择了场景，但没有历史，应显示内部占位符
     await expect(window.locator('.placeholder-inner')).toBeVisible({ timeout: 3000 });
 
-    cleanupAiTestData(testWorkspace, [emptyScenario]);
+    cleanupAiTestData(testWorkspace, [emptyAgent]);
   });
 });
 
 test.describe('AI助手 - 流式响应', () => {
-  const SCENARIO_STREAM = 'e2e_stream_scenario';
+  const AGENT_STREAM = 'e2e_stream_scenario';
   const HISTORY_STREAM = 'e2e_stream_history';
   const LLM_STREAM = 'e2e_stream_llm';
 
   test.beforeEach(async ({ window, testWorkspace }) => {
     cleanAllAiTestData(testWorkspace);
     setupAiTestEnvironment(testWorkspace, {
-      scenarioId: SCENARIO_STREAM,
+      agentId: AGENT_STREAM,
       historyId: HISTORY_STREAM,
       llmConfigName: LLM_STREAM,
     });
@@ -191,7 +191,7 @@ test.describe('AI助手 - 流式响应', () => {
   });
 
   test.afterEach(async ({ testWorkspace }) => {
-    cleanupAiTestData(testWorkspace, [SCENARIO_STREAM], [LLM_STREAM]);
+    cleanupAiTestData(testWorkspace, [AGENT_STREAM], [LLM_STREAM]);
   });
 
   /**
@@ -222,14 +222,14 @@ test.describe('AI助手 - 流式响应', () => {
 });
 
 test.describe('AI助手 - 消息操作按钮', () => {
-  const SCENARIO_REGEN = 'e2e_regen_scenario';
+  const AGENT_REGEN = 'e2e_regen_scenario';
   const HISTORY_REGEN = 'e2e_regen_history';
   const LLM_REGEN = 'e2e_regen_llm';
 
   test.beforeEach(async ({ window, testWorkspace }) => {
     cleanAllAiTestData(testWorkspace);
     setupAiTestEnvironment(testWorkspace, {
-      scenarioId: SCENARIO_REGEN,
+      agentId: AGENT_REGEN,
       historyId: HISTORY_REGEN,
       llmConfigName: LLM_REGEN,
       historyMessages: [
@@ -248,7 +248,7 @@ test.describe('AI助手 - 消息操作按钮', () => {
   });
 
   test.afterEach(async ({ testWorkspace }) => {
-    cleanupAiTestData(testWorkspace, [SCENARIO_REGEN], [LLM_REGEN]);
+    cleanupAiTestData(testWorkspace, [AGENT_REGEN], [LLM_REGEN]);
   });
 
   /**

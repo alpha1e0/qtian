@@ -38,17 +38,10 @@ export function getTestAssistantDir(testFileName: string = ''): string {
 }
 
 /**
- * 获取测试专用 scenario 目录
+ * 获取测试专用 agent 目录
  */
-export function getTestAssistantScenarioDir(testFileName: string = ''): string {
-  return path.join(getAssistantBaseDir(), 'scenario', testFileName);
-}
-
-/**
- * 获取测试专用 role 目录
- */
-export function getTestAssistantRoleDir(testFileName: string = ''): string {
-  return path.join(getAssistantBaseDir(), 'role', testFileName);
+export function getTestAssistantAgentDir(testFileName: string = ''): string {
+  return path.join(getAssistantBaseDir(), 'agent', testFileName);
 }
 
 /**
@@ -145,35 +138,19 @@ export function initAssistantTestState(testFileName: string): void {
 }
 
 /**
- * 创建测试用的场景文件
- * @param testScenarioDir 测试 scenario 目录
- * @param scenarioId 场景 ID
- * @param scenario 场景数据
+ * 创建测试用的 Agent 文件 (YAML front-matter + Markdown)
+ * @param testAgentDir 测试 agent 目录
+ * @param agentName Agent 名称
+ * @param agentMdContent Agent .md 文件完整内容
  */
-export async function createTestAssistantScenario(
-  testScenarioDir: string,
-  scenarioId: string,
-  scenario: any
+export async function createTestAssistantAgent(
+  testAgentDir: string,
+  agentName: string,
+  agentMdContent: string
 ): Promise<void> {
-  const scenarioPath = path.join(testScenarioDir, `${scenarioId}.json`);
-  await fs.mkdir(testScenarioDir, { recursive: true });
-  await fs.writeFile(scenarioPath, JSON.stringify(scenario, null, 2), 'utf-8');
-}
-
-/**
- * 创建测试用的角色文件
- * @param testRoleDir 测试 role 目录
- * @param roleName 角色名称
- * @param content 角色内容
- */
-export async function createTestAssistantRole(
-  testRoleDir: string,
-  roleName: string,
-  content: string
-): Promise<void> {
-  const rolePath = path.join(testRoleDir, `${roleName}.md`);
-  await fs.mkdir(testRoleDir, { recursive: true });
-  await fs.writeFile(rolePath, content, 'utf-8');
+  const agentPath = path.join(testAgentDir, `${agentName}.md`);
+  await fs.mkdir(testAgentDir, { recursive: true });
+  await fs.writeFile(agentPath, agentMdContent, 'utf-8');
 }
 
 /**
@@ -195,17 +172,17 @@ export async function createTestAssistantLlmConfig(
 /**
  * 创建测试用的对话历史文件
  * @param testHistoryDir 测试 history 目录
- * @param scenarioId 场景 ID
+ * @param agentId Agent 名称
  * @param historyId 历史 ID
  * @param history 历史数据
  */
 export async function createTestAssistantHistory(
   testHistoryDir: string,
-  scenarioId: string,
+  agentId: string,
   historyId: string,
   history: any
 ): Promise<void> {
-  const historyDir = path.join(testHistoryDir, scenarioId);
+  const historyDir = path.join(testHistoryDir, agentId);
   const historyPath = path.join(historyDir, `${historyId}.json`);
   await fs.mkdir(historyDir, { recursive: true });
   await fs.writeFile(historyPath, JSON.stringify(history, null, 2), 'utf-8');
@@ -239,7 +216,7 @@ export async function createTestAssistantSkill(
 /**
  * 创建测试用的 Memory JSONL 文件
  * @param testMemoryDir 测试 memory 目录
- * @param fileName JSONL 文件名 (如 '_global.jsonl' 或 '{scenarioId}.jsonl')
+ * @param fileName JSONL 文件名 (如 '_global.jsonl' 或 '{agentId}.jsonl')
  * @param memories 记忆条目数组
  */
 export async function createTestAssistantMemory(

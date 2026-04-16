@@ -31,13 +31,13 @@ vi.mock('crypto', () => ({
 const TEST_FILE = 'test_ai-memory.service';
 
 const GLOBAL_MEMORIES: Partial<AiMemory>[] = [
-  { id: 'global-mem-1', content: '用户偏好中文交流', tags: ['preference'], scenario_id: undefined },
-  { id: 'global-mem-2', content: '用户是程序员', tags: ['user-info'], scenario_id: undefined },
+  { id: 'global-mem-1', content: '用户偏好中文交流', tags: ['preference'], agent_id: undefined },
+  { id: 'global-mem-2', content: '用户是程序员', tags: ['user-info'], agent_id: undefined },
 ];
 
 const SCENARIO_MEMORIES: Partial<AiMemory>[] = [
-  { id: 'scenario-mem-1', content: '项目使用 TypeScript', tags: ['tech'], scenario_id: 'default' },
-  { id: 'scenario-mem-2', content: '遵循 Vue 3 Composition API', tags: ['tech', 'convention'], scenario_id: 'default' },
+  { id: 'scenario-mem-1', content: '项目使用 TypeScript', tags: ['tech'], agent_id: 'default' },
+  { id: 'scenario-mem-2', content: '遵循 Vue 3 Composition API', tags: ['tech', 'convention'], agent_id: 'default' },
 ];
 
 describe('AiMemoryService', () => {
@@ -79,7 +79,7 @@ describe('AiMemoryService', () => {
       await createTestAssistantMemory(memoryDir, '_global.jsonl', GLOBAL_MEMORIES);
       await createTestAssistantMemory(memoryDir, 'default.jsonl', SCENARIO_MEMORIES);
       await createTestAssistantMemory(memoryDir, 'coder.jsonl', [
-        { content: '喜欢 Rust', tags: ['preference'], scenario_id: 'coder' },
+        { content: '喜欢 Rust', tags: ['preference'], agent_id: 'coder' },
       ]);
 
       const memories = await service.listMemories();
@@ -93,8 +93,8 @@ describe('AiMemoryService', () => {
 
     it('should sort by created_at descending', async () => {
       await createTestAssistantMemory(memoryDir, '_global.jsonl', [
-        { content: 'old memory', tags: [], scenario_id: undefined, created_at: 1000 },
-        { content: 'new memory', tags: [], scenario_id: undefined, created_at: 2000 },
+        { content: 'old memory', tags: [], agent_id: undefined, created_at: 1000 },
+        { content: 'new memory', tags: [], agent_id: undefined, created_at: 2000 },
       ]);
 
       const memories = await service.listMemories();
@@ -108,7 +108,7 @@ describe('AiMemoryService', () => {
       const memory = await service.addMemory({ content: '新记忆', tags: ['test'] });
       expect(memory.content).toBe('新记忆');
       expect(memory.tags).toEqual(['test']);
-      expect(memory.scenario_id).toBeUndefined();
+      expect(memory.agent_id).toBeUndefined();
       expect(memory.id).toBeTruthy();
       expect(memory.created_at).toBeGreaterThan(0);
     });
@@ -117,9 +117,9 @@ describe('AiMemoryService', () => {
       const memory = await service.addMemory({
         content: '场景记忆',
         tags: [],
-        scenario_id: 'default',
+        agent_id: 'default',
       });
-      expect(memory.scenario_id).toBe('default');
+      expect(memory.agent_id).toBe('default');
     });
 
     it('should persist memory to JSONL file', async () => {
@@ -147,7 +147,7 @@ describe('AiMemoryService', () => {
       expect(deleted).toBe(false);
     });
 
-    it('should search in scenario file when scenarioId specified', async () => {
+    it('should search in scenario file when agentId specified', async () => {
       await createTestAssistantMemory(memoryDir, 'default.jsonl', SCENARIO_MEMORIES);
       await createTestAssistantMemory(memoryDir, '_global.jsonl', GLOBAL_MEMORIES);
 
@@ -156,7 +156,7 @@ describe('AiMemoryService', () => {
 
       // Scenario file should have 1 remaining
       const scenarioMemories = await service.listMemories('default');
-      const scenarioOnly = scenarioMemories.filter((m) => m.scenario_id === 'default');
+      const scenarioOnly = scenarioMemories.filter((m) => m.agent_id === 'default');
       expect(scenarioOnly.length).toBe(1);
     });
   });
@@ -173,7 +173,7 @@ describe('AiMemoryService', () => {
 
     it('should include tags in prompt', async () => {
       await createTestAssistantMemory(memoryDir, '_global.jsonl', [
-        { content: 'tagged memory', tags: ['tag1', 'tag2'], scenario_id: undefined },
+        { content: 'tagged memory', tags: ['tag1', 'tag2'], agent_id: undefined },
       ]);
 
       const prompt = await service.buildMemoryPrompt();
@@ -188,7 +188,7 @@ describe('AiMemoryService', () => {
     it('should filter by scenario when specified', async () => {
       await createTestAssistantMemory(memoryDir, '_global.jsonl', GLOBAL_MEMORIES);
       await createTestAssistantMemory(memoryDir, 'coder.jsonl', [
-        { content: 'Coder specific', tags: [], scenario_id: 'coder' },
+        { content: 'Coder specific', tags: [], agent_id: 'coder' },
       ]);
 
       const prompt = await service.buildMemoryPrompt('coder');

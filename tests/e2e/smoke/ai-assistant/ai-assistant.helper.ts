@@ -1,13 +1,13 @@
 /**
  * AI助手 E2E 测试辅助工具
  *
- * 提供测试环境初始化、场景/历史/配置数据创建与清理、导航等通用功能。
+ * 提供测试环境初始化、Agent/历史/配置数据创建与清理、导航等通用功能。
  * 所有 AI 助手相关的测试 spec 都应使用此辅助模块。
  *
  * AI助手数据目录结构：
- * - assistant/scenario/{id}.json     场景配置
+ * - assistant/agent/{name}.md       Agent 定义 (YAML front-matter + Markdown)
  * - assistant/llm/{name}.json        LLM配置
- * - assistant/history/{scenarioId}/{historyId}.json  对话历史
+ * - assistant/history/{agentId}/{historyId}.json  对话历史
  */
 
 import path from 'path';
@@ -15,19 +15,18 @@ import fs from 'fs';
 
 // AI助手工作子目录
 const ASSISTANT_DIR = 'assistant';
-const SCENARIO_DIR = 'scenario';
+const AGENT_DIR = 'agent';
 const LLM_DIR = 'llm';
 const HISTORY_DIR = 'history';
 
-/** 默认场景模板 */
-export const DEFAULT_AI_SCENARIO = {
-  role_id: 'default',
-  llm_config: 'default',
-  is_agent: false,
-  tools: [],
-  skills: [],
-  start: [],
-};
+/** 默认 Agent Markdown 内容模板 */
+export const DEFAULT_AI_AGENT_MD = `---
+name: default
+description: 默认助手
+tools: []
+---
+
+你是一个 AI 助手。`;
 
 /** 默认 LLM 配置模板 */
 export const DEFAULT_AI_LLM_CONFIG = {
@@ -47,10 +46,10 @@ export function getAssistantDir(workspace: string): string {
 }
 
 /**
- * 获取场景文件路径：assistant/scenario/{id}.json
+ * 获取 Agent 文件路径：assistant/agent/{name}.md
  */
-export function getScenarioFilePath(workspace: string, scenarioId: string): string {
-  return path.join(workspace, ASSISTANT_DIR, SCENARIO_DIR, `${scenarioId}.json`);
+export function getAgentFilePath(workspace: string, agentName: string): string {
+  return path.join(workspace, ASSISTANT_DIR, AGENT_DIR, `${agentName}.md`);
 }
 
 /**
@@ -61,31 +60,78 @@ export function getLlmConfigFilePath(workspace: string, configName: string): str
 }
 
 /**
- * 获取历史文件路径：assistant/history/{scenarioId}/{historyId}.json
+ * 获取历史文件路径：assistant/history/{agentId}/{historyId}.json
  */
 export function getHistoryFilePath(
   workspace: string,
-  scenarioId: string,
+  agentId: string,
   historyId: string
 ): string {
-  return path.join(workspace, ASSISTANT_DIR, HISTORY_DIR, scenarioId, `${historyId}.json`);
+  return path.join(workspace, ASSISTANT_DIR, HISTORY_DIR, agentId, `${historyId}.json`);
 }
 
 /**
- * 创建场景配置文件
+ * 创建 Agent 定义文件 (YAML front-matter + Markdown)
+ * @param workspace - 测试工作目录
+ * @param agentName - Agent 名称
+ * @param data - 覆盖字段 (会合并到 YAML front-matter)
  */
-export function createAiScenario(
+export function createAiAgent(
   workspace: string,
-  scenarioId: string,
+  agentName: string,
   data?: Record<string, unknown>
 ): void {
-  const scenarioDir = path.join(workspace, ASSISTANT_DIR, SCENARIO_DIR);
-  fs.mkdirSync(scenarioDir, { recursive: true });
+  const agentDir = path.join(workspace, ASSISTANT_DIR, AGENT_DIR);
+  fs.mkdirSync(agentDir, { recursive: true });
 
-  const scenarioData = { ...DEFAULT_AI_SCENARIO, ...data };
+  // 构建 Agent Markdown 内容
+  const name = agentName;
+  const description = (data?.description as string) || `E2E 测试 Agent: ${agentName}`;
+  const tools: string[] = (data?.tools as string[]) || [];
+  const model = (data?.model as string) || '';
+  const skills: string[] = (data?.skills as string[]) || [];
+  const enableMemory = data?.enable_memory as boolean | undefined;
+  const maxContextRounds = data?.max_context_rounds as number | undefined;
+
+  const lines: string[] = ['---'];
+  lines.push(`name: ${name}`);
+  lines.push(`description: ${description}`);
+
+  if (tools.length > 0) {
+    lines.push('tools:');
+    for (const tool of tools) {
+      lines.push(`  - ${tool}`);
+    }
+  } else {
+    lines.push('tools: []');
+  }
+
+  if (model) {
+    lines.push(`model: ${model}`);
+  }
+
+  if (skills.length > 0) {
+    lines.push('skills:');
+    for (const skill of skills) {
+      lines.push(`  - ${skill}`);
+    }
+  }
+
+  if (enableMemory !== undefined) {
+    lines.push(`enable_memory: ${enableMemory}`);
+  }
+
+  if (maxContextRounds !== undefined) {
+    lines.push(`max_context_rounds: ${maxContextRounds}`);
+  }
+
+  lines.push('---');
+  lines.push('');
+  lines.push(`你是 ${name}，一个 AI 助手。`);
+
   fs.writeFileSync(
-    getScenarioFilePath(workspace, scenarioId),
-    JSON.stringify(scenarioData, null, 2),
+    getAgentFilePath(workspace, agentName),
+    lines.join('\n') + '\n',
     'utf-8'
   );
 }
@@ -114,16 +160,16 @@ export function createAiLlmConfig(
  */
 export function createAiHistory(
   workspace: string,
-  scenarioId: string,
+  agentId: string,
   historyId: string,
   messages?: Array<{ role: string; content: string; name?: string }>
 ): void {
-  const historyDir = path.join(workspace, ASSISTANT_DIR, HISTORY_DIR, scenarioId);
+  const historyDir = path.join(workspace, ASSISTANT_DIR, HISTORY_DIR, agentId);
   fs.mkdirSync(historyDir, { recursive: true });
 
   const historyData = {
     id: historyId,
-    scenario_id: scenarioId,
+    agent_id: agentId,
     title: historyId,
     messages: messages || [],
     created_at: Date.now(),
@@ -131,24 +177,24 @@ export function createAiHistory(
   };
 
   fs.writeFileSync(
-    getHistoryFilePath(workspace, scenarioId, historyId),
+    getHistoryFilePath(workspace, agentId, historyId),
     JSON.stringify(historyData, null, 2),
     'utf-8'
   );
 }
 
 /**
- * 删除场景及其关联历史
+ * 删除 Agent 及其关联历史
  */
-export function removeAiScenario(workspace: string, scenarioId: string): void {
-  // 删除场景文件
-  const scenarioFile = getScenarioFilePath(workspace, scenarioId);
-  if (fs.existsSync(scenarioFile)) {
-    fs.unlinkSync(scenarioFile);
+export function removeAiAgent(workspace: string, agentName: string): void {
+  // 删除 Agent 文件
+  const agentFile = getAgentFilePath(workspace, agentName);
+  if (fs.existsSync(agentFile)) {
+    fs.unlinkSync(agentFile);
   }
 
   // 删除关联历史目录
-  const historyDir = path.join(workspace, ASSISTANT_DIR, HISTORY_DIR, scenarioId);
+  const historyDir = path.join(workspace, ASSISTANT_DIR, HISTORY_DIR, agentName);
   if (fs.existsSync(historyDir)) {
     fs.rmSync(historyDir, { recursive: true, force: true });
   }
@@ -165,7 +211,7 @@ export function removeAiLlmConfig(workspace: string, configName: string): void {
 }
 
 /**
- * 清理整个 assistant 目录（所有场景、LLM配置、历史）
+ * 清理整个 assistant 目录（所有 Agent、LLM配置、历史）
  *
  * 用于 beforeEach 中确保测试环境干净，避免残留数据干扰自动选择。
  */
@@ -177,15 +223,15 @@ export function cleanAllAiTestData(workspace: string): void {
 }
 
 /**
- * 清理指定测试数据（场景 + LLM配置）
+ * 清理指定测试数据（Agent + LLM配置）
  */
 export function cleanupAiTestData(
   workspace: string,
-  scenarioIds: string[],
+  agentNames: string[],
   llmConfigNames?: string[]
 ): void {
-  for (const id of scenarioIds) {
-    removeAiScenario(workspace, id);
+  for (const name of agentNames) {
+    removeAiAgent(workspace, name);
   }
   if (llmConfigNames) {
     for (const name of llmConfigNames) {
@@ -195,27 +241,27 @@ export function cleanupAiTestData(
 }
 
 /**
- * 通用环境设置：创建场景 + LLM配置 + 历史
+ * 通用环境设置：创建 Agent + LLM配置 + 历史
  */
 export function setupAiTestEnvironment(
   workspace: string,
   options?: {
-    scenarioId?: string;
+    agentId?: string;
     historyId?: string;
     llmConfigName?: string;
-    scenarioData?: Record<string, unknown>;
+    agentData?: Record<string, unknown>;
     historyMessages?: Array<{ role: string; content: string; name?: string }>;
   }
-): { scenarioId: string; historyId: string; llmConfigName: string } {
-  const scenarioId = options?.scenarioId || 'e2e_test_scenario';
+): { agentId: string; historyId: string; llmConfigName: string } {
+  const agentId = options?.agentId || 'e2e_test_agent';
   const historyId = options?.historyId || 'e2e_test_history';
   const llmConfigName = options?.llmConfigName || 'e2e_test_config';
 
   createAiLlmConfig(workspace, llmConfigName);
-  createAiScenario(workspace, scenarioId, options?.scenarioData);
-  createAiHistory(workspace, scenarioId, historyId, options?.historyMessages);
+  createAiAgent(workspace, agentId, options?.agentData);
+  createAiHistory(workspace, agentId, historyId, options?.historyMessages);
 
-  return { scenarioId, historyId, llmConfigName };
+  return { agentId, historyId, llmConfigName };
 }
 
 /**
@@ -253,7 +299,7 @@ export async function navigateToAiAssistant(page: any): Promise<void> {
  * 侧边栏通用选择操作：点击 el-select 并选择指定选项
  *
  * Element Plus 的 el-select 需要精确坐标点击才能触发。
- * 用于 ChatInput 中的场景/模型选择器。
+ * 用于 ChatInput 中的 Agent/模型选择器。
  *
  * @param page - Playwright Page 对象
  * @param ariaLabel - 目标 select 的 aria-label
@@ -349,18 +395,18 @@ export async function fillChatInput(page: any, text: string): Promise<void> {
 }
 
 /**
- * 通用前置：通过 ChatInput 选择场景，点击侧边栏历史项，等待对话界面就绪
+ * 通用前置：通过 ChatInput 选择 Agent，点击侧边栏历史项，等待对话界面就绪
  *
  * @param page - Playwright Page 对象
- * @param scenarioId - 场景 ID
+ * @param agentId - Agent 名称
  * @param historyId - 历史 ID（也用作标题匹配文本）
  */
 export async function setupChatSession(
   page: any,
-  scenarioId: string,
+  agentId: string,
   historyId: string
 ): Promise<void> {
-  await selectOption(page, '选择场景', scenarioId);
+  await selectOption(page, '选择Agent', agentId);
   await clickHistoryItem(page, historyId);
   await page.waitForTimeout(1500);
 }

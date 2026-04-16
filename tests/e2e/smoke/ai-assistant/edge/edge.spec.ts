@@ -2,7 +2,7 @@ import { test, expect } from '../../../fixtures/app.fixture';
 import { waitForAppReady } from '../../../helpers/electron-helper';
 import {
   navigateToAiAssistant,
-  createAiScenario,
+  createAiAgent,
   createAiLlmConfig,
   createAiHistory,
   cleanupAiTestData,
@@ -11,27 +11,27 @@ import {
   fillChatInput,
 } from '../ai-assistant.helper';
 
-const SCENARIO_EDGE = 'e2e_edge_scenario';
+const AGENT_EDGE = 'e2e_edge_scenario';
 const HISTORY_EDGE = 'e2e_edge_history';
 const LLM_EDGE = 'e2e_edge_llm';
 
 test.describe('AI助手 - 边界与异常', () => {
   test.beforeEach(async ({ window, testWorkspace }) => {
     cleanAllAiTestData(testWorkspace);
-    createAiScenario(testWorkspace, SCENARIO_EDGE);
+    createAiAgent(testWorkspace, AGENT_EDGE);
     createAiLlmConfig(testWorkspace, LLM_EDGE);
-    createAiHistory(testWorkspace, SCENARIO_EDGE, HISTORY_EDGE);
+    createAiHistory(testWorkspace, AGENT_EDGE, HISTORY_EDGE);
 
     await waitForAppReady(window);
     await navigateToAiAssistant(window);
-    // 依赖自动选择第一个场景
+    // 依赖自动选择第一个Agent
     await window.waitForTimeout(2000);
     await clickHistoryItem(window, HISTORY_EDGE);
     await window.waitForTimeout(1500);
   });
 
   test.afterEach(async ({ testWorkspace }) => {
-    cleanupAiTestData(testWorkspace, [SCENARIO_EDGE], [LLM_EDGE]);
+    cleanupAiTestData(testWorkspace, [AGENT_EDGE], [LLM_EDGE]);
   });
 
   /**

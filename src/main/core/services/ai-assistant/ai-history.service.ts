@@ -18,7 +18,7 @@ export class AiHistoryService {
    * @returns 对话历史 ID 列表 (排序后)
    */
   async listHistories(agentId: string): Promise<string[]> {
-    this.validateAgentId(agentId);
+    this.validateScenarioId(agentId);
 
     const historyDir = path.join(wpath.assistantHistoryDir, agentId);
 
@@ -42,7 +42,7 @@ export class AiHistoryService {
   async listHistorySummaries(
     agentId: string
   ): Promise<Array<{ id: string; title: string; updated_at: number }>> {
-    this.validateAgentId(agentId);
+    this.validateScenarioId(agentId);
 
     const historyDir = path.join(wpath.assistantHistoryDir, agentId);
 
@@ -79,7 +79,7 @@ export class AiHistoryService {
 
   /**
    * 获取对话历史详情
-   * @param agentId - 场景 ID
+   * @param agentId - Agent 名称
    * @param historyId - 历史 ID
    * @returns 对话历史数据
    */
@@ -100,7 +100,7 @@ export class AiHistoryService {
 
   /**
    * 创建新对话历史
-   * @param agentId - 场景 ID
+   * @param agentId - Agent 名称
    * @param historyId - 历史 ID
    * @param data - 对话历史数据
    */
@@ -127,7 +127,7 @@ export class AiHistoryService {
     try {
       await fs.mkdir(historyDir, { recursive: true, mode: 0o755 });
       await fs.writeFile(historyPath, JSON.stringify(data, null, 2), 'utf-8');
-      logger.info(`History '${historyId}' created for scenario '${agentId}'`);
+      logger.info(`History '${historyId}' created for agent '${agentId}'`);
     } catch (err) {
       logger.error(`Failed to create history ${historyId}`, err);
       throw new Error(`Failed to create history '${historyId}': ${err}`);
@@ -136,7 +136,7 @@ export class AiHistoryService {
 
   /**
    * 保存对话历史 (覆盖写入)
-   * @param agentId - 场景 ID
+   * @param agentId - Agent 名称
    * @param historyId - 历史 ID
    * @param data - 对话历史数据
    */
@@ -156,7 +156,7 @@ export class AiHistoryService {
 
   /**
    * 删除对话历史
-   * @param agentId - 场景 ID
+   * @param agentId - Agent 名称
    * @param historyId - 历史 ID
    */
   async deleteHistory(agentId: string, historyId: string): Promise<void> {
@@ -167,7 +167,7 @@ export class AiHistoryService {
 
     try {
       await fs.unlink(historyPath);
-      logger.info(`History '${historyId}' deleted for scenario '${agentId}'`);
+      logger.info(`History '${historyId}' deleted for agent '${agentId}'`);
     } catch (err) {
       logger.error(`Failed to delete history ${historyId}`, err);
       throw new Error(`Failed to delete history '${historyId}': ${err}`);
@@ -176,7 +176,7 @@ export class AiHistoryService {
 
   /**
    * 检查对话历史是否存在
-   * @param agentId - 场景 ID
+   * @param agentId - Agent 名称
    * @param historyId - 历史 ID
    * @returns 是否存在
    */
@@ -196,7 +196,7 @@ export class AiHistoryService {
 
   /**
    * 获取历史文件路径
-   * @param agentId - 场景 ID
+   * @param agentId - Agent 名称
    * @param historyId - 历史 ID
    * @returns 完整文件路径
    */

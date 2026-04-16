@@ -66,6 +66,11 @@ export class AiAgentService {
       const content = await fs.readFile(agentPath, 'utf-8');
       return this.parseAgentMd(content);
     } catch (err) {
+      // 重新抛出验证错误（包含 "must contain" 等信息）
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes('must contain') || message.includes('Invalid')) {
+        throw err;
+      }
       logger.error(`Failed to get agent ${name}`, err);
       throw new Error(`Agent '${name}' not found`);
     }
@@ -250,6 +255,9 @@ export class AiAgentService {
    *   key:
    *     - item1
    *     - item2
+   *
+   * 仅匹配紧跟在 key 行之后的缩进行（以空白开头的行），
+   * 遇到非缩进行（新 key 或空行后的非列表行）时停止。
    */
   private extractYamlList(yaml: string, key: string): string[] {
     const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -257,13 +265,21 @@ export class AiAgentService {
     const match = yaml.match(regex);
     if (!match) return [];
 
-    // 提取列表项
+    // 提取 key 行之后的所有内容
     const afterKey = yaml.slice(match.index! + match[0].length);
-    const listRegex = /^\s+-\s+(.+)$/gm;
     const items: string[] = [];
-    let listMatch;
-    while ((listMatch = listRegex.exec(afterKey)) !== null) {
-      items.push(listMatch[1].trim());
+    const lines = afterKey.split('\n');
+
+    for (const line of lines) {
+      // 空行或非缩进行表示列表结束
+      if (line.trim() === '') continue;
+      if (!line.startsWith(' ') && !line.startsWith('\t')) break;
+
+      // 匹配列表项: "  - value"
+      const listMatch = line.match(/^\s+-\s+(.+)$/);
+      if (listMatch) {
+        items.push(listMatch[1].trim());
+      }
     }
     return items;
   }
