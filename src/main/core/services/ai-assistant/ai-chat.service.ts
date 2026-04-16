@@ -76,11 +76,26 @@ export class AiChatService {
   }
 
   /**
+   * 规范化 Base URL，去除 OpenAI SDK 会自动拼接的路径后缀
+   */
+  private normalizeBaseUrl(url: string): string {
+    // OpenAI SDK 会自动拼接 /chat/completions 等路径，需要去掉用户误填的部分
+    const suffixes = ['/chat/completions', '/chat/completions/'];
+    for (const suffix of suffixes) {
+      if (url.endsWith(suffix)) {
+        return url.slice(0, -suffix.length);
+      }
+    }
+    return url;
+  }
+
+  /**
    * 初始化 OpenAI 客户端
    */
   private initClient(): void {
+    const baseURL = this.normalizeBaseUrl(this.llmConfig.base_url);
     const clientConfig: any = {
-      baseURL: this.llmConfig.base_url,
+      baseURL,
       apiKey: this.llmConfig.key || 'dummy-key',
     };
 
@@ -436,9 +451,17 @@ export class AiChatService {
 
       yield { type: 'done', messages: this.messages };
       logger.info('Chat completed');
-    } catch (err) {
-      logger.error('Chat failed', err);
-      yield { type: 'error', message: (err as Error).message };
+    } catch (err: any) {
+      const status = err?.status || err?.statusCode;
+      // 404 通常意味着 base_url 配置错误（如误填了 /chat/completions 后缀）
+      if (status === 404) {
+        const hint = '模型 Base URL 配置错误，请检查（不应包含 /chat/completions 等路径后缀）';
+        logger.error(`Chat failed: ${hint}`, err);
+        yield { type: 'error', message: hint };
+      } else {
+        logger.error('Chat failed', err);
+        yield { type: 'error', message: (err as Error).message };
+      }
     }
   }
 

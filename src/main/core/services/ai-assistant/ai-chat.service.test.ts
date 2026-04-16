@@ -374,4 +374,33 @@ describe('AiChatService', () => {
       expect(service.getAgent().name).toBe('default');
     });
   });
+
+  describe('normalizeBaseUrl', () => {
+    it('should strip /chat/completions suffix', () => {
+      const config: AiLLMConfig = {
+        ...mockConfig,
+        base_url: 'https://api.example.com/v1/chat/completions',
+      };
+      const svc = new AiChatService(config, mockAgent);
+      // 通过 updateLlmConfig 触发 initClient，验证 normalize 生效
+      // 直接调用私有方法验证
+      expect(svc['normalizeBaseUrl']('https://api.example.com/v1/chat/completions'))
+        .toBe('https://api.example.com/v1');
+    });
+
+    it('should strip /chat/completions/ suffix with trailing slash', () => {
+      expect(service['normalizeBaseUrl']('https://api.example.com/v1/chat/completions/'))
+        .toBe('https://api.example.com/v1');
+    });
+
+    it('should not modify url without suffix', () => {
+      expect(service['normalizeBaseUrl']('https://api.example.com/v1'))
+        .toBe('https://api.example.com/v1');
+    });
+
+    it('should not modify url with other paths', () => {
+      expect(service['normalizeBaseUrl']('https://api.example.com/v1/models'))
+        .toBe('https://api.example.com/v1/models');
+    });
+  });
 });
