@@ -13,11 +13,8 @@
 ### 2.1 任务执行流程（Agent 模式）
 
 1. **用户输入**：用户在 UI 选择“操作助手”场景并输入指令。
-2. **场景加载**：应用读取 `scenario/*.json`，注入对应的 `role` Markdown 内容，默认为default.json
-3. **Streaming Tool-use Loop 循环**：
-    - **Thought**: LLM 分析指令，决定调用哪个 `tool` 或 `skill`。
-    - **Action**: 执行工具（如 `git-bash` 获取目录结构）。
-    - **Observation**: 获取执行结果。
+2. **场景加载**：应用读取 `scenario/*.json`，注入对应的 `role` Markdown 内容，默认为default.json。
+3. **Streaming Tool-use Loop 循环**，LLM LOOP 输出内容或决定工具调用。
 4. **最终输出**：LLM 汇总结果，展示给用户。
 
 
