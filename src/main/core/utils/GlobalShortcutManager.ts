@@ -4,7 +4,7 @@
  * 管理 Electron 全局快捷键的注册和注销。
  * 当前仅注册 Ctrl+Q 用于唤起快捷模式：
  * - 窗口隐藏/最小化时：显示并聚焦窗口
- * - 窗口可见时：通知渲染进程切换到快捷模式
+ * - 窗口可见时：隐藏窗口到托盘
  */
 
 import { BrowserWindow, globalShortcut } from 'electron';
@@ -48,7 +48,7 @@ export class GlobalShortcutManager {
   /**
    * 处理 Ctrl+Q 快捷键回调
    *
-   * 窗口不可见时显示并聚焦；窗口可见时通知渲染进程切换到快捷模式。
+   * 窗口不可见时显示并聚焦；窗口可见时隐藏到托盘。
    */
   private handleQuickModeShortcut(): void {
     if (!this.mainWindow) return;
@@ -62,9 +62,9 @@ export class GlobalShortcutManager {
       this.mainWindow.focus();
       logger.info('Quick mode shortcut: window restored');
     } else {
-      // 窗口可见：通知渲染进程切换到快捷模式
-      this.mainWindow.webContents.send('switch-to-quick-mode');
-      logger.info('Quick mode shortcut: switch to quick mode');
+      // 窗口可见：隐藏到托盘
+      this.mainWindow.hide();
+      logger.info('Quick mode shortcut: window hidden');
     }
   }
 }

@@ -36,6 +36,7 @@ describe('GlobalShortcutManager', () => {
       show: vi.fn(),
       focus: vi.fn(),
       restore: vi.fn(),
+      hide: vi.fn(),
       webContents: {
         send: vi.fn(),
       },
@@ -101,7 +102,7 @@ describe('GlobalShortcutManager', () => {
       expect(mockMainWindow.focus).toHaveBeenCalled();
     });
 
-    it('should send switch-to-quick-mode IPC when window is visible', () => {
+    it('should hide window when window is visible', () => {
       mockMainWindow.isVisible.mockReturnValue(true);
       mockMainWindow.isMinimized.mockReturnValue(false);
       manager.register(mockMainWindow);
@@ -109,7 +110,7 @@ describe('GlobalShortcutManager', () => {
       const callback = mockGlobalShortcut.register.mock.calls[0][1];
       callback();
 
-      expect(mockMainWindow.webContents.send).toHaveBeenCalledWith('switch-to-quick-mode');
+      expect(mockMainWindow.hide).toHaveBeenCalled();
       expect(mockMainWindow.show).not.toHaveBeenCalled();
     });
 
