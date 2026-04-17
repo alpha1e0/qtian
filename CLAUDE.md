@@ -24,7 +24,7 @@
 - `src/main/`: 主进程，核心业务逻辑（禁止在此处写 UI 代码）。
 - `src/renderer/`: 渲染进程，前端UI实现，VUE实现。
 - `src/preload/`：预加载脚本。
-- `docs/specs/`: 需求文档。
+- `docs/specs/`: 需求文档（req）、设计文档（design）。
 - `docs/usage/`: 手册文档。
 - `data/`：存放数据文件，例如数据库初始化sql语句
 - `tests/e2e`：存放冒烟、集成自动化测试脚本
