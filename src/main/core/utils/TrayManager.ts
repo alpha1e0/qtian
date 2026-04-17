@@ -83,15 +83,15 @@ export class TrayManager {
   /**
    * 解析托盘图标路径
    *
-   * 开发环境和生产环境分别从不同位置加载图标。
+   * 开发环境：编译输出在 dist-electron/main/，回退两级到项目根目录的 public/
+   * 生产环境：图标在 resources 目录下
    */
   private resolveIconPath(): string {
     if (app.isPackaged) {
-      // 生产环境：图标在 resources 目录下
       return path.join(process.resourcesPath, TRAY_ICON_FILENAME);
     }
-    // 开发环境：图标在 public 目录下
-    return path.join(__dirname, '../../../public', TRAY_ICON_FILENAME);
+    // __dirname = dist-electron/main/，需回退两级到项目根目录
+    return path.join(__dirname, '../../public', TRAY_ICON_FILENAME);
   }
 
   /**
