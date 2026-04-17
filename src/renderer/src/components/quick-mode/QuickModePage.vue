@@ -1,5 +1,8 @@
 <template>
   <div class="quick-mode-container">
+    <!-- 顶部拖拽条 -->
+    <div class="drag-bar"></div>
+
     <!-- 初始状态：仅输入框 -->
     <div v-if="pageState === 'initial'" class="initial-state">
       <div class="chat-input-section">
@@ -243,15 +246,28 @@ export default {
     window.electron.ipcRendererOn('qtian:ai:chat-chunk', this.onChatChunk);
     window.electron.ipcRendererOn('qtian:ai:chat-complete', this.onChatComplete);
     window.electron.ipcRendererOn('qtian:ai:chat-error', this.onChatError);
+
+    document.addEventListener('keydown', this.handleEsc);
   },
 
   unmounted() {
     window.electron.ipcRendererOff('qtian:ai:chat-chunk', this.onChatChunk);
     window.electron.ipcRendererOff('qtian:ai:chat-complete', this.onChatComplete);
     window.electron.ipcRendererOff('qtian:ai:chat-error', this.onChatError);
+
+    document.removeEventListener('keydown', this.handleEsc);
   },
 
   methods: {
+    /**
+     * ESC 键隐藏窗口
+     */
+    handleEsc(event) {
+      if (event.key === 'Escape') {
+        window.electron.closeWindow();
+      }
+    },
+
     /**
      * 加载 Agent 列表
      */
@@ -501,8 +517,19 @@ export default {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  overflow-y: auto;
+  overflow: hidden;
   -webkit-app-region: drag;
+}
+
+.drag-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 12px;
+  -webkit-app-region: drag;
+  cursor: default;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.85), transparent);
 }
 
 /* ===== 初始状态 ===== */
