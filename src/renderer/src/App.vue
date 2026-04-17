@@ -18,13 +18,17 @@ export default {
   font-family: Avenir, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #f8f8f8;
+  background: transparent;
 }
 
 html,
-body,
-#app {
+body {
   height: 100%;
   margin: 0;
+  background: transparent;
+}
+
+#app {
+  height: 100%;
 }
 </style>

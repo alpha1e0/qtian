@@ -21,7 +21,7 @@ export function registerCommonHandlers(): void {
     logger.debug('Get current config');
     return {
       aiAssistant: {
-        defaultScenario: config.aiAssistant.defaultScenario,
+        defaultAgent: config.aiAssistant.defaultAgent,
         defaultLlmConfig: config.aiAssistant.defaultLlmConfig,
       },
     };

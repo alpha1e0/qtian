@@ -1,90 +1,135 @@
-# 开发计划：系统托盘最小化
+# 开发计划：快捷模式（Quick Mode）
 
 ## 任务
 
-实现点击窗口右上角"关闭"按钮时，应用不退出，而是最小化到系统托盘。托盘图标右键菜单包含"显示主窗口"和"退出"选项。
+在现有 Homepage 基础上改造实现快捷模式，用户打开应用默认进入快捷模式。
 
 ## 受影响的文档
 
-- `docs/specs/001_index.md` — 新增公共模块说明（可选）
 - `docs/plan.md` — 本文件
+- `docs/changelog.md` — 变更日志
 
 ## 需求分析
 
-### 当前状态
+### 参考文档
+- `docs/specs/003_quick-mode.md` — 快捷模式需求定义
 
-- `src/main/index.ts` 中 `window-all-closed` 事件直接调用 `app.quit()`
-- 无系统托盘（Tray）功能
-- 无窗口 close 事件拦截
-- 项目无自定义图标资源（仅有 `public/favicon.ico`）
+### 核心需求
+1. **初始状态**：仅包含输入框（textarea + Agent 选择 + 模型选择 + 发送按钮），无侧边栏、无菜单
+2. **回答状态**：用户问题只读展示 + 分隔线 + AI 回答（Markdown） + "完整对话"按钮
+3. **`Ctrl+Q` 全局快捷键**：后台/托盘时唤起窗口；前台时切换为快捷模式
+4. **对话不保存**：快捷模式对话为临时性的，不持久化到 history 文件
+5. **可转换为普通模式**：点击"完整对话"按钮，将当前消息转为普通模式对话
 
-### 目标状态
-
-1. 点击窗口"关闭"按钮 → 隐藏窗口（不退出）
-2. 系统托盘显示应用图标
-3. 托盘右键菜单：显示主窗口 / 退出
-4. 托盘双击：显示主窗口
-5. 点击"退出"才真正退出应用
+### 后端接口
+快捷模式与普通模式后端接口完全一致，不需要后端改动。快捷模式使用临时 historyId（如 `__quick__`），不调用 `createHistory`/`saveHistory`。
 
 ## 设计方案
 
-### 新增模块：TrayManager
+### 1. 文件变更总览
 
-**文件**: `src/main/core/utils/TrayManager.ts`
+| 文件 | 变更类型 | 说明 |
+|------|----------|------|
+| `src/renderer/src/components/homepage/` | **重命名目录** → `quick-mode/` | |
+| `src/renderer/src/components/quick-mode/QuickModePage.vue` | **新建**（替代 Homepage.vue） | 快捷模式页面 |
+| `src/renderer/src/components/MainComponent.vue` | **修改** | 默认组件改为 QuickModePage，处理 Ctrl+Q |
+| `src/main/index.ts` | **修改** | 注册全局快捷键 Ctrl+Q |
+| `src/main/core/utils/GlobalShortcutManager.ts` | **新建** | 全局快捷键管理模块 |
+| `src/main/core/utils/GlobalShortcutManager.test.ts` | **新建** | 单元测试 |
 
-独立模块，封装托盘图标的创建、菜单管理、与主窗口的联动逻辑。
+### 2. QuickModePage.vue 设计
 
+**两种页面状态**：
+
+```
+状态机：initial ←→ answering
+
+initial:     [Textarea + Agent/模型选择 + 发送按钮]
+                 ↓ 用户点击发送
+answering:   [用户问题（只读）]
+             [─────────分隔线─────────]
+             [AI 回答（Markdown 渲染）]
+             [                    完整对话 →]
+                 ↓ 点击"完整对话"
+             转换为普通模式
+```
+
+**核心逻辑**：
+- `initial` 状态：居中布局，仅显示输入区域，类似现有 Homepage
+- `answering` 状态：上方只读展示用户问题，分隔线后展示 AI 回答流式输出
+- 发送消息时调用 `initChat` + `chatMessage`，监听 `chat-chunk`/`chat-complete`/`chat-error` 事件
+- "完整对话"按钮：创建真实 history，将当前消息写入，导航到 AiAssistantPage
+- 从其他页面切回时重置为 `initial` 状态
+
+**Props 传递**（从 MainComponent）：
+- `initialMessage`：从普通模式返回时无初始消息
+- 无需 `initialAgentId`/`initialLlmConfig`，快捷模式自行管理
+
+### 3. MainComponent.vue 修改
+
+```diff
+- import Homepage from './homepage/Homepage.vue';
++ import QuickModePage from './quick-mode/QuickModePage.vue';
+
+  components: {
+-   Homepage,
++   QuickModePage,
+    AiAssistantPage,
+  },
+
+  data() {
+    return {
+-     currentComponent: 'Homepage',
++     currentComponent: 'QuickModePage',
+    };
+  },
+```
+
+- 新增 `switchToQuickMode()` 方法
+- 新增 IPC 监听 `switch-to-quick-mode`（主进程全局快捷键触发）
+- 快捷键 `Ctrl+Alt+H` → `Ctrl+Q`（或保留，视需求）
+- `handleNavigate` 新增 `quick-mode` 目标
+
+### 4. 全局快捷键 Ctrl+Q
+
+**GlobalShortcutManager.ts**：
 ```typescript
-class TrayManager {
-  private tray: Tray | null;
-  private mainWindow: BrowserWindow;
-
-  create(mainWindow: BrowserWindow): void    // 创建托盘图标+菜单
-  destroy(): void                             // 销毁托盘
-  updateTooltip(tooltip: string): void        // 更新提示文字
+class GlobalShortcutManager {
+  register(mainWindow: BrowserWindow): void  // 注册 Ctrl+Q
+  unregister(): void                          // 注销快捷键
 }
 ```
 
-**职责**：
-- 创建系统托盘图标
-- 构建右键上下文菜单（显示窗口、退出）
-- 双击托盘图标显示主窗口
-- 管理托盘生命周期
+**行为**：
+- 窗口隐藏/最小化 → `mainWindow.show()` + `mainWindow.focus()`
+- 窗口可见 → 发送 IPC `switch-to-quick-mode` 到渲染进程
 
-### 修改：src/main/index.ts
+**生命周期**：
+- `app.on('ready')` 中创建
+- `app.on('will-quit')` 中注销
 
-改动点：
-
-1. **导入 TrayManager**，在 `app.on('ready')` 中 `createWindow()` 之后创建托盘
-2. **拦截窗口 close 事件**：`mainWindow.on('close', ...)` 中 `event.preventDefault()` + `mainWindow.hide()`
-3. **修改 `window-all-closed`**：移除自动 `app.quit()`，仅保留 macOS 行为
-4. **引入 `isQuitting` 标志位**：在 `before-quit` 事件中设为 `true`，close 事件中检查此标志，确保真正退出时不会被拦截
-
-### 托盘图标资源
-
-使用 `public/favicon.ico` 作为托盘图标。如需适配不同平台（macOS 需要 .png 模板图标），可后续扩展。
-
-### 关键流程
+### 5. 转换为普通模式流程
 
 ```
-用户点击"关闭" → close 事件触发
-  → isQuitting? 否 → event.preventDefault() + mainWindow.hide()
-  → isQuitting? 是 → 正常关闭
-
-托盘右键 → 弹出菜单
-  → "显示主窗口" → mainWindow.show() + mainWindow.focus()
-  → "退出" → app.quit() → before-quit(isQuitting=true) → 窗口正常关闭 → 退出
-
-托盘双击 → mainWindow.show() + mainWindow.focus()
+QuickModePage                          AiAssistantPage
+  │                                        │
+  ├─ 用户点击"完整对话"                     │
+  ├─ createHistory(agentId, historyId)  ──→│ 创建持久化历史
+  ├─ saveHistory(agentId, historyId,    ──→│ 写入消息
+  │   { messages: [...] })                 │
+  ├─ emit('navigate', 'ai-assistant',      │
+  │   { agentId, historyId }) ─────────────→│ 接收导航
+  └─ 重置为 initial 状态                    │
 ```
 
 ## 分步清单
 
-- [ ] 步骤 1：新建 `src/main/core/utils/TrayManager.ts`，实现 TrayManager 类
-- [ ] 步骤 2：新建 `src/main/core/utils/TrayManager.test.ts`，编写单元测试
-- [ ] 步骤 3：修改 `src/main/index.ts`，集成 TrayManager，拦截 close 事件，添加退出标志位
-- [ ] 步骤 4：运行单元测试，确认通过
-- [ ] 步骤 5：手动验证（关闭按钮→托盘→右键菜单→退出）
+- [ ] 步骤 1：新建 `GlobalShortcutManager.ts` + 单元测试
+- [ ] 步骤 2：修改 `src/main/index.ts`，注册全局快捷键 Ctrl+Q
+- [ ] 步骤 3：重命名 `homepage/` → `quick-mode/`，新建 `QuickModePage.vue`
+- [ ] 步骤 4：修改 `MainComponent.vue`，集成 QuickModePage
+- [ ] 步骤 5：运行单元测试，手动验证
+- [ ] 步骤 6：更新 `docs/changelog.md`
 
 ## 当前障碍
 

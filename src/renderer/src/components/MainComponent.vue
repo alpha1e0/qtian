@@ -3,29 +3,31 @@
     :is="currentComponent"
     @navigate="handleNavigate"
     :initial-message="initialMessage"
-    :initial-scenario-id="initialScenarioId"
+    :initial-agent-id="initialAgentId"
     :initial-llm-config="initialLlmConfig"
+    :initial-history-id="initialHistoryId"
   />
 </template>
 
 <script>
-import Homepage from './homepage/Homepage.vue';
+import QuickModePage from './quick-mode/QuickModePage.vue';
 import AiAssistantPage from './ai-assistant/AiAssistantPage.vue';
 
 export default {
   name: 'MainComponent',
 
   components: {
-    Homepage,
+    QuickModePage,
     AiAssistantPage,
   },
 
   data() {
     return {
-      currentComponent: 'Homepage',
+      currentComponent: 'QuickModePage',
       pendingMessage: '',
-      pendingScenarioId: '',
+      pendingAgentId: '',
       pendingLlmConfig: '',
+      pendingHistoryId: '',
     };
   },
 
@@ -37,10 +39,10 @@ export default {
       return this.currentComponent === 'AiAssistantPage' ? this.pendingMessage : '';
     },
     /**
-     * 仅在切换到 AiAssistantPage 时传递初始场景 ID
+     * 仅在切换到 AiAssistantPage 时传递初始 Agent ID
      */
-    initialScenarioId() {
-      return this.currentComponent === 'AiAssistantPage' ? this.pendingScenarioId : '';
+    initialAgentId() {
+      return this.currentComponent === 'AiAssistantPage' ? this.pendingAgentId : '';
     },
     /**
      * 仅在切换到 AiAssistantPage 时传递初始模型配置
@@ -48,24 +50,38 @@ export default {
     initialLlmConfig() {
       return this.currentComponent === 'AiAssistantPage' ? this.pendingLlmConfig : '';
     },
+    /**
+     * 仅在切换到 AiAssistantPage 时传递历史 ID（从快捷模式转来）
+     */
+    initialHistoryId() {
+      return this.currentComponent === 'AiAssistantPage' ? this.pendingHistoryId : '';
+    },
   },
 
   methods: {
     /**
-     * 切换到首页
+     * 切换到快捷模式
      */
-    switchToHomepage() {
-      this.currentComponent = 'Homepage';
-      this.pendingMessage = '';
-      this.pendingScenarioId = '';
-      this.pendingLlmConfig = '';
+    switchToQuickMode() {
+      this.currentComponent = 'QuickModePage';
+      this.clearPending();
     },
 
     /**
-     * 切换到 AI 助手
+     * 切换到 AI 助手（普通模式）
      */
     switchToAiAssistant() {
       this.currentComponent = 'AiAssistantPage';
+    },
+
+    /**
+     * 清空待传递参数
+     */
+    clearPending() {
+      this.pendingMessage = '';
+      this.pendingAgentId = '';
+      this.pendingLlmConfig = '';
+      this.pendingHistoryId = '';
     },
 
     /**
@@ -76,13 +92,14 @@ export default {
     handleNavigate(target, params) {
       console.log('导航到:', target, params);
       switch (target) {
-        case 'homepage':
-          this.switchToHomepage();
+        case 'quick-mode':
+          this.switchToQuickMode();
           break;
         case 'ai-assistant':
           this.pendingMessage = params?.message || '';
-          this.pendingScenarioId = params?.scenarioId || '';
+          this.pendingAgentId = params?.agentId || '';
           this.pendingLlmConfig = params?.llmConfig || '';
+          this.pendingHistoryId = params?.historyId || '';
           this.switchToAiAssistant();
           break;
         default:
@@ -95,10 +112,7 @@ export default {
      */
     handleKeyDown(event) {
       if (event.ctrlKey && event.altKey) {
-        if (event.key == 'h') {
-          this.switchToHomepage();
-        }
-        if (event.key == 'a') {
+        if (event.key === 'a') {
           this.switchToAiAssistant();
         }
       }
@@ -106,14 +120,14 @@ export default {
   },
 
   mounted() {
-    window.electron.ipcRendererOn('switch-to-homepage', this.switchToHomepage);
+    window.electron.ipcRendererOn('switch-to-quick-mode', this.switchToQuickMode);
     window.electron.ipcRendererOn('switch-to-aiassistant', this.switchToAiAssistant);
 
     document.addEventListener('keydown', this.handleKeyDown);
   },
 
   unmounted() {
-    window.electron.ipcRendererOff('switch-to-homepage', this.switchToHomepage);
+    window.electron.ipcRendererOff('switch-to-quick-mode', this.switchToQuickMode);
     window.electron.ipcRendererOff('switch-to-aiassistant', this.switchToAiAssistant);
 
     document.removeEventListener('keydown', this.handleKeyDown);

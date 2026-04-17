@@ -1,7 +1,11 @@
 <template>
   <div class="ai-assistant-page">
-    <!-- 左侧栏：仅对话历史列表 -->
-    <ChatSidebar
+    <!-- 模拟标题栏（frameless 窗口） -->
+    <TitleBar />
+
+    <div class="ai-assistant-body">
+      <!-- 左侧栏：仅对话历史列表 -->
+      <ChatSidebar
       v-if="selectedAgent"
       :histories="historySummaries"
       :selected-history="selectedHistory"
@@ -42,8 +46,9 @@
     </div>
 
     <!-- 未选择提示 -->
-    <div class="placeholder" v-else>
-      <el-empty description="请选择Agent并新建对话" />
+      <div class="placeholder" v-else>
+        <el-empty description="请选择Agent并新建对话" />
+      </div>
     </div>
   </div>
 </template>
@@ -52,12 +57,13 @@
 import ChatSidebar from './ChatSidebar.vue';
 import ChatContent from './ChatContent.vue';
 import ChatInput from './ChatInput.vue';
+import TitleBar from '../common/TitleBar.vue';
 import { ElMessage } from 'element-plus';
 
 export default {
   name: 'AiAssistantPage',
   emits: ['navigate'],
-  components: { ChatSidebar, ChatContent, ChatInput },
+  components: { ChatSidebar, ChatContent, ChatInput, TitleBar },
   props: {
     initialMessage: {
       type: String,
@@ -68,6 +74,11 @@ export default {
       default: '',
     },
     initialLlmConfig: {
+      type: String,
+      default: '',
+    },
+    /** 从快捷模式转换来时携带的历史 ID */
+    initialHistoryId: {
       type: String,
       default: '',
     },
@@ -102,11 +113,17 @@ export default {
     await this.loadLlmConfigs();
     await this.loadAgents();
 
-    // 若从首页传入了 Agent ID，优先使用
+    // 选择 Agent：传入参数 > qtian.json default_agent > 列表第一个
     if (this.initialAgentId && this.agents.includes(this.initialAgentId)) {
       this.selectedAgent = this.initialAgentId;
     } else if (this.agents.length > 0 && !this.selectedAgent) {
-      this.selectedAgent = this.agents[0];
+      const appConfig = await window.electron.getConfig();
+      const defaultAgent = appConfig?.aiAssistant?.defaultAgent;
+      if (defaultAgent && this.agents.includes(defaultAgent)) {
+        this.selectedAgent = defaultAgent;
+      } else {
+        this.selectedAgent = this.agents[0];
+      }
     }
 
     // 若从首页传入了模型配置，优先使用
@@ -116,6 +133,12 @@ export default {
 
     if (this.selectedAgent) {
       await this.loadHistorySummaries();
+    }
+
+    // 若从快捷模式转来携带了历史 ID，直接选中该历史
+    if (this.initialHistoryId) {
+      this.selectedHistory = this.initialHistoryId;
+      await this.initChat();
     }
 
     // 监听对话流式事件
@@ -171,7 +194,14 @@ export default {
           })
         );
         if (this.llmConfigs.length > 0 && !this.selectedLlmConfig) {
-          this.selectedLlmConfig = this.llmConfigs[0];
+          // 优先使用 qtian.json 中配置的 default_llm_config
+          const appConfig = await window.electron.getConfig();
+          const defaultConfig = appConfig?.aiAssistant?.defaultLlmConfig;
+          if (defaultConfig && this.llmConfigs.includes(defaultConfig)) {
+            this.selectedLlmConfig = defaultConfig;
+          } else {
+            this.selectedLlmConfig = this.llmConfigs[0];
+          }
         }
       } catch (err) {
         console.error('加载 LLM 配置失败:', err);
@@ -393,8 +423,17 @@ export default {
 <style scoped>
 .ai-assistant-page {
   display: flex;
+  flex-direction: column;
   height: 100vh;
   background: #f8f9fa;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.ai-assistant-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
 }
 
 .main-container {

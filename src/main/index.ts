@@ -5,7 +5,7 @@
 // 首先导入启动日志（在模块加载时立即执行）
 import './startup-log';
 
-import { app, protocol, BrowserWindow, Menu, dialog } from 'electron';
+import { app, protocol, BrowserWindow, Menu, dialog, ipcMain } from 'electron';
 import * as path from 'path';
 
 import { config, wpath } from './core/common/context';
@@ -14,6 +14,7 @@ import { VERSION } from './core/common/constants';
 import { createLogger, LogLevel } from './core/utils/logger';
 import { registerLocalResourceProtocol } from './core/utils/local-resource-protocol';
 import { TrayManager } from './core/utils/TrayManager';
+import { GlobalShortcutManager } from './core/utils/GlobalShortcutManager';
 
 const logger = createLogger('background', LogLevel.INFO);
 
@@ -30,6 +31,7 @@ protocol.registerSchemesAsPrivileged([
 
 let mainWindow: BrowserWindow | null = null;
 const trayManager = new TrayManager();
+const shortcutManager = new GlobalShortcutManager();
 
 /** 标志位：区分"关闭到托盘"和"真正退出" */
 let isQuitting = false;
@@ -42,6 +44,8 @@ async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1600,
     height: 900,
+    frame: false,
+    transparent: true,
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       nodeIntegration: process.env.ELECTRON_NODE_INTEGRATION === 'true',
@@ -98,9 +102,9 @@ function createMenu(): void {
       label: '功能',
       submenu: [
         {
-          label: '首页',
+          label: '快捷模式',
           click: () => {
-            mainWindow?.webContents.send('switch-to-homepage');
+            mainWindow?.webContents.send('switch-to-quick-mode');
           },
         },
         {
@@ -129,6 +133,31 @@ function createMenu(): void {
 }
 
 /**
+ * 注册窗口控制 IPC handlers（frameless 窗口需要自定义标题栏控制）
+ */
+function registerWindowControlHandlers() {
+  ipcMain.handle('qtian:window-minimize', () => {
+    mainWindow?.minimize();
+  });
+
+  ipcMain.handle('qtian:window-maximize', () => {
+    if (mainWindow?.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow?.maximize();
+    }
+  });
+
+  ipcMain.handle('qtian:window-close', () => {
+    mainWindow?.close();
+  });
+
+  ipcMain.handle('qtian:window-is-maximized', () => {
+    return mainWindow?.isMaximized() ?? false;
+  });
+}
+
+/**
  * Read configuration file
  */
 async function readConfig(): Promise<void> {
@@ -151,9 +180,10 @@ app.on('window-all-closed', () => {
   }
 });
 
-// 标记真正退出，避免 close 事件拦截
+// 标记真正退出，避免 close 事件拦截；同时注销全局快捷键
 app.on('before-quit', () => {
   isQuitting = true;
+  shortcutManager.unregister();
 });
 
 app.on('activate', () => {
@@ -167,6 +197,7 @@ app.on('ready', async () => {
 
   registerLocalResourceProtocol(protocol);
   registerAllHandlers();
+  registerWindowControlHandlers();
 
   if (isDevelopment && !process.env.IS_TEST) {
     logger.info('Development mode - Vue Devtools available');
@@ -174,11 +205,13 @@ app.on('ready', async () => {
 
   readConfig();
   await createWindow();
-  createMenu();
+  // frameless 窗口隐藏应用菜单栏，通过托盘和快捷键导航
+  Menu.setApplicationMenu(null);
 
   // 创建系统托盘（需要 mainWindow 已创建）
   if (mainWindow) {
     trayManager.create(mainWindow);
+    shortcutManager.register(mainWindow);
   }
 });
 

@@ -190,6 +190,12 @@ const api = {
   // Generic IPC invoke (for channels not covered by namespaced APIs)
   invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
 
+  // Window control APIs (for frameless window)
+  minimizeWindow: () => ipcRenderer.invoke('qtian:window-minimize'),
+  maximizeWindow: () => ipcRenderer.invoke('qtian:window-maximize'),
+  closeWindow: () => ipcRenderer.invoke('qtian:window-close'),
+  isMaximized: () => ipcRenderer.invoke('qtian:window-is-maximized'),
+
   // Generic IPC event listeners
   ipcRendererOn: (channel, callback) => {
     const wrapper = (event, ...args) => callback(...args);
