@@ -13,6 +13,7 @@ import { registerAllHandlers } from './core/ipc/handlers';
 import { VERSION } from './core/common/constants';
 import { createLogger, LogLevel } from './core/utils/logger';
 import { registerLocalResourceProtocol } from './core/utils/local-resource-protocol';
+import { TrayManager } from './core/utils/TrayManager';
 
 const logger = createLogger('background', LogLevel.INFO);
 
@@ -28,6 +29,10 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let mainWindow: BrowserWindow | null = null;
+const trayManager = new TrayManager();
+
+/** 标志位：区分"关闭到托盘"和"真正退出" */
+let isQuitting = false;
 
 /**
  * Create the browser window
@@ -53,6 +58,15 @@ async function createWindow() {
     const indexPath = path.join(__dirname, '../renderer/index.html');
     mainWindow.loadFile(indexPath);
   }
+
+  // 拦截关闭事件：非真正退出时隐藏到托盘
+  mainWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      mainWindow?.hide();
+      logger.info('Window hidden to system tray');
+    }
+  });
 }
 
 /**
@@ -130,11 +144,16 @@ async function readConfig(): Promise<void> {
   }
 }
 
-// Quit when all windows are closed.
+// Quit when all windows are closed (macOS 标准行为保留)
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+// 标记真正退出，避免 close 事件拦截
+app.on('before-quit', () => {
+  isQuitting = true;
 });
 
 app.on('activate', () => {
@@ -154,8 +173,13 @@ app.on('ready', async () => {
   }
 
   readConfig();
-  createWindow();
+  await createWindow();
   createMenu();
+
+  // 创建系统托盘（需要 mainWindow 已创建）
+  if (mainWindow) {
+    trayManager.create(mainWindow);
+  }
 });
 
 if (isDevelopment) {
