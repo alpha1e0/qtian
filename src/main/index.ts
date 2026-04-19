@@ -152,6 +152,26 @@ function registerWindowControlHandlers() {
     mainWindow?.close();
   });
 
+  ipcMain.on('qtian:window-drag', (_event, { deltaX, deltaY }: { deltaX: number; deltaY: number }) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const [x, y] = mainWindow.getPosition();
+      mainWindow.setPosition(x + deltaX, y + deltaY);
+    }
+  });
+
+  ipcMain.handle('qtian:window-resize', (_event, { width, height }: { width: number; height: number }) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const [x, y] = mainWindow.getPosition();
+      const [oldW, oldH] = mainWindow.getSize();
+      mainWindow.setBounds({
+        x: x + Math.round((oldW - width) / 2),
+        y: y + Math.round((oldH - height) / 2),
+        width,
+        height,
+      });
+    }
+  });
+
   ipcMain.handle('qtian:window-is-maximized', () => {
     return mainWindow?.isMaximized() ?? false;
   });

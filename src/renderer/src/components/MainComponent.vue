@@ -68,6 +68,17 @@ export default {
     },
 
     /**
+     * Ctrl+Q 切换行为：普通模式→快捷模式，快捷模式→隐藏窗口
+     */
+    handleCtrlQToggle() {
+      if (this.currentComponent === 'QuickModePage') {
+        window.electron.closeWindow();
+      } else {
+        this.switchToQuickMode();
+      }
+    },
+
+    /**
      * 切换到 AI 助手（普通模式）
      */
     switchToAiAssistant() {
@@ -122,6 +133,7 @@ export default {
   mounted() {
     window.electron.ipcRendererOn('switch-to-quick-mode', this.switchToQuickMode);
     window.electron.ipcRendererOn('switch-to-aiassistant', this.switchToAiAssistant);
+    window.electron.ipcRendererOn('qtian:ctrl-q-toggle', this.handleCtrlQToggle);
 
     document.addEventListener('keydown', this.handleKeyDown);
   },
@@ -129,6 +141,7 @@ export default {
   unmounted() {
     window.electron.ipcRendererOff('switch-to-quick-mode', this.switchToQuickMode);
     window.electron.ipcRendererOff('switch-to-aiassistant', this.switchToAiAssistant);
+    window.electron.ipcRendererOff('qtian:ctrl-q-toggle', this.handleCtrlQToggle);
 
     document.removeEventListener('keydown', this.handleKeyDown);
   },

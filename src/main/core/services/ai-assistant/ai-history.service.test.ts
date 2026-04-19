@@ -165,6 +165,13 @@ describe('AiHistoryService', () => {
       const history = await service.getHistory('test-scenario', 'save-test');
       expect(history.title).toBe('已更新');
     });
+
+    it('should auto-create directory when not exists', async () => {
+      // new-agent 目录不存在，saveHistory 应自动创建
+      await service.saveHistory('new-agent', 'quick-chat', mockHistory);
+      const history = await service.getHistory('new-agent', 'quick-chat');
+      expect(history.title).toBe('测试对话');
+    });
   });
 
   describe('deleteHistory', () => {

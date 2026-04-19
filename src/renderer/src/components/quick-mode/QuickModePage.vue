@@ -1,23 +1,23 @@
 <template>
   <div class="quick-mode-container">
-    <!-- 顶部拖拽条 -->
-    <div class="drag-bar"></div>
-
     <!-- 初始状态：仅输入框 -->
     <div v-if="pageState === 'initial'" class="initial-state">
       <div class="chat-input-section">
-        <!-- 右上角切换到普通模式按钮 -->
+        <!-- 顶部行：拖拽把手 + 右上角按钮 -->
         <div class="section-header">
-          <el-tooltip content="切换到完整对话模式" placement="left" :show-after="300">
-            <el-button
-              circle
-              size="small"
-              @click="handleSwitchToNormalMode"
-              aria-label="切换到完整对话模式"
-            >
-              <el-icon><FullScreen /></el-icon>
-            </el-button>
-          </el-tooltip>
+          <div class="drag-handle" @mousedown="handleDragStart"></div>
+          <div class="header-actions">
+            <el-tooltip content="切换到完整对话模式" placement="left" :show-after="300">
+              <el-button
+                circle
+                size="small"
+                @click="handleSwitchToNormalMode"
+                aria-label="切换到完整对话模式"
+              >
+                <el-icon><FullScreen /></el-icon>
+              </el-button>
+            </el-tooltip>
+          </div>
         </div>
         <el-input
           v-model="message"
@@ -76,9 +76,11 @@
 
     <!-- 回答状态：用户问题 + AI回答 -->
     <div v-else class="answering-state">
-      <!-- 右上角切换到普通模式按钮 -->
+      <!-- 顶部行：拖拽把手 + 右上角按钮 -->
       <div class="section-header">
-        <el-tooltip content="切换到完整对话模式" placement="left" :show-after="300">
+        <div class="drag-handle"></div>
+        <div class="header-actions">
+          <el-tooltip content="切换到完整对话模式" placement="left" :show-after="300">
           <el-button
             circle
             size="small"
@@ -89,9 +91,8 @@
             <el-icon><FullScreen /></el-icon>
           </el-button>
         </el-tooltip>
+        </div>
       </div>
-
-      <!-- 分隔线 -->
       <el-divider />
 
       <!-- 用户问题（只读卡片） -->
@@ -188,6 +189,16 @@ function generateQuickHistoryId() {
   return `__quick_${Date.now()}__`;
 }
 
+/** 快捷模式窗口尺寸常量 */
+const QUICK_MODE_SIZES = {
+  /** 初始状态：仅输入框 */
+  initial: { width: 700, height: 260 },
+  /** 回答状态：用户问题 + AI回答 */
+  answering: { width: 760, height: 520 },
+  /** 普通模式窗口尺寸 */
+  normal: { width: 1600, height: 900 },
+};
+
 export default {
   name: 'QuickModePage',
 
@@ -248,6 +259,9 @@ export default {
     window.electron.ipcRendererOn('qtian:ai:chat-error', this.onChatError);
 
     document.addEventListener('keydown', this.handleEsc);
+
+    // 进入快捷模式时调整窗口大小
+    await this.resizeWindow('initial');
   },
 
   unmounted() {
@@ -256,9 +270,51 @@ export default {
     window.electron.ipcRendererOff('qtian:ai:chat-error', this.onChatError);
 
     document.removeEventListener('keydown', this.handleEsc);
+
+    // 离开快捷模式时恢复窗口大小
+    const normalSize = QUICK_MODE_SIZES.normal;
+    window.electron.resizeWindow(normalSize.width, normalSize.height);
   },
 
   methods: {
+    /**
+     * 调整窗口大小
+     * @param {'initial' | 'answering'} state - 页面状态
+     */
+    async resizeWindow(state) {
+      const size = QUICK_MODE_SIZES[state];
+      if (size) {
+        await window.electron.resizeWindow(size.width, size.height);
+      }
+    },
+
+    /**
+     * 拖拽窗口：mousedown 启动，mousemove 移动，mouseup 结束
+     */
+    handleDragStart(event) {
+      if (event.button !== 0) return;
+      let lastX = event.screenX;
+      let lastY = event.screenY;
+
+      const onMouseMove = (e) => {
+        const deltaX = e.screenX - lastX;
+        const deltaY = e.screenY - lastY;
+        lastX = e.screenX;
+        lastY = e.screenY;
+        if (deltaX !== 0 || deltaY !== 0) {
+          window.electron.moveWindowBy(deltaX, deltaY);
+        }
+      };
+
+      const onMouseUp = () => {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+      };
+
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    },
+
     /**
      * ESC 键隐藏窗口
      */
@@ -355,6 +411,7 @@ export default {
       this.messages = [];
       this.pageState = 'answering';
       this.isChatting = true;
+      this.resizeWindow('answering');
 
       // 每次会话使用唯一的 historyId，避免后端 auto-save 加载旧消息
       this.currentHistoryId = generateQuickHistoryId();
@@ -440,6 +497,7 @@ export default {
      */
     handleReset() {
       this.pageState = 'initial';
+      this.resizeWindow('initial');
       this.userQuestion = '';
       this.assistantAnswer = '';
       this.isError = false;
@@ -518,18 +576,23 @@ export default {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  -webkit-app-region: drag;
 }
 
-.drag-bar {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 12px;
-  -webkit-app-region: drag;
-  cursor: default;
-  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.85), transparent);
+/* 卡片顶部拖拽把手（集成在卡片内） */
+.drag-handle {
+  width: 40px;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  cursor: grab;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.drag-handle:hover {
+  background: rgba(0, 0, 0, 0.3);
 }
 
 /* ===== 初始状态 ===== */
@@ -537,7 +600,7 @@ export default {
   width: 100%;
   display: flex;
   justify-content: center;
-  padding: 40px;
+  padding: 10px;
 }
 
 .chat-input-section {
@@ -553,8 +616,15 @@ export default {
 
 .section-header {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: center;
+  position: relative;
   margin-bottom: 4px;
+}
+
+.header-actions {
+  position: absolute;
+  right: 0;
 }
 
 .chat-input {
@@ -598,8 +668,8 @@ export default {
   background: rgba(255, 255, 255, 0.95);
   border-radius: 16px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  padding: 20px 24px;
-  margin: 20px;
+  padding: 12px 16px;
+  margin: 10px;
   max-height: 90vh;
   display: flex;
   flex-direction: column;

@@ -194,6 +194,8 @@ const api = {
   minimizeWindow: () => ipcRenderer.invoke('qtian:window-minimize'),
   maximizeWindow: () => ipcRenderer.invoke('qtian:window-maximize'),
   closeWindow: () => ipcRenderer.invoke('qtian:window-close'),
+  moveWindowBy: (deltaX: number, deltaY: number) => ipcRenderer.send('qtian:window-drag', { deltaX, deltaY }),
+  resizeWindow: (width: number, height: number) => ipcRenderer.invoke('qtian:window-resize', { width, height }),
   isMaximized: () => ipcRenderer.invoke('qtian:window-is-maximized'),
 
   // Generic IPC event listeners

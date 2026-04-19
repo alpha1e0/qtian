@@ -144,9 +144,11 @@ export class AiHistoryService {
     this.validateScenarioId(agentId);
     this.validateHistoryId(historyId);
 
-    const historyPath = this.getHistoryPath(agentId, historyId);
+    const historyDir = path.join(wpath.assistantHistoryDir, agentId);
+    const historyPath = path.join(historyDir, `${historyId}.json`);
 
     try {
+      await fs.mkdir(historyDir, { recursive: true, mode: 0o755 });
       await fs.writeFile(historyPath, JSON.stringify(data, null, 2), 'utf-8');
     } catch (err) {
       logger.error(`Failed to save history ${historyId}`, err);
