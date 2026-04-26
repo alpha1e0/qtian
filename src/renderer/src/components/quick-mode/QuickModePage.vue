@@ -76,76 +76,78 @@
 
     <!-- 回答状态：用户问题 + AI回答 -->
     <div v-else class="answering-state">
-      <!-- 顶部行：拖拽把手 + 右上角按钮 -->
-      <div class="section-header">
-        <div class="drag-handle"></div>
-        <div class="header-actions">
-          <el-tooltip content="切换到完整对话模式" placement="left" :show-after="300">
-          <el-button
-            circle
-            size="small"
-            @click="handleConvertToNormalMode"
-            :disabled="!assistantAnswer || isChatting"
-            aria-label="切换到完整对话模式"
-          >
-            <el-icon><FullScreen /></el-icon>
-          </el-button>
-        </el-tooltip>
+      <div class="answering-card">
+        <!-- 顶部行：拖拽把手 + 右上角按钮 -->
+        <div class="section-header">
+          <div class="drag-handle" @mousedown="handleDragStart"></div>
+          <div class="header-actions">
+            <el-tooltip content="切换到完整对话模式" placement="left" :show-after="300">
+              <el-button
+                circle
+                size="small"
+                @click="handleConvertToNormalMode"
+                :disabled="!assistantAnswer || isChatting"
+                aria-label="切换到完整对话模式"
+              >
+                <el-icon><FullScreen /></el-icon>
+              </el-button>
+            </el-tooltip>
+          </div>
         </div>
-      </div>
-      <el-divider />
+        <el-divider />
 
-      <!-- 用户问题（只读卡片） -->
-      <div class="question-card">
-        {{ userQuestion }}
-      </div>
-
-      <!-- AI 回答区域 -->
-      <div class="answer-area">
-        <div v-if="isChatting && !assistantAnswer" class="loading-indicator">
-          <el-icon class="is-loading"><Loading /></el-icon>
-          <span>思考中...</span>
+        <!-- 用户问题（只读卡片） -->
+        <div class="question-card">
+          {{ userQuestion }}
         </div>
-        <div v-if="assistantAnswer" class="answer-content" v-html="renderedAnswer"></div>
-        <div v-if="isError" class="error-message">{{ errorMessage }}</div>
-      </div>
 
-      <!-- 底部操作按钮（图标） -->
-      <div class="answer-actions" v-if="!isChatting">
-        <el-tooltip content="重新生成" placement="top" :show-after="500">
+        <!-- AI 回答区域 -->
+        <div class="answer-area">
+          <div v-if="isChatting && !assistantAnswer" class="loading-indicator">
+            <el-icon class="is-loading"><Loading /></el-icon>
+            <span>思考中...</span>
+          </div>
+          <div v-if="assistantAnswer" class="answer-content" v-html="renderedAnswer"></div>
+          <div v-if="isError" class="error-message">{{ errorMessage }}</div>
+        </div>
+
+        <!-- 底部操作按钮（图标） -->
+        <div class="answer-actions" v-if="!isChatting">
+          <el-tooltip content="重新生成" placement="top" :show-after="500">
+            <el-button
+              circle
+              size="small"
+              @click="handleRegenerate"
+              :disabled="!assistantAnswer"
+              aria-label="重新生成"
+            >
+              <el-icon><RefreshRight /></el-icon>
+            </el-button>
+          </el-tooltip>
+          <el-tooltip content="创建新对话" placement="top" :show-after="500">
+            <el-button
+              circle
+              size="small"
+              @click="handleReset"
+              aria-label="创建新对话"
+            >
+              <el-icon><Plus /></el-icon>
+            </el-button>
+          </el-tooltip>
+        </div>
+
+        <!-- 正在对话时显示停止按钮 -->
+        <div class="answer-actions" v-else>
           <el-button
+            type="danger"
             circle
             size="small"
-            @click="handleRegenerate"
-            :disabled="!assistantAnswer"
-            aria-label="重新生成"
+            @click="handleStopChat"
+            aria-label="停止"
           >
-            <el-icon><RefreshRight /></el-icon>
+            <el-icon><VideoPause /></el-icon>
           </el-button>
-        </el-tooltip>
-        <el-tooltip content="创建新对话" placement="top" :show-after="500">
-          <el-button
-            circle
-            size="small"
-            @click="handleReset"
-            aria-label="创建新对话"
-          >
-            <el-icon><Plus /></el-icon>
-          </el-button>
-        </el-tooltip>
-      </div>
-
-      <!-- 正在对话时显示停止按钮 -->
-      <div class="answer-actions" v-else>
-        <el-button
-          type="danger"
-          circle
-          size="small"
-          @click="handleStopChat"
-          aria-label="停止"
-        >
-          <el-icon><VideoPause /></el-icon>
-        </el-button>
+        </div>
       </div>
     </div>
   </div>
@@ -154,31 +156,14 @@
 <script>
 import { Loading, FullScreen, RefreshRight, Plus, VideoPause } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
+import MarkdownIt from 'markdown-it';
 
-/**
- * 简单的 Markdown 渲染（复用 ChatMessage 中的逻辑）
- */
+const md = new MarkdownIt({ html: false, linkify: true, typographer: true });
+
+/** 使用 markdown-it 渲染 Markdown 文本 */
 function renderMarkdown(text) {
   if (!text) return '';
-  let html = text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>');
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-  html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
-  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
-  html = html.replace(/\n\n/g, '</p><p>');
-  html = html.replace(/\n/g, '<br>');
-  html = '<p>' + html + '</p>';
-  html = html.replace(/<p>\s*<\/p>/g, '');
-  return html;
+  return md.render(text);
 }
 
 /**
@@ -192,9 +177,9 @@ function generateQuickHistoryId() {
 /** 快捷模式窗口尺寸常量 */
 const QUICK_MODE_SIZES = {
   /** 初始状态：仅输入框 */
-  initial: { width: 700, height: 260 },
+  initial: { width: 800, height: 260 },
   /** 回答状态：用户问题 + AI回答 */
-  answering: { width: 760, height: 520 },
+  answering: { width: 860, height: 620 },
   /** 普通模式窗口尺寸 */
   normal: { width: 1600, height: 900 },
 };
@@ -580,7 +565,7 @@ export default {
 
 /* 卡片顶部拖拽把手（集成在卡片内） */
 .drag-handle {
-  width: 40px;
+  width: 50px;
   height: 8px;
   background: rgba(0, 0, 0, 0.15);
   border-radius: 4px;
@@ -606,7 +591,7 @@ export default {
 .chat-input-section {
   width: 100%;
   max-width: 640px;
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.99);
   border-radius: 16px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   padding: 12px 20px 16px;
@@ -620,6 +605,7 @@ export default {
   justify-content: center;
   position: relative;
   margin-bottom: 4px;
+  height: 17px;
 }
 
 .header-actions {
@@ -664,23 +650,30 @@ export default {
 /* ===== 回答状态 ===== */
 .answering-state {
   width: 100%;
-  max-width: 720px;
-  background: rgba(255, 255, 255, 0.95);
+  display: flex;
+  justify-content: center;
+  padding: 10px;
+}
+
+.answering-card {
+  width: 100%;
+  max-width: 640px;
+  background: rgba(255, 255, 255, 0.99);
   border-radius: 16px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  padding: 12px 16px;
-  margin: 10px;
+  padding: 12px 20px 16px;
+  position: relative;
+  -webkit-app-region: no-drag;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
-  -webkit-app-region: no-drag;
 }
 
-.answering-state .section-header {
+.answering-card .section-header {
   margin-bottom: 0;
 }
 
-.answering-state :deep(.el-divider) {
+.answering-card :deep(.el-divider) {
   margin: 12px 0;
 }
 
@@ -789,7 +782,7 @@ export default {
   }
 
   .chat-input-section,
-  .answering-state {
+  .answering-card {
     max-width: 100%;
   }
 }

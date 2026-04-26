@@ -10,6 +10,7 @@ node_modules/
 dist/
 dist_electron/
 dist-electron/
+release/
 out/
 build/
 *.min.js
@@ -25,6 +26,7 @@ coverage/
 # E2E测试
 tests/test-results/
 tests/playwright-report/
+tests/e2e_test_results
 tests/e2e/.playwright/
 tests/e2e/changelogs
 .qtian-test/

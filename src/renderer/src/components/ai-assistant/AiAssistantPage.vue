@@ -171,7 +171,7 @@ export default {
       await this.loadHistorySummaries();
 
       // 创建新对话，以消息内容作为标题（截取前 20 个字符）
-      const title = message.length > 20 ? message.substring(0, 20) + '...' : message;
+      const title = message.length > 10 ? message.substring(0, 10) + '...' : message;
       await this.handleCreateHistory(title);
 
       // 发送初始消息
@@ -405,12 +405,13 @@ export default {
         });
       }
     },
-    onChatComplete({ messages }) {
+    async onChatComplete({ messages }) {
       this.messages = messages;
       this.isChatting = false;
-      // 刷新侧边栏摘要（时间可能更新）
-      this.loadHistorySummaries();
+      // 刷新侧边栏摘要（标题可能已由后端自动重命名）
+      await this.loadHistorySummaries();
     },
+
     onChatError({ error }) {
       this.isChatting = false;
       console.error('AI 对话出错:', error);

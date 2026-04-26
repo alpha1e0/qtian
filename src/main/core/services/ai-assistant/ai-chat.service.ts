@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import { ProxyAgent, fetch as undiciFetch } from 'undici';
 import { createLogger } from '@/core/utils/logger';
-import { AiLLMConfig, AiAgent, AiChatMessage, AiChatEvent, AiToolCall, AiSkill } from '@/core/common/config';
+import { AiLLMConfig, AiAgent, AiChatMessage, AiChatEvent, AiToolCall, AiSkill, AiChatHistory } from '@/core/common/config';
 import { ITool, ToolRegistry } from './tools';
 
 const logger = createLogger('AiChatService');
@@ -47,6 +47,12 @@ export class AiChatService {
 
   /** 中止标志 — 用于停止正在进行的对话 */
   private aborted = false;
+
+  /** 对话标题 */
+  private title = '';
+
+  /** 对话创建时间 */
+  private createdAt = Date.now();
 
   constructor(
     llmConfig: AiLLMConfig,
@@ -175,12 +181,14 @@ export class AiChatService {
   }
 
   /**
-   * 加载历史消息
-   * @param messages - 从历史文件加载的消息列表
+   * 加载历史数据（消息、标题、创建时间）
+   * @param history - 从历史文件加载的完整对话数据
    */
-  loadHistory(messages: AiChatMessage[]): void {
-    this.messages = messages;
-    logger.info(`Loaded ${messages.length} messages from history`);
+  loadHistory(history: AiChatHistory): void {
+    this.messages = history.messages;
+    this.title = history.title || '';
+    this.createdAt = history.created_at || Date.now();
+    logger.info(`Loaded ${history.messages.length} messages from history`);
   }
 
   /**
@@ -192,15 +200,18 @@ export class AiChatService {
   }
 
   /**
-   * 获取保存历史所需的数据
+   * 获取保存历史所需的完整数据（保留已有的 id/title/created_at）
    * @param agentId - Agent 名称
    * @param historyId - 历史 ID
-   * @returns 对话历史数据 (不含 id/title/created_at)
+   * @returns 对话历史数据
    */
-  getHistoryData(agentId: string, historyId: string): Omit<AiChatHistory, 'id' | 'title' | 'created_at'> {
+  getHistoryData(agentId: string, historyId: string): AiChatHistory {
     return {
+      id: historyId,
       agent_id: agentId,
+      title: this.title,
       messages: this.messages,
+      created_at: this.createdAt,
       updated_at: Date.now(),
     };
   }

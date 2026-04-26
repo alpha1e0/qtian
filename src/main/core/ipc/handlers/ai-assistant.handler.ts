@@ -5,6 +5,7 @@ import { AiHistoryService } from '@/core/services/ai-assistant/ai-history.servic
 import { AiSkillService } from '@/core/services/ai-assistant/ai-skill.service';
 import { AiMemoryService } from '@/core/services/ai-assistant/ai-memory.service';
 import { AiChatService } from '@/core/services/ai-assistant/ai-chat.service';
+import { AiChatHistory, AiChatMessage } from '@/core/common/config';
 import { ShellTool } from '@/core/services/ai-assistant/tools/shell-tool';
 import { ITool } from '@/core/services/ai-assistant/tools';
 import { McpManager } from '@/core/services/ai-assistant/mcp';
@@ -89,6 +90,26 @@ function getMcpManager(): McpManager {
     mcpManager = new McpManager();
   }
   return mcpManager;
+}
+
+/** 默认对话标题 */
+const DEFAULT_HISTORY_TITLE = '新对话';
+
+/** 自动重命名标题最大长度 */
+const AUTO_RENAME_TITLE_MAX_LENGTH = 10;
+
+/**
+ * 若对话标题为默认值（"新对话"），则用首条用户消息内容替换
+ * @param historyData - 即将保存的对话历史数据
+ */
+function autoRenameIfDefault(historyData: AiChatHistory): void {
+  if (historyData.title !== DEFAULT_HISTORY_TITLE) return;
+  const firstUserMsg = historyData.messages.find((m) => m.role === 'user');
+  if (!firstUserMsg) return;
+  const content = firstUserMsg.content.trim();
+  historyData.title = content.length > AUTO_RENAME_TITLE_MAX_LENGTH
+    ? content.substring(0, AUTO_RENAME_TITLE_MAX_LENGTH) + '...'
+    : content;
 }
 
 /**
@@ -328,7 +349,7 @@ export function registerAiAssistantHandlers(): void {
         const historyExists = await getHistoryService().historyExists(agentId, historyId);
         if (historyExists) {
           const history = await getHistoryService().getHistory(agentId, historyId);
-          chatService.loadHistory(history.messages);
+          chatService.loadHistory(history);
         }
 
         // 存储会话
@@ -367,6 +388,9 @@ export function registerAiAssistantHandlers(): void {
           throw new Error('Chat session not initialized');
         }
 
+        // 收集最后一条 done 事件的消息，延迟发送 chat-complete（先保存再通知前端）
+        let doneMessages: AiChatMessage[] | null = null;
+
         // 消费 AiChatEvent 事件流
         for await (const chatEvent of chatService.sendMessage(message)) {
           switch (chatEvent.type) {
@@ -388,9 +412,7 @@ export function registerAiAssistantHandlers(): void {
               });
               break;
             case 'done':
-              event.sender.send(IPC_CHANNELS.AI_CHAT_COMPLETE, {
-                messages: chatEvent.messages,
-              });
+              doneMessages = chatEvent.messages;
               break;
             case 'error':
               event.sender.send(IPC_CHANNELS.AI_CHAT_ERROR, { error: chatEvent.message });
@@ -398,9 +420,17 @@ export function registerAiAssistantHandlers(): void {
           }
         }
 
-        // 自动保存历史
+        // 先保存历史（含自动重命名），再通知前端
         const historyData = chatService.getHistoryData(agentId, historyId);
+        autoRenameIfDefault(historyData);
         await getHistoryService().saveHistory(agentId, historyId, historyData);
+
+        // 保存完成后再发送 chat-complete，确保前端刷新时能读到最新标题
+        if (doneMessages) {
+          event.sender.send(IPC_CHANNELS.AI_CHAT_COMPLETE, {
+            messages: doneMessages,
+          });
+        }
 
         return { success: true };
       } catch (err) {
@@ -441,6 +471,9 @@ export function registerAiAssistantHandlers(): void {
         throw new Error('Chat session not initialized');
       }
 
+      // 收集最后一条 done 事件的消息，延迟发送 chat-complete
+      let doneMessages: AiChatMessage[] | null = null;
+
       // 消费 AiChatEvent 事件流
       for await (const chatEvent of chatService.regenerate()) {
         switch (chatEvent.type) {
@@ -462,9 +495,7 @@ export function registerAiAssistantHandlers(): void {
             });
             break;
           case 'done':
-            event.sender.send(IPC_CHANNELS.AI_CHAT_COMPLETE, {
-              messages: chatEvent.messages,
-            });
+            doneMessages = chatEvent.messages;
             break;
           case 'error':
             event.sender.send(IPC_CHANNELS.AI_CHAT_ERROR, { error: chatEvent.message });
@@ -472,9 +503,16 @@ export function registerAiAssistantHandlers(): void {
         }
       }
 
-      // 自动保存历史
+      // 先保存历史（含自动重命名），再通知前端
       const historyData = chatService.getHistoryData(agentId, historyId);
+      autoRenameIfDefault(historyData);
       await getHistoryService().saveHistory(agentId, historyId, historyData);
+
+      if (doneMessages) {
+        event.sender.send(IPC_CHANNELS.AI_CHAT_COMPLETE, {
+          messages: doneMessages,
+        });
+      }
 
       return { success: true };
     } catch (err) {

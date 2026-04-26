@@ -56,7 +56,8 @@ async function createWindow() {
   // Electron-vite dev server URL
   if (isDevelopment && process.env.ELECTRON_RENDERER_URL) {
     await mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
-    if (!process.env.IS_TEST) mainWindow.webContents.openDevTools();
+    // DevTools disabled by default, use Ctrl+Shift+I to open manually
+    // if (!process.env.IS_TEST) mainWindow.webContents.openDevTools();
   } else {
     // Load the index.html when not in development
     const indexPath = path.join(__dirname, '../renderer/index.html');

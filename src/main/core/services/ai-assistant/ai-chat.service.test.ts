@@ -166,7 +166,14 @@ describe('AiChatService', () => {
         { role: 'assistant', content: '你好！有什么可以帮你的？', timestamp: Date.now() },
       ];
 
-      service.loadHistory(historyMessages);
+      service.loadHistory({
+        id: 'test-history',
+        agent_id: 'default',
+        title: '测试对话',
+        messages: historyMessages,
+        created_at: Date.now(),
+        updated_at: Date.now(),
+      });
       expect(service.getMessages()).toEqual(historyMessages);
     });
   });

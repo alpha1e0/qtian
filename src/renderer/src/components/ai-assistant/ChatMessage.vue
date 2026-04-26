@@ -77,54 +77,15 @@
 <script>
 import { DocumentCopy, Edit, RefreshRight, Delete } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
+import MarkdownIt from 'markdown-it';
 import ToolCallView from './ToolCallView.vue';
 
-/**
- * 简单的 Markdown 渲染
- * 将 Markdown 文本转换为 HTML (支持标题、加粗、斜体、代码块、行内代码、列表)
- */
+const md = new MarkdownIt({ html: false, linkify: true, typographer: true });
+
+/** 使用 markdown-it 渲染 Markdown 文本 */
 function renderMarkdown(text) {
   if (!text) return '';
-
-  let html = text
-    // 转义 HTML 特殊字符
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-
-  // 代码块 (```...```)
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>');
-
-  // 行内代码 (`...`)
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-
-  // 标题
-  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-
-  // 加粗和斜体
-  html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-
-  // 链接
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
-
-  // 无序列表
-  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
-
-  // 段落换行
-  html = html.replace(/\n\n/g, '</p><p>');
-  html = html.replace(/\n/g, '<br>');
-
-  // 包裹段落
-  html = '<p>' + html + '</p>';
-
-  // 清理空段落
-  html = html.replace(/<p>\s*<\/p>/g, '');
-
-  return html;
+  return md.render(text);
 }
 
 /**

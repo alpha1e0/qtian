@@ -162,7 +162,8 @@ export function createAiHistory(
   workspace: string,
   agentId: string,
   historyId: string,
-  messages?: Array<{ role: string; content: string; name?: string }>
+  messages?: Array<{ role: string; content: string; name?: string }>,
+  title?: string
 ): void {
   const historyDir = path.join(workspace, ASSISTANT_DIR, HISTORY_DIR, agentId);
   fs.mkdirSync(historyDir, { recursive: true });
@@ -170,7 +171,7 @@ export function createAiHistory(
   const historyData = {
     id: historyId,
     agent_id: agentId,
-    title: historyId,
+    title: title ?? historyId,
     messages: messages || [],
     created_at: Date.now(),
     updated_at: Date.now(),
