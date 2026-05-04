@@ -11,8 +11,8 @@ import { createLogger, LogLevel } from './logger';
 
 const logger = createLogger('TrayManager', LogLevel.INFO);
 
-/** 托盘图标文件名，相对于 public 目录 */
-const TRAY_ICON_FILENAME = 'favicon.ico';
+/** 托盘图标文件名 */
+const TRAY_ICON_FILENAME = 'tray.png';
 
 /**
  * 系统托盘管理器

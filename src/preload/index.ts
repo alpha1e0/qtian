@@ -198,6 +198,10 @@ const api = {
   resizeWindow: (width: number, height: number) => ipcRenderer.invoke('qtian:window-resize', { width, height }),
   isMaximized: () => ipcRenderer.invoke('qtian:window-is-maximized'),
 
+  // App lifecycle APIs
+  appQuit: () => ipcRenderer.invoke('qtian:app-quit'),
+  showAbout: () => ipcRenderer.invoke('qtian:show-about'),
+
   // Generic IPC event listeners
   ipcRendererOn: (channel, callback) => {
     const wrapper = (event, ...args) => callback(...args);

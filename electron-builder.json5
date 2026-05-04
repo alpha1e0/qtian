@@ -6,6 +6,10 @@
     {
       from: 'backend/data',
       to: 'data',
+    },
+    {
+      from: 'public/tray.png',
+      to: 'tray.png',
     }
   ],
   win: {

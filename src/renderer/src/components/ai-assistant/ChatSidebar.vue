@@ -2,7 +2,7 @@
   <div class="chat-sidebar">
     <!-- 新建对话按钮 -->
     <div class="sidebar-header">
-      <el-button type="primary" size="small" @click="$emit('create-history')" style="width: 100%">
+      <el-button type="primary"  @click="$emit('create-history')" style="width: 100%">
         + 新建对话
       </el-button>
     </div>
@@ -17,16 +17,37 @@
         @click="$emit('history-change', item.id)"
       >
         <div class="history-title">{{ item.title || '未命名对话' }}</div>
-        <div class="history-time" v-if="item.updated_at">{{ formatTime(item.updated_at) }}</div>
+        <div class="history-meta">
+          <span class="history-time" v-if="item.updated_at">{{ formatTime(item.updated_at) }}</span>
+          <span class="history-actions">
+            <el-icon class="action-icon" @click.stop="openEditDialog(item)" title="编辑标题">
+              <Edit />
+            </el-icon>
+            <el-icon class="action-icon" @click.stop="confirmDelete(item)" title="删除对话">
+              <Delete />
+            </el-icon>
+          </span>
+        </div>
       </div>
     </div>
     <div v-else class="history-empty">
       暂无对话历史
     </div>
+
+    <!-- 编辑标题对话框 -->
+    <el-dialog v-model="isEditDialogVisible" title="编辑对话标题" width="360px" :close-on-click-modal="false">
+      <el-input v-model="editTitle" placeholder="请输入对话标题" maxlength="100" show-word-limit />
+      <template #footer>
+        <el-button @click="isEditDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="confirmEdit">确认</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script>
+import { Edit, Delete } from '@element-plus/icons-vue';
+
 /**
  * 格式化时间戳为短格式
  * @param {number} timestamp - Unix 时间戳 (毫秒)
@@ -44,14 +65,52 @@ function formatTime(timestamp) {
 
 export default {
   name: 'ChatSidebar',
+  components: { Edit, Delete },
   props: {
     /** 对话历史摘要列表 Array<{ id, title, updated_at }> */
     histories: { type: Array, default: () => [] },
     selectedHistory: { type: String, default: '' },
   },
-  emits: ['history-change', 'create-history'],
+  emits: ['history-change', 'create-history', 'delete-history', 'rename-history'],
+  data() {
+    return {
+      isEditDialogVisible: false,
+      editTitle: '',
+      editingHistoryId: '',
+    };
+  },
   methods: {
     formatTime,
+    /**
+     * 打开编辑标题对话框
+     * @param {Object} item - 对话历史项
+     */
+    openEditDialog(item) {
+      this.editingHistoryId = item.id;
+      this.editTitle = item.title || '';
+      this.isEditDialogVisible = true;
+    },
+    /** 确认编辑标题 */
+    confirmEdit() {
+      if (!this.editTitle.trim()) return;
+      this.$emit('rename-history', this.editingHistoryId, this.editTitle.trim());
+      this.isEditDialogVisible = false;
+    },
+    /**
+     * 确认删除对话
+     * @param {Object} item - 对话历史项
+     */
+    confirmDelete(item) {
+      this.$confirm('确定要删除该对话吗？删除后不可恢复。', '删除确认', {
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }).then(() => {
+        this.$emit('delete-history', item.id);
+      }).catch(() => {
+        // 用户取消，不做任何操作
+      });
+    },
   },
 };
 </script>
@@ -93,17 +152,46 @@ export default {
 }
 
 .history-title {
-  font-size: 13px;
+  font-size: 16px;
   color: #333;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+.history-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+
 .history-time {
-  font-size: 11px;
+  font-size: 14px;
   color: #999;
-  margin-top: 2px;
+}
+
+.history-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.history-item:hover .history-actions {
+  opacity: 1;
+}
+
+.action-icon {
+  font-size: 14px;
+  color: #999;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.action-icon:hover {
+  color: #409eff;
 }
 
 .history-empty {

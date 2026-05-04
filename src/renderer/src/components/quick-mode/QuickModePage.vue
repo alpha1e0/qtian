@@ -3,14 +3,14 @@
     <!-- 初始状态：仅输入框 -->
     <div v-if="pageState === 'initial'" class="initial-state">
       <div class="chat-input-section">
-        <!-- 顶部行：拖拽把手 + 右上角按钮 -->
+        <!-- 顶部行：右上角按钮 -->
         <div class="section-header">
-          <div class="drag-handle" @mousedown="handleDragStart"></div>
           <div class="header-actions">
             <el-tooltip content="切换到完整对话模式" placement="left" :show-after="300">
               <el-button
                 circle
                 size="small"
+                class="switch-full-btn"
                 @click="handleSwitchToNormalMode"
                 aria-label="切换到完整对话模式"
               >
@@ -77,9 +77,8 @@
     <!-- 回答状态：用户问题 + AI回答 -->
     <div v-else class="answering-state">
       <div class="answering-card">
-        <!-- 顶部行：拖拽把手 + 右上角按钮 -->
+        <!-- 顶部行：右上角按钮 -->
         <div class="section-header">
-          <div class="drag-handle" @mousedown="handleDragStart"></div>
           <div class="header-actions">
             <el-tooltip content="切换到完整对话模式" placement="left" :show-after="300">
               <el-button
@@ -174,14 +173,14 @@ function generateQuickHistoryId() {
   return `__quick_${Date.now()}__`;
 }
 
-/** 快捷模式窗口尺寸常量 */
+/** 快捷模式窗口尺寸常量（含 custom titlebar 高度 ~32px） */
 const QUICK_MODE_SIZES = {
   /** 初始状态：仅输入框 */
-  initial: { width: 800, height: 260 },
+  initial: { width: 1000, height: 312 },
   /** 回答状态：用户问题 + AI回答 */
-  answering: { width: 860, height: 620 },
+  answering: { width: 1000, height: 932 },
   /** 普通模式窗口尺寸 */
-  normal: { width: 1600, height: 900 },
+  normal: { width: 1600, height: 932 },
 };
 
 export default {
@@ -243,8 +242,6 @@ export default {
     window.electron.ipcRendererOn('qtian:ai:chat-complete', this.onChatComplete);
     window.electron.ipcRendererOn('qtian:ai:chat-error', this.onChatError);
 
-    document.addEventListener('keydown', this.handleEsc);
-
     // 进入快捷模式时调整窗口大小
     await this.resizeWindow('initial');
   },
@@ -253,8 +250,6 @@ export default {
     window.electron.ipcRendererOff('qtian:ai:chat-chunk', this.onChatChunk);
     window.electron.ipcRendererOff('qtian:ai:chat-complete', this.onChatComplete);
     window.electron.ipcRendererOff('qtian:ai:chat-error', this.onChatError);
-
-    document.removeEventListener('keydown', this.handleEsc);
 
     // 离开快捷模式时恢复窗口大小
     const normalSize = QUICK_MODE_SIZES.normal;
@@ -270,42 +265,6 @@ export default {
       const size = QUICK_MODE_SIZES[state];
       if (size) {
         await window.electron.resizeWindow(size.width, size.height);
-      }
-    },
-
-    /**
-     * 拖拽窗口：mousedown 启动，mousemove 移动，mouseup 结束
-     */
-    handleDragStart(event) {
-      if (event.button !== 0) return;
-      let lastX = event.screenX;
-      let lastY = event.screenY;
-
-      const onMouseMove = (e) => {
-        const deltaX = e.screenX - lastX;
-        const deltaY = e.screenY - lastY;
-        lastX = e.screenX;
-        lastY = e.screenY;
-        if (deltaX !== 0 || deltaY !== 0) {
-          window.electron.moveWindowBy(deltaX, deltaY);
-        }
-      };
-
-      const onMouseUp = () => {
-        document.removeEventListener('mousemove', onMouseMove);
-        document.removeEventListener('mouseup', onMouseUp);
-      };
-
-      document.addEventListener('mousemove', onMouseMove);
-      document.addEventListener('mouseup', onMouseUp);
-    },
-
-    /**
-     * ESC 键隐藏窗口
-     */
-    handleEsc(event) {
-      if (event.key === 'Escape') {
-        window.electron.closeWindow();
       }
     },
 
@@ -555,29 +514,11 @@ export default {
 .quick-mode-container {
   width: 100%;
   height: 100vh;
-  background: transparent;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   overflow: hidden;
-}
-
-/* 卡片顶部拖拽把手（集成在卡片内） */
-.drag-handle {
-  width: 50px;
-  height: 8px;
-  background: rgba(0, 0, 0, 0.15);
-  border-radius: 4px;
-  cursor: grab;
-}
-
-.drag-handle:active {
-  cursor: grabbing;
-}
-
-.drag-handle:hover {
-  background: rgba(0, 0, 0, 0.3);
 }
 
 /* ===== 初始状态 ===== */
@@ -590,10 +531,10 @@ export default {
 
 .chat-input-section {
   width: 100%;
-  max-width: 640px;
-  background: rgba(255, 255, 255, 0.99);
-  border-radius: 16px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  max-width: 950px;
+  background: #fff;
+  border-radius: 2px;
+  /* box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); */
   padding: 12px 20px 16px;
   position: relative;
   -webkit-app-region: no-drag;
@@ -602,15 +543,14 @@ export default {
 .section-header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  position: relative;
+  justify-content: flex-end;
   margin-bottom: 4px;
-  height: 17px;
+  height: 29px;
 }
 
 .header-actions {
   position: absolute;
-  right: 0;
+  right: 25px;
 }
 
 .chat-input {
@@ -657,8 +597,8 @@ export default {
 
 .answering-card {
   width: 100%;
-  max-width: 640px;
-  background: rgba(255, 255, 255, 0.99);
+  max-width: 950px;
+  background: #fff;
   border-radius: 16px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   padding: 12px 20px 16px;

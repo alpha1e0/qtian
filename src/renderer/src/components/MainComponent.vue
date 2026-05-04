@@ -1,17 +1,22 @@
 <template>
-  <component
-    :is="currentComponent"
-    @navigate="handleNavigate"
-    :initial-message="initialMessage"
-    :initial-agent-id="initialAgentId"
-    :initial-llm-config="initialLlmConfig"
-    :initial-history-id="initialHistoryId"
-  />
+  <div class="main-layout">
+    <CustomTitleBar @switch-mode="handleSwitchMode" />
+    <component
+      :is="currentComponent"
+      class="main-content"
+      @navigate="handleNavigate"
+      :initial-message="initialMessage"
+      :initial-agent-id="initialAgentId"
+      :initial-llm-config="initialLlmConfig"
+      :initial-history-id="initialHistoryId"
+    />
+  </div>
 </template>
 
 <script>
 import QuickModePage from './quick-mode/QuickModePage.vue';
 import AiAssistantPage from './ai-assistant/AiAssistantPage.vue';
+import CustomTitleBar from './common/TitleBar.vue';
 
 export default {
   name: 'MainComponent',
@@ -19,6 +24,7 @@ export default {
   components: {
     QuickModePage,
     AiAssistantPage,
+    CustomTitleBar,
   },
 
   data() {
@@ -59,6 +65,19 @@ export default {
   },
 
   methods: {
+    /**
+     * 处理标题栏菜单的模式切换
+     * @param {string} mode - 'quick' 或 'normal'
+     */
+    handleSwitchMode(mode) {
+      if (mode === 'quick') {
+        this.switchToQuickMode();
+      } else if (mode === 'normal') {
+        this.clearPending();
+        this.switchToAiAssistant();
+      }
+    },
+
     /**
      * 切换到快捷模式
      */
@@ -147,3 +166,17 @@ export default {
   },
 };
 </script>
+
+<style scoped>
+.main-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.main-content {
+  flex: 1;
+  overflow: hidden;
+}
+</style>

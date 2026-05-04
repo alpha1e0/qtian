@@ -5,7 +5,7 @@
 // 首先导入启动日志（在模块加载时立即执行）
 import './startup-log';
 
-import { app, protocol, BrowserWindow, Menu, dialog, ipcMain } from 'electron';
+import { app, protocol, BrowserWindow, ipcMain, dialog, nativeImage } from 'electron';
 import * as path from 'path';
 
 import { config, wpath } from './core/common/context';
@@ -40,12 +40,12 @@ let isQuitting = false;
  * Create the browser window
  */
 async function createWindow() {
-  // Create the browser window.
+  // Create the browser window (frameless，由自定义标题栏控制窗口)
   mainWindow = new BrowserWindow({
     width: 1600,
     height: 900,
     frame: false,
-    transparent: true,
+    icon: nativeImage.createFromPath(path.join(__dirname, '../../public/icon.png')),
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       nodeIntegration: process.env.ELECTRON_NODE_INTEGRATION === 'true',
@@ -57,7 +57,7 @@ async function createWindow() {
   if (isDevelopment && process.env.ELECTRON_RENDERER_URL) {
     await mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
     // DevTools disabled by default, use Ctrl+Shift+I to open manually
-    // if (!process.env.IS_TEST) mainWindow.webContents.openDevTools();
+    if (!process.env.IS_TEST) mainWindow.webContents.openDevTools();
   } else {
     // Load the index.html when not in development
     const indexPath = path.join(__dirname, '../renderer/index.html');
@@ -75,62 +75,10 @@ async function createWindow() {
 }
 
 /**
- * Show message dialog
- */
-function showMsg(title: string, msg: string): void {
-  dialog.showMessageBoxSync({
-    type: 'info',
-    buttons: ['OK'],
-    defaultId: 0,
-    title: title,
-    message: msg,
-  });
-}
-
-/**
  * Show error dialog
  */
 function error(title: string, msg: string): void {
   dialog.showErrorBox(title, msg);
-}
-
-/**
- * Create application menu
- */
-function createMenu(): void {
-  const template: Electron.MenuItemConstructorOptions[] = [
-    {
-      label: '功能',
-      submenu: [
-        {
-          label: '快捷模式',
-          click: () => {
-            mainWindow?.webContents.send('switch-to-quick-mode');
-          },
-        },
-        {
-          label: 'AI助手',
-          click: () => {
-            mainWindow?.webContents.send('switch-to-aiassistant');
-          },
-        },
-      ],
-    },
-    {
-      label: '帮助',
-      submenu: [
-        {
-          label: '关于',
-          click: () => {
-            showMsg('关于', `Qtian v${VERSION}`);
-          },
-        },
-      ],
-    },
-  ];
-
-  const menu = Menu.buildFromTemplate(template);
-  Menu.setApplicationMenu(menu);
 }
 
 /**
@@ -175,6 +123,23 @@ function registerWindowControlHandlers() {
 
   ipcMain.handle('qtian:window-is-maximized', () => {
     return mainWindow?.isMaximized() ?? false;
+  });
+
+  // 真正退出应用（跳过"隐藏到托盘"逻辑）
+  ipcMain.handle('qtian:app-quit', () => {
+    isQuitting = true;
+    app.quit();
+  });
+
+  // 显示关于对话框
+  ipcMain.handle('qtian:show-about', () => {
+    dialog.showMessageBoxSync({
+      type: 'info',
+      buttons: ['OK'],
+      defaultId: 0,
+      title: '关于',
+      message: `Qtian AI助手 v${VERSION}`,
+    });
   });
 }
 
@@ -226,8 +191,6 @@ app.on('ready', async () => {
 
   readConfig();
   await createWindow();
-  // frameless 窗口隐藏应用菜单栏，通过托盘和快捷键导航
-  Menu.setApplicationMenu(null);
 
   // 创建系统托盘（需要 mainWindow 已创建）
   if (mainWindow) {

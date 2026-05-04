@@ -1,8 +1,5 @@
 <template>
   <div class="ai-assistant-page">
-    <!-- 模拟标题栏（frameless 窗口） -->
-    <TitleBar />
-
     <div class="ai-assistant-body">
       <!-- 左侧栏：仅对话历史列表 -->
       <ChatSidebar
@@ -11,6 +8,8 @@
       :selected-history="selectedHistory"
       @history-change="handleHistoryChange"
       @create-history="handleCreateHistory"
+      @delete-history="handleDeleteHistory"
+      @rename-history="handleRenameHistory"
     />
 
     <!-- 右侧主区域 -->
@@ -57,13 +56,12 @@
 import ChatSidebar from './ChatSidebar.vue';
 import ChatContent from './ChatContent.vue';
 import ChatInput from './ChatInput.vue';
-import TitleBar from '../common/TitleBar.vue';
 import { ElMessage } from 'element-plus';
 
 export default {
   name: 'AiAssistantPage',
   emits: ['navigate'],
-  components: { ChatSidebar, ChatContent, ChatInput, TitleBar },
+  components: { ChatSidebar, ChatContent, ChatInput },
   props: {
     initialMessage: {
       type: String,
@@ -273,6 +271,43 @@ export default {
       } catch (err) {
         console.error('加载对话历史摘要失败:', err);
         this.historySummaries = [];
+      }
+    },
+    /**
+     * 删除指定对话历史
+     * @param {string} historyId - 对话历史 ID
+     */
+    async handleDeleteHistory(historyId) {
+      try {
+        await window.aiAssistant.deleteHistory(this.selectedAgent, historyId);
+        // 若删除的是当前选中的对话，清空右侧内容
+        if (this.selectedHistory === historyId) {
+          this.selectedHistory = '';
+          this.messages = [];
+        }
+        await this.loadHistorySummaries();
+        ElMessage.success('对话已删除');
+      } catch (err) {
+        console.error('删除对话失败:', err);
+        ElMessage.error('删除对话失败');
+      }
+    },
+    /**
+     * 重命名指定对话历史的标题
+     * @param {string} historyId - 对话历史 ID
+     * @param {string} newTitle - 新标题
+     */
+    async handleRenameHistory(historyId, newTitle) {
+      try {
+        const history = await window.aiAssistant.getHistory(this.selectedAgent, historyId);
+        history.title = newTitle;
+        history.updated_at = Date.now();
+        await window.aiAssistant.saveHistory(this.selectedAgent, historyId, history);
+        await this.loadHistorySummaries();
+        ElMessage.success('标题已更新');
+      } catch (err) {
+        console.error('重命名对话失败:', err);
+        ElMessage.error('重命名对话失败');
       }
     },
     async initChat() {
