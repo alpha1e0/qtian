@@ -30,6 +30,7 @@ tests/e2e_test_results
 tests/e2e/.playwright/
 tests/e2e/changelogs
 .qtian-test/
+playwright-report
 
 # ================================
 # Logs
