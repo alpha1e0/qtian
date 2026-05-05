@@ -2,7 +2,7 @@
   <div class="custom-titlebar">
     <!-- 可拖拽区域 + 图标 + 标题 -->
     <div class="titlebar-drag">
-      <img :src="'/icon.png'" alt="Qtian" class="titlebar-icon" />
+      <img :src="iconUrl" alt="Qtian" class="titlebar-icon" />
     </div>
 
     <!-- 内联菜单 -->
@@ -58,6 +58,8 @@
 </template>
 
 <script>
+import iconUrl from '../../assets/icon.png';
+
 /** 菜单定义 */
 const menus = [
   {
@@ -88,6 +90,7 @@ export default {
   },
   data() {
     return {
+      iconUrl,
       isMaximized: false,
       menus,
     };
