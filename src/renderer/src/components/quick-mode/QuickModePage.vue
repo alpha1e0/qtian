@@ -3,21 +3,22 @@
     <!-- 初始状态：仅输入框 -->
     <div v-if="pageState === 'initial'" class="initial-state">
       <div class="chat-input-section">
-        <!-- 顶部行：右上角按钮 -->
+        <!-- 顶部行：左侧Agent名称 + 右侧切换按钮 -->
         <div class="section-header">
-          <div class="header-actions">
-            <el-tooltip content="切换到完整对话模式" placement="left" :show-after="300">
-              <el-button
-                circle
-                size="small"
-                class="switch-full-btn"
-                @click="handleSwitchToNormalMode"
-                aria-label="切换到完整对话模式"
-              >
-                <el-icon><FullScreen /></el-icon>
-              </el-button>
-            </el-tooltip>
-          </div>
+          <el-text class="mx-1" tag="B">{{ currentAgentName }}</el-text>
+          <!-- <span class="agent-label">{{ currentAgentName }}</span> -->
+          <el-tooltip content="切换到完整对话模式" placement="left" :show-after="300">
+            <el-button
+              circle
+              size="small"
+              type="primary"
+              class="switch-full-btn"
+              @click="handleSwitchToNormalMode"
+              aria-label="切换到完整对话模式"
+            >
+              <el-icon><FullScreen /></el-icon>
+            </el-button>
+          </el-tooltip>
         </div>
         <el-input
           v-model="message"
@@ -36,6 +37,7 @@
               v-model="selectedAgent"
               placeholder="选择Agent"
               size="small"
+              :teleported="false"
               aria-label="快捷模式选择Agent"
             >
               <el-option
@@ -49,6 +51,7 @@
               v-model="selectedLlmConfig"
               placeholder="选择模型"
               size="small"
+              :teleported="false"
               aria-label="快捷模式选择模型"
             >
               <el-option
@@ -63,11 +66,12 @@
             <el-button
               type="primary"
               size="small"
+              round
               :disabled="!message.trim()"
               @click="handleSend"
               aria-label="发送"
             >
-              发送
+              发送(Ctrl+Enter)
             </el-button>
           </div>
         </div>
@@ -79,19 +83,19 @@
       <div class="answering-card">
         <!-- 顶部行：右上角按钮 -->
         <div class="section-header">
-          <div class="header-actions">
-            <el-tooltip content="切换到完整对话模式" placement="left" :show-after="300">
-              <el-button
-                circle
-                size="small"
-                @click="handleConvertToNormalMode"
-                :disabled="!assistantAnswer || isChatting"
-                aria-label="切换到完整对话模式"
-              >
-                <el-icon><FullScreen /></el-icon>
-              </el-button>
-            </el-tooltip>
-          </div>
+          <el-text class="mx-1" tag="B">{{ currentAgentName }}</el-text>
+          <el-tooltip content="切换到完整对话模式" placement="left" :show-after="300">
+            <el-button
+              circle
+              size="small"
+              type="primary"
+              @click="handleConvertToNormalMode"
+              :disabled="!assistantAnswer || isChatting"
+              aria-label="切换到完整对话模式"
+            >
+              <el-icon><FullScreen /></el-icon>
+            </el-button>
+          </el-tooltip>
         </div>
         <el-divider />
 
@@ -116,6 +120,7 @@
             <el-button
               circle
               size="small"
+              type="primary"
               @click="handleRegenerate"
               :disabled="!assistantAnswer"
               aria-label="重新生成"
@@ -127,6 +132,7 @@
             <el-button
               circle
               size="small"
+              type="primary"
               @click="handleReset"
               aria-label="创建新对话"
             >
@@ -176,7 +182,7 @@ function generateQuickHistoryId() {
 /** 快捷模式窗口尺寸常量（含 custom titlebar 高度 ~32px） */
 const QUICK_MODE_SIZES = {
   /** 初始状态：仅输入框 */
-  initial: { width: 1000, height: 312 },
+  initial: { width: 1000, height: 215 },
   /** 回答状态：用户问题 + AI回答 */
   answering: { width: 1000, height: 932 },
   /** 普通模式窗口尺寸 */
@@ -253,7 +259,7 @@ export default {
 
     // 离开快捷模式时恢复窗口大小
     const normalSize = QUICK_MODE_SIZES.normal;
-    window.electron.resizeWindow(normalSize.width, normalSize.height);
+    window.electron.resizeWindow(normalSize.width, normalSize.height, true);
   },
 
   methods: {
@@ -264,7 +270,7 @@ export default {
     async resizeWindow(state) {
       const size = QUICK_MODE_SIZES[state];
       if (size) {
-        await window.electron.resizeWindow(size.width, size.height);
+        await window.electron.resizeWindow(size.width, size.height, false);
       }
     },
 
@@ -513,12 +519,14 @@ export default {
 <style scoped>
 .quick-mode-container {
   width: 100%;
-  height: 100vh;
+  height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  /* justify-content: center; */
+  justify-content: flex-start;
   overflow: hidden;
+  padding-bottom: 8px;
 }
 
 /* ===== 初始状态 ===== */
@@ -526,16 +534,15 @@ export default {
   width: 100%;
   display: flex;
   justify-content: center;
-  padding: 10px;
+  padding: 0px 8px 8px 8px;
 }
 
 .chat-input-section {
   width: 100%;
-  max-width: 950px;
+  max-width: 970px;
   background: #fff;
   border-radius: 2px;
-  /* box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); */
-  padding: 12px 20px 16px;
+  padding: 5px 10px 5px 10px;
   position: relative;
   -webkit-app-region: no-drag;
 }
@@ -543,14 +550,16 @@ export default {
 .section-header {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   margin-bottom: 4px;
   height: 29px;
+  padding: 2px 5px 2px 7px
 }
 
-.header-actions {
-  position: absolute;
-  right: 25px;
+.agent-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #606266;
 }
 
 .chat-input {
@@ -582,6 +591,12 @@ export default {
   width: 140px;
 }
 
+/* 下拉面板最多显示3条，超出滚动 */
+.input-selectors :deep(.el-select-dropdown) {
+  max-height: 108px;
+  overflow-y: auto;
+}
+
 .input-actions {
   display: flex;
   gap: 8px;
@@ -592,16 +607,15 @@ export default {
   width: 100%;
   display: flex;
   justify-content: center;
-  padding: 10px;
+  padding: 2px;
 }
 
 .answering-card {
   width: 100%;
   max-width: 950px;
   background: #fff;
-  border-radius: 16px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  padding: 12px 20px 16px;
+  border-radius: 2px;
+  padding: 5px 10px 5px 10px;
   position: relative;
   -webkit-app-region: no-drag;
   max-height: 90vh;

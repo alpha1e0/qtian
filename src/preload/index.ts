@@ -195,7 +195,7 @@ const api = {
   maximizeWindow: () => ipcRenderer.invoke('qtian:window-maximize'),
   closeWindow: () => ipcRenderer.invoke('qtian:window-close'),
   moveWindowBy: (deltaX: number, deltaY: number) => ipcRenderer.send('qtian:window-drag', { deltaX, deltaY }),
-  resizeWindow: (width: number, height: number) => ipcRenderer.invoke('qtian:window-resize', { width, height }),
+  resizeWindow: (width: number, height: number, resizable?: boolean) => ipcRenderer.invoke('qtian:window-resize', { width, height, resizable }),
   isMaximized: () => ipcRenderer.invoke('qtian:window-is-maximized'),
 
   // App lifecycle APIs

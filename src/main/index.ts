@@ -108,7 +108,7 @@ function registerWindowControlHandlers() {
     }
   });
 
-  ipcMain.handle('qtian:window-resize', (_event, { width, height }: { width: number; height: number }) => {
+  ipcMain.handle('qtian:window-resize', (_event, { width, height, resizable }: { width: number; height: number; resizable?: boolean }) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       const [x, y] = mainWindow.getPosition();
       const [oldW, oldH] = mainWindow.getSize();
@@ -118,6 +118,10 @@ function registerWindowControlHandlers() {
         width,
         height,
       });
+      if (resizable !== undefined) {
+        mainWindow.setResizable(resizable);
+        mainWindow.setMaximizable(resizable);
+      }
     }
   });
 

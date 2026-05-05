@@ -1,6 +1,6 @@
 <template>
   <div class="main-layout">
-    <CustomTitleBar @switch-mode="handleSwitchMode" />
+    <CustomTitleBar :is-quick-mode="currentComponent === 'QuickModePage'" @switch-mode="handleSwitchMode" />
     <component
       :is="currentComponent"
       class="main-content"

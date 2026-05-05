@@ -3,7 +3,6 @@
     <!-- 可拖拽区域 + 图标 + 标题 -->
     <div class="titlebar-drag">
       <img :src="'/icon.png'" alt="Qtian" class="titlebar-icon" />
-      <span class="titlebar-title">Qtian</span>
     </div>
 
     <!-- 内联菜单 -->
@@ -39,7 +38,7 @@
           <rect y="5" width="12" height="1.5" fill="currentColor" />
         </svg>
       </button>
-      <button class="ctrl-btn" @click="handleMaximize" title="最大化">
+      <button v-if="!isQuickMode" class="ctrl-btn" @click="handleMaximize" title="最大化">
         <svg v-if="isMaximized" width="12" height="12" viewBox="0 0 12 12">
           <rect x="2" y="0" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.2" />
           <rect y="3" width="9" height="9" fill="white" stroke="currentColor" stroke-width="1.2" />
@@ -81,6 +80,12 @@ const menus = [
 export default {
   name: 'CustomTitleBar',
   emits: ['switch-mode'],
+  props: {
+    isQuickMode: {
+      type: Boolean,
+      default: false,
+    },
+  },
   data() {
     return {
       isMaximized: false,
@@ -164,9 +169,10 @@ export default {
 }
 
 .titlebar-menus {
+  margin-top: 3px;
   display: flex;
   align-items: center;
-  margin-left: 16px;
+  margin-left: 6px;
   -webkit-app-region: no-drag;
   height: 100%;
 }

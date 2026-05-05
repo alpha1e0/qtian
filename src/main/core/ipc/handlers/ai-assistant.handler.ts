@@ -32,6 +32,11 @@ function getChatKey(agentId: string, historyId: string): string {
   return `${agentId}:${historyId}`;
 }
 
+/** 快捷模式使用临时 historyId（`__quick_` 前缀），不持久化历史 */
+function isQuickModeHistory(historyId: string): boolean {
+  return historyId.startsWith('__quick_');
+}
+
 /**
  * 获取或创建 Agent 服务
  */
@@ -420,10 +425,12 @@ export function registerAiAssistantHandlers(): void {
           }
         }
 
-        // 先保存历史（含自动重命名），再通知前端
+        // 先保存历史（含自动重命名），再通知前端（快捷模式不持久化）
         const historyData = chatService.getHistoryData(agentId, historyId);
-        autoRenameIfDefault(historyData);
-        await getHistoryService().saveHistory(agentId, historyId, historyData);
+        if (!isQuickModeHistory(historyId)) {
+          autoRenameIfDefault(historyData);
+          await getHistoryService().saveHistory(agentId, historyId, historyData);
+        }
 
         // 保存完成后再发送 chat-complete，确保前端刷新时能读到最新标题
         if (doneMessages) {
@@ -503,10 +510,12 @@ export function registerAiAssistantHandlers(): void {
         }
       }
 
-      // 先保存历史（含自动重命名），再通知前端
+      // 先保存历史（含自动重命名），再通知前端（快捷模式不持久化）
       const historyData = chatService.getHistoryData(agentId, historyId);
-      autoRenameIfDefault(historyData);
-      await getHistoryService().saveHistory(agentId, historyId, historyData);
+      if (!isQuickModeHistory(historyId)) {
+        autoRenameIfDefault(historyData);
+        await getHistoryService().saveHistory(agentId, historyId, historyData);
+      }
 
       if (doneMessages) {
         event.sender.send(IPC_CHANNELS.AI_CHAT_COMPLETE, {
@@ -536,8 +545,8 @@ export function registerAiAssistantHandlers(): void {
 
       const popped = chatService.popMessage();
 
-      // 自动保存
-      if (popped) {
+      // 自动保存（快捷模式不持久化）
+      if (popped && !isQuickModeHistory(historyId)) {
         const historyData = chatService.getHistoryData(agentId, historyId);
         await getHistoryService().saveHistory(agentId, historyId, historyData);
       }
