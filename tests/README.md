@@ -104,7 +104,7 @@ npm test
 
 ### 概述
 
-`testing/workspace/` 是用于单元测试和冒烟测试的工作目录，其结构与实际运行时的工作目录（`~/.qtian`）完全一致。
+`testing/workspace/` 是用于单元测试和冒烟测试的工作目录，其结构与实际运行时的工作目录（`%LOCALAPPDATA%/Qtian/workspace`）完全一致。
 
 ### 特点
 

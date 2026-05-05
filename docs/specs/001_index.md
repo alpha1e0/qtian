@@ -21,7 +21,7 @@ AI助手包含 **快捷模式（quick-mode）** 和 **普通模式（normal-mode
 
 工作目录用于：保存配置、本地数据库、后台任务队列
 
-工作目录默认为：`~/.qtian`，如果设置了环境变量 `QTIAN_WORKSPACE`则优先使用环境变量中的目录为工作目录
+工作目录默认为：`%LOCALAPPDATA%/Qtian/workspace`（Windows），如果设置了环境变量 `QTIAN_WORKSPACE`则优先使用环境变量中的目录为工作目录
 
 工作目录保存：
 

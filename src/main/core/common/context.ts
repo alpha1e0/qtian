@@ -63,7 +63,11 @@ export class WPath {
 
     // Get workspace from environment variable or use default
     const envWorkspace = process.env.QTIAN_WORKSPACE;
-    const defaultWorkspace = path.join(this.userDirectory, '.qtian');
+    // Windows: %LOCALAPPDATA%/Qtian/workspace; fallback to home/.qtian on other platforms
+    const localAppData = process.env.LOCALAPPDATA;
+    const defaultWorkspace = localAppData
+      ? path.join(localAppData, 'Qtian', 'workspace')
+      : path.join(this.userDirectory, '.qtian');
 
     if (envWorkspace) {
       // Try to use QTIAN_WORKSPACE, fall back to default if directory can't be opened
