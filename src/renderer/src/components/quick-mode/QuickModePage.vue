@@ -185,8 +185,6 @@ const QUICK_MODE_SIZES = {
   initial: { width: 1000, height: 215 },
   /** 回答状态：用户问题 + AI回答 */
   answering: { width: 1000, height: 932 },
-  /** 普通模式窗口尺寸 */
-  normal: { width: 1600, height: 932 },
 };
 
 export default {
@@ -257,9 +255,10 @@ export default {
     window.electron.ipcRendererOff('qtian:ai:chat-complete', this.onChatComplete);
     window.electron.ipcRendererOff('qtian:ai:chat-error', this.onChatError);
 
-    // 离开快捷模式时恢复窗口大小
-    const normalSize = QUICK_MODE_SIZES.normal;
-    window.electron.resizeWindow(normalSize.width, normalSize.height, true);
+    // 离开快捷模式时恢复窗口大小（由主进程根据屏幕自适应）
+    window.electron.getNormalWindowSize().then((size) => {
+      window.electron.resizeWindow(size.width, size.height, true);
+    });
   },
 
   methods: {

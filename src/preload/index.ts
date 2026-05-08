@@ -197,6 +197,7 @@ const api = {
   moveWindowBy: (deltaX: number, deltaY: number) => ipcRenderer.send('qtian:window-drag', { deltaX, deltaY }),
   resizeWindow: (width: number, height: number, resizable?: boolean) => ipcRenderer.invoke('qtian:window-resize', { width, height, resizable }),
   isMaximized: () => ipcRenderer.invoke('qtian:window-is-maximized'),
+  getNormalWindowSize: () => ipcRenderer.invoke('qtian:window-normal-size'),
 
   // App lifecycle APIs
   appQuit: () => ipcRenderer.invoke('qtian:app-quit'),

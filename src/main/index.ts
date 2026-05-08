@@ -5,7 +5,7 @@
 // 首先导入启动日志（在模块加载时立即执行）
 import './startup-log';
 
-import { app, protocol, BrowserWindow, ipcMain, dialog, nativeImage } from 'electron';
+import { app, protocol, BrowserWindow, ipcMain, dialog, nativeImage, screen } from 'electron';
 import * as path from 'path';
 
 import { config, wpath } from './core/common/context';
@@ -39,11 +39,21 @@ let isQuitting = false;
 /**
  * Create the browser window
  */
+/** 根据屏幕工作区计算普通模式窗口大小（不超过屏幕可用区域） */
+function getNormalWindowSize(): { width: number; height: number } {
+  const { width: screenW, height: screenH } = screen.getPrimaryDisplay().workAreaSize;
+  return {
+    width: Math.min(1600, screenW - 40),
+    height: Math.min(900, screenH - 40),
+  };
+}
+
 async function createWindow() {
+  const normalSize = getNormalWindowSize();
   // Create the browser window (frameless，由自定义标题栏控制窗口)
   mainWindow = new BrowserWindow({
-    width: 1600,
-    height: 900,
+    width: normalSize.width,
+    height: normalSize.height,
     frame: false,
     icon: nativeImage.createFromPath(path.join(__dirname, '../../public/icon.png')),
     webPreferences: {
@@ -127,6 +137,10 @@ function registerWindowControlHandlers() {
 
   ipcMain.handle('qtian:window-is-maximized', () => {
     return mainWindow?.isMaximized() ?? false;
+  });
+
+  ipcMain.handle('qtian:window-normal-size', () => {
+    return getNormalWindowSize();
   });
 
   // 真正退出应用（跳过"隐藏到托盘"逻辑）
