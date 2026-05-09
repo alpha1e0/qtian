@@ -184,7 +184,7 @@ const QUICK_MODE_SIZES = {
   /** 初始状态：仅输入框 */
   initial: { width: 1000, height: 215 },
   /** 回答状态：用户问题 + AI回答 */
-  answering: { width: 1000, height: 932 },
+  answering: { width: 1000, height: 850 },
 };
 
 export default {
