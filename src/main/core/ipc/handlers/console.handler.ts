@@ -6,6 +6,7 @@
 
 import { ipcMain } from 'electron';
 import { createLogger, LogLevel } from '@/core/utils/logger';
+import { IPC_CHANNELS } from '../channels';
 
 const logger = createLogger('ConsoleHandler', LogLevel.DEBUG);
 
@@ -60,7 +61,7 @@ export function registerConsoleHandlers(): void {
   }
 
   // 监听渲染进程的 console 消息
-  ipcMain.on('qtian:send-console-message', (_event, { level, message }) => {
+  ipcMain.on(IPC_CHANNELS.SEND_CONSOLE_MESSAGE, (_event, { level, message }) => {
     sendConsoleMessage(level, message);
 
     // 同时记录到 logger

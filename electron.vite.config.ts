@@ -6,7 +6,8 @@ export default defineConfig({
   main: {
     resolve: {
       alias: {
-        '@': resolve(__dirname, 'src/main')
+        '@': resolve(__dirname, 'src/main'),
+        '@shared': resolve(__dirname, 'src/shared')
       }
     },
     build: {
@@ -19,7 +20,8 @@ export default defineConfig({
   preload: {
     resolve: {
       alias: {
-        '@': resolve(__dirname, 'src/preload')
+        '@': resolve(__dirname, 'src/preload'),
+        '@shared': resolve(__dirname, 'src/shared')
       }
     },
     build: {
