@@ -15,19 +15,33 @@ AI助手包含 **快捷模式（quick-mode）** 和 **普通模式（normal-mode
 - **快捷模式（quick-mode）**，一次性的临时对话，快捷键换出，对话结果不保存，快捷模式可手动转换为普通模式
 - **普通模式（normal-mode）**，完整模式，记录历史，多伦对话
 
-## 3. 公共模块设计
+| 模块名称 | 简述 | 关联文档 |
+| :--- | :--- | :--- |
+| 总体需求 | 项目总体需求 | ./002_ai-assistant-req.md |
+| 总体设计 | 项目总体设计 | ./002_ai-assistant-design.md |
+| 快捷模式UI设计 | 快捷模式UI设计 | ./003_quick-mode-ui-design.md |
+| 普通模式UI设计 | 普通模式UI设计 | ./003_normal-mode-chat-ui-design.md |
 
-### 3.1 工作目录设计
 
-工作目录用于：保存配置、本地数据库、后台任务队列
+## 3. 公共模块
 
-工作目录默认为：`%LOCALAPPDATA%/Qtian/workspace`（Windows），如果设置了环境变量 `QTIAN_WORKSPACE`则优先使用环境变量中的目录为工作目录
+### 3.1 工作目录结构
 
-工作目录保存：
+应用安装后，最终的目录结构如下：
 
-- 配置文件 qtian.json（主配置文件，位于工作目录根目录）
-- log/目录，保存日志
-- assistant/目录，保存模型、agent、skill、mcp、memory、history等配置、数据
+```
+安装目录/
+	  workspace/         # 工作目录，保存配置、数据文件、任务数据等
+        assistant/         # 保存LLM配置、Agent定义、Skill定义等和助手定义相关的内容
+        projects/           # 项目目录
+        log/               # 日志目录
+        qtian.json         # 配置文件
+	  app/               # 应用exe目录
+		    qtian.exe      # 应用主程序
+```
+
+工作目录默认为：`%LocalAppData%/Qtian/workspace`（Windows），如果设置了环境变量 `QTIAN_WORKSPACE`则优先使用环境变量中的目录为工作目录
+
 
 ### 4.2 全局配置设计
 

@@ -34,7 +34,7 @@
 
 ### 4.1 数据存储
 
-数据存储在localhost中，以文件形式存储在工作目录中，工作目录的结构如下：
+数据存储在localhost中，以文件形式存储在'工作目录/assistant'中，目录的结构如下：
 
 ```
 assistant/          # 助手根目录
@@ -47,15 +47,8 @@ assistant/          # 助手根目录
     memory/            # 记忆存储位置
 ```
 
-### 4.2 Agent文件 (`agent/*.md`)
+### 4.2 Agent定义文件 (`agent/*.md`)
 
-agent定义用Yaml-frontmatter + markdown，其中frontmatter支持如下字段：
-
-	name: 必选，字符串，名称，使用大小写、下划线、减号、数字字符组成
-    alias: 可选，字符串，该Agent的别名，用于展示
-	description: 必选，字符串，agent功能描述
-	tools: 可选，列表，可用工具列表
-	model: 可选，字符串，建议的模型provider（llm/目录下的配置文件文件名（不包含后缀））
 
 ### 4.3 LLM数据
 
