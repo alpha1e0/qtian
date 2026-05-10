@@ -5,7 +5,7 @@ import { wpath } from '@/core/common/context';
 import { createLogger } from '@/core/utils/logger';
 import { AiAgent } from '@/core/common/config';
 
-const logger = createLogger('AiAgentService');
+const logger = createLogger('AiAgentMgrService');
 
 /**
  * AI 助手 Agent 管理服务
@@ -34,7 +34,7 @@ const logger = createLogger('AiAgentService');
  *
  *   你是一个专业的编程助手...
  */
-export class AiAgentService {
+export class AiAgentMgrService {
   /**
    * 列出所有 Agent 名称
    * @returns Agent 名称列表 (排序后)

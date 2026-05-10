@@ -1,7 +1,13 @@
 /**
  * Services Module
- * Organized by feature modules
+ * Organized by Agent, Tools, and Common
  */
 
-// AI Assistant Services
-export * from './ai-assistant';
+// Agent 服务
+export * from './agent';
+
+// 工具服务
+export * from './tools';
+
+// 公共服务
+export * from './common';

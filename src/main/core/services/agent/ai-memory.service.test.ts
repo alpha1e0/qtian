@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs/promises';
-import { AiMemoryService } from '@/core/services/ai-assistant/ai-memory.service';
+import { AiMemoryService } from '@/core/services/agent/ai-memory.service';
 import {
   getTestAssistantMemoryDir,
   createTestAssistantMemory,

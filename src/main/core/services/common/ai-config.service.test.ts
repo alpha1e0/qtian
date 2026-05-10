@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from 'vitest';
-import { AiConfigService } from '@/core/services/ai-assistant/ai-config.service';
+import { AiConfigService } from '@/core/services/common/ai-config.service';
 import { AiLLMConfig } from '@/core/common/config';
 import * as fs from 'fs/promises';
 import * as path from 'path';

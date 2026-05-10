@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from 'vitest';
-import { AiAgentService } from '@/core/services/ai-assistant/ai-agent.service';
+import { AiAgentMgrService } from '@/core/services/agent/ai-agent-mgr.service';
 import { AiAgent } from '@/core/common/config';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -74,8 +74,8 @@ async function createTestAgentMd(testDir: string, name: string, content: string)
   await fs.writeFile(agentPath, content, 'utf-8');
 }
 
-describe('AiAgentService', () => {
-  let service: AiAgentService;
+describe('AiAgentMgrService', () => {
+  let service: AiAgentMgrService;
   let testAgentDir: string;
   let testHistoryDir: string;
 
@@ -93,7 +93,7 @@ describe('AiAgentService', () => {
   });
 
   beforeEach(async () => {
-    service = new AiAgentService();
+    service = new AiAgentMgrService();
     // 清空测试目录
     const cleanDir = async (dir: string) => {
       const entries = await fs.readdir(dir, { withFileTypes: true });

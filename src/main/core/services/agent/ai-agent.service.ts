@@ -2,9 +2,9 @@ import OpenAI from 'openai';
 import { ProxyAgent, fetch as undiciFetch } from 'undici';
 import { createLogger } from '@/core/utils/logger';
 import { AiLLMConfig, AiAgent, AiChatMessage, AiChatEvent, AiToolCall, AiSkill, AiChatHistory } from '@/core/common/config';
-import { ITool, ToolRegistry } from './tools';
+import { ITool, ToolRegistry } from '../tools';
 
-const logger = createLogger('AiChatService');
+const logger = createLogger('AiAgentService');
 
 /** 格式化当前时间为 YYYY-M-D HH:mm:ss */
 function getCurrentTimeString(): string {
@@ -24,7 +24,7 @@ const DEFAULT_MAX_TOOL_ROUNDS = 10;
  *
  * 支持 Skill + Memory 通过 System Prompt 注入
  */
-export class AiChatService {
+export class AiAgentService {
   private client: OpenAI | null = null;
   private llmConfig: AiLLMConfig;
   private agent: AiAgent;

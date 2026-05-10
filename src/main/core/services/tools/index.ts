@@ -1,0 +1,11 @@
+/**
+ * 工具模块 — 工具接口、注册表、内置工具、MCP 工具
+ */
+
+export * from './tool.interface';
+export * from './tool-registry';
+export * from './shell-tool';
+export * from './mcp-client';
+export * from './mcp-config.service';
+export * from './mcp-tool-adapter';
+export * from './mcp-manager';

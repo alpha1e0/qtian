@@ -1,24 +1,24 @@
 import { ipcMain } from 'electron';
-import { AiAgentService } from '@/core/services/ai-assistant/ai-agent.service';
-import { AiConfigService } from '@/core/services/ai-assistant/ai-config.service';
-import { AiHistoryService } from '@/core/services/ai-assistant/ai-history.service';
-import { AiSkillService } from '@/core/services/ai-assistant/ai-skill.service';
-import { AiMemoryService } from '@/core/services/ai-assistant/ai-memory.service';
-import { AiChatService } from '@/core/services/ai-assistant/ai-chat.service';
+import { AiAgentMgrService } from '@/core/services/agent';
+import { AiAgentService } from '@/core/services/agent';
+import { AiMemoryService } from '@/core/services/agent';
+import { AiSkillService } from '@/core/services/agent';
+import { AiConfigService } from '@/core/services/common';
+import { AiHistoryService } from '@/core/services/common';
 import { AiChatHistory, AiChatMessage } from '@/core/common/config';
-import { ShellTool } from '@/core/services/ai-assistant/tools/shell-tool';
-import { ITool } from '@/core/services/ai-assistant/tools';
-import { McpManager } from '@/core/services/ai-assistant/mcp';
+import { ShellTool } from '@/core/services/tools';
+import { ITool } from '@/core/services/tools';
+import { McpManager } from '@/core/services/tools';
 import { IPC_CHANNELS } from '../channels';
 import { createLogger } from '@/core/utils/logger';
 
 const logger = createLogger('AiAssistantHandler');
 
 // 存储活跃的对话会话 (agentId:historyId → ChatService)
-const activeChats = new Map<string, AiChatService>();
+const activeChats = new Map<string, AiAgentService>();
 
 // 懒加载的服务实例
-let agentService: AiAgentService | null = null;
+let agentService: AiAgentMgrService | null = null;
 let configService: AiConfigService | null = null;
 let historyService: AiHistoryService | null = null;
 let skillService: AiSkillService | null = null;
@@ -40,9 +40,9 @@ function isQuickModeHistory(historyId: string): boolean {
 /**
  * 获取或创建 Agent 服务
  */
-function getAgentService(): AiAgentService {
+function getAgentService(): AiAgentMgrService {
   if (!agentService) {
-    agentService = new AiAgentService();
+    agentService = new AiAgentMgrService();
   }
   return agentService;
 }
@@ -344,7 +344,7 @@ export function registerAiAssistantHandlers(): void {
         const memoryPrompt = await getMemoryService().buildMemoryPrompt(agentId);
 
         // 创建对话服务
-        const chatService = new AiChatService(llmConfig, agent, {
+        const chatService = new AiAgentService(llmConfig, agent, {
           tools,
           skills,
           memoryPrompt,

@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs/promises';
-import { AiSkillService } from '@/core/services/ai-assistant/ai-skill.service';
+import { AiSkillService } from '@/core/services/agent/ai-skill.service';
 import {
   getTestAssistantSkillDir,
   createTestAssistantSkill,

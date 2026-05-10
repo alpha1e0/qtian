@@ -9,9 +9,9 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { AiChatService } from '@/core/services/ai-assistant/ai-chat.service';
+import { AiAgentService } from '@/core/services/agent/ai-agent.service';
 import { AiLLMConfig, AiAgent, AiChatMessage, AiChatEvent, AiSkill } from '@/core/common/config';
-import { ITool } from '@/core/services/ai-assistant/tools';
+import { ITool } from '@/core/services/tools';
 
 vi.mock('@/core/utils/logger', () => ({
   createLogger: vi.fn(() => ({
@@ -73,11 +73,11 @@ async function collectEvents(generator: AsyncGenerator<AiChatEvent>): Promise<Ai
   return events;
 }
 
-describe('AiChatService', () => {
-  let service: AiChatService;
+describe('AiAgentService', () => {
+  let service: AiAgentService;
 
   beforeEach(() => {
-    service = new AiChatService(mockConfig, mockAgent);
+    service = new AiAgentService(mockConfig, mockAgent);
   });
 
   describe('constructor', () => {
@@ -97,7 +97,7 @@ describe('AiChatService', () => {
         ...mockConfig,
         system_prefix: '重要提示：请用中文回答。',
       };
-      const serviceWithPrefix = new AiChatService(configWithPrefix, mockAgent);
+      const serviceWithPrefix = new AiAgentService(configWithPrefix, mockAgent);
       const messages = serviceWithPrefix.getMessages();
       expect(messages[0].content).toContain('重要提示');
       expect(messages[0].content).toContain('测试助手');
@@ -105,7 +105,7 @@ describe('AiChatService', () => {
 
     it('should handle empty instructions', () => {
       const emptyAgent: AiAgent = { ...mockAgent, instructions: '' };
-      const serviceEmptyRole = new AiChatService(mockConfig, emptyAgent);
+      const serviceEmptyRole = new AiAgentService(mockConfig, emptyAgent);
       const messages = serviceEmptyRole.getMessages();
       expect(messages).toHaveLength(0);
     });
@@ -116,7 +116,7 @@ describe('AiChatService', () => {
         system_prefix: '只回答是或否。',
       };
       const emptyAgent: AiAgent = { ...mockAgent, instructions: '' };
-      const servicePrefixOnly = new AiChatService(configWithPrefix, emptyAgent);
+      const servicePrefixOnly = new AiAgentService(configWithPrefix, emptyAgent);
       const messages = servicePrefixOnly.getMessages();
       expect(messages).toHaveLength(1);
       expect(messages[0].content).toContain('只回答是或否');
@@ -124,13 +124,13 @@ describe('AiChatService', () => {
 
     it('should register tools when provided', () => {
       const tools = [createMockTool('mock_tool', 'result')];
-      const agentService = new AiChatService(mockConfig, mockAgentWithTools, { tools });
+      const agentService = new AiAgentService(mockConfig, mockAgentWithTools, { tools });
       // 工具已注册，可通过 executeTool 验证 (内部有工具注册表)
       expect(agentService.getAgent().tools).toContain('shell_execute');
     });
 
     it('should have no tools when none provided', () => {
-      const agentService = new AiChatService(mockConfig, mockAgentWithTools, { tools: [] });
+      const agentService = new AiAgentService(mockConfig, mockAgentWithTools, { tools: [] });
       expect(agentService.getAgent().tools).toEqual(['shell_execute']);
     });
   });
@@ -229,14 +229,14 @@ describe('AiChatService', () => {
         system_prefix: 'PREFIX',
       };
       const agentWithRole: AiAgent = { ...mockAgent, instructions: 'ROLE_CONTENT' };
-      const serviceWithPrefix = new AiChatService(configWithPrefix, agentWithRole);
+      const serviceWithPrefix = new AiAgentService(configWithPrefix, agentWithRole);
       const prompt = serviceWithPrefix.buildSystemPrompt();
       expect(prompt).toContain('PREFIX');
       expect(prompt).toContain('ROLE_CONTENT');
     });
 
     it('should include memory prompt in system prompt', () => {
-      const serviceWithMemory = new AiChatService(mockConfig, mockAgent, {
+      const serviceWithMemory = new AiAgentService(mockConfig, mockAgent, {
         memoryPrompt: '## 记忆\n\n- 用户偏好中文',
       });
       const prompt = serviceWithMemory.buildSystemPrompt();
@@ -259,7 +259,7 @@ describe('AiChatService', () => {
           has_templates: false,
         },
       ];
-      const serviceWithSkills = new AiChatService(mockConfig, mockAgent, { skills });
+      const serviceWithSkills = new AiAgentService(mockConfig, mockAgent, { skills });
       const prompt = serviceWithSkills.buildSystemPrompt();
       expect(prompt).toContain('## 技能');
       expect(prompt).toContain('翻译助手');
@@ -284,7 +284,7 @@ describe('AiChatService', () => {
       ];
       const configWithPrefix: AiLLMConfig = { ...mockConfig, system_prefix: 'SYS' };
       const agentWithRole: AiAgent = { ...mockAgent, instructions: 'ROLE' };
-      const serviceFull = new AiChatService(configWithPrefix, agentWithRole, {
+      const serviceFull = new AiAgentService(configWithPrefix, agentWithRole, {
         memoryPrompt: '## 记忆\n\n- MEM',
         skills,
       });
@@ -334,7 +334,7 @@ describe('AiChatService', () => {
 
     it('should work with tools provided (tool-use loop)', async () => {
       const tools = [createMockTool('test_tool', 'ok')];
-      const agentService = new AiChatService(mockConfig, mockAgentWithTools, { tools });
+      const agentService = new AiAgentService(mockConfig, mockAgentWithTools, { tools });
 
       // 发送消息 (由于没有真实 API key 会得到 error 事件)
       const events = await collectEvents(agentService.sendMessage('hello'));
@@ -388,7 +388,7 @@ describe('AiChatService', () => {
         ...mockConfig,
         base_url: 'https://api.example.com/v1/chat/completions',
       };
-      const svc = new AiChatService(config, mockAgent);
+      const svc = new AiAgentService(config, mockAgent);
       // 通过 updateLlmConfig 触发 initClient，验证 normalize 生效
       // 直接调用私有方法验证
       expect(svc['normalizeBaseUrl']('https://api.example.com/v1/chat/completions'))

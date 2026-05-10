@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs/promises';
 import * as context from '@/core/common/context';
-import { McpConfigService } from '@/core/services/ai-assistant/mcp/mcp-config.service';
+import { McpConfigService } from '@/core/services/tools/mcp-config.service';
 import {
   getTestAssistantToolDir,
   setupTestAssistantEnvironment,

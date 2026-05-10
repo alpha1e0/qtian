@@ -5,8 +5,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs/promises';
 import * as context from '@/core/common/context';
-import { McpManager } from '@/core/services/ai-assistant/mcp/mcp-manager';
-import { McpClient, McpToolDefinition } from '@/core/services/ai-assistant/mcp/mcp-client';
+import { McpManager } from '@/core/services/tools/mcp-manager';
+import { McpClient, McpToolDefinition } from '@/core/services/tools/mcp-client';
 import {
   getTestAssistantToolDir,
   setupTestAssistantEnvironment,

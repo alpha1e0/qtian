@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { McpToolAdapter } from '@/core/services/ai-assistant/mcp/mcp-tool-adapter';
-import { McpClient, McpToolDefinition } from '@/core/services/ai-assistant/mcp/mcp-client';
+import { McpToolAdapter } from '@/core/services/tools/mcp-tool-adapter';
+import { McpClient, McpToolDefinition } from '@/core/services/tools/mcp-client';
 
 vi.mock('@/core/utils/logger', () => ({
   createLogger: vi.fn(() => ({

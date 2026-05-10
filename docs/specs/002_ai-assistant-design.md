@@ -45,41 +45,38 @@ assistant/                        # 助手根目录
 
 ```
 src/main/core/
-├── services/ai-assistant/
+├── services/
 │   ├── index.ts                              # 模块导出
-│   ├── ai-agent.service.ts                   # Agent CRUD (YAML front-matter + Markdown)
-│   ├── ai-config.service.ts                  # LLM 配置 CRUD
-│   ├── ai-skill.service.ts                   # Skill 加载与解析
-│   ├── ai-history.service.ts                 # 对话历史 CRUD
-│   ├── ai-chat.service.ts                    # 核心对话服务 (Streaming Tool-use Loop)
-│   ├── ai-context.service.ts                 # 上下文管理 (Token 计数、压缩)
-│   ├── ai-memory.service.ts                  # 记忆管理
+│   ├── agent/                                # Agent 相关模块
+│   │   ├── index.ts                          # Agent 模块导出
+│   │   ├── ai-agent-mgr.service.ts           # Agent CRUD (YAML front-matter + Markdown)
+│   │   ├── ai-agent.service.ts               # 核心对话服务 (Streaming Tool-use Loop)
+│   │   ├── ai-memory.service.ts              # 记忆管理
+│   │   ├── ai-skill.service.ts               # Skill 加载与解析
+│   │   ├── ai-agent-mgr.service.test.ts
+│   │   ├── ai-agent.service.test.ts
+│   │   ├── ai-memory.service.test.ts
+│   │   └── ai-skill.service.test.ts
 │   ├── tools/                                # 工具实现目录
-│   │   ├── index.ts                          # 工具注册表
+│   │   ├── index.ts                          # 工具模块导出
 │   │   ├── tool.interface.ts                 # ITool 接口定义
 │   │   ├── tool-registry.ts                  # 工具注册与分发
 │   │   ├── shell-tool.ts                     # Shell 执行工具
-│   │   ├── tavily-search-tool.ts             # Tavily 搜索工具
-│   │   ├── local-rag-tool.ts                 # 本地 RAG 工具
-│   │   └── mcp/                              # MCP 集成
-│   │       ├── index.ts
-│   │       ├── mcp-client.ts                 # MCP 客户端 (stdio transport)
-│   │       ├── mcp-tool-adapter.ts           # MCP 工具适配器 (ITool 适配)
-│   │       └── mcp-manager.ts                # MCP 服务生命周期管理
-│   ├── ai-agent.service.test.ts
-│   ├── ai-config.service.test.ts
-│   ├── ai-skill.service.test.ts
-│   ├── ai-history.service.test.ts
-│   ├── ai-chat.service.test.ts
-│   ├── ai-context.service.test.ts
-│   ├── ai-memory.service.test.ts
-│   └── tools/
-│       ├── tool-registry.test.ts
-│       ├── shell-tool.test.ts
-│       ├── tavily-search-tool.test.ts
-│       └── mcp/
-│           ├── mcp-client.test.ts
-│           └── mcp-manager.test.ts
+│   │   ├── mcp-client.ts                     # MCP 客户端 (stdio transport)
+│   │   ├── mcp-config.service.ts             # MCP 配置管理
+│   │   ├── mcp-tool-adapter.ts               # MCP 工具适配器 (ITool 适配)
+│   │   ├── mcp-manager.ts                    # MCP 服务生命周期管理
+│   │   ├── tool-registry.test.ts
+│   │   ├── shell-tool.test.ts
+│   │   ├── mcp-config.service.test.ts
+│   │   ├── mcp-tool-adapter.test.ts
+│   │   └── mcp-manager.test.ts
+│   └── common/                               # 公共支持模块
+│       ├── index.ts                          # 公共模块导出
+│       ├── ai-config.service.ts              # LLM 配置 CRUD
+│       ├── ai-history.service.ts             # 对话历史 CRUD
+│       ├── ai-config.service.test.ts
+│       └── ai-history.service.test.ts
 │
 ├── ipc/
 │   ├── channels.ts                           # 新增 AI 助手 channels
@@ -509,12 +506,12 @@ class McpManager {
 
 ## 5 核心服务设计
 
-### 5.1 Agent 服务 (`AiAgentService`)
+### 5.1 Agent 服务 (`AiAgentMgrService`)
 
 与 `AiSkillService` 模式一致，解析 YAML front-matter + Markdown。
 
 ```typescript
-class AiAgentService {
+class AiAgentMgrService {
   async listAgents(): Promise<string[]>;
   async getAgent(name: string): Promise<AiAgent>;
   async saveAgent(name: string, agent: AiAgent): Promise<void>;
@@ -563,7 +560,7 @@ class AiMemoryService {
 }
 ```
 
-### 5.3 核心对话服务 (`AiChatService`) — 重点设计
+### 5.3 核心对话服务 (`AiAgentService`) — 重点设计
 
 这是整个模块的核心，统一使用 Streaming Tool-use Loop。有工具时支持多轮工具调用循环，无工具时等价于纯流式对话（loop 只执行一轮）。
 
@@ -575,7 +572,7 @@ class AiMemoryService {
  * - 有工具时: 流式文本 → tool_calls → 执行工具 → 继续循环
  * - 无工具时: 流式文本 → 结束 (等价于 loop 只执行一轮)
  */
-class AiChatService {
+class AiAgentService {
   private client: OpenAI;
   private toolRegistry: ToolRegistry;
   private messages: AiChatMessage[];
@@ -957,7 +954,7 @@ const aiAssistant = {
 - 全局配置扩展
 - 类型定义 (`config.ts`)
 - 基础 CRUD 服务 (Scenario, Role, Config, History)
-- `AiChatService` 统一 Streaming Tool-use Loop 引擎
+- `AiAgentService` 统一 Streaming Tool-use Loop 引擎
 - IPC Handler + Preload 桥接
 - 基础 UI (页面布局、对话、历史)
 - 单元测试

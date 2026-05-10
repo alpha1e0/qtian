@@ -1,5 +1,5 @@
 import { createLogger } from '@/core/utils/logger';
-import { ITool } from '../tools/tool.interface';
+import { ITool } from './tool.interface';
 import { McpConfigService } from './mcp-config.service';
 import { McpClient } from './mcp-client';
 import { McpToolAdapter } from './mcp-tool-adapter';

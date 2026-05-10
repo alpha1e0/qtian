@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from 'vitest';
-import { AiHistoryService } from '@/core/services/ai-assistant/ai-history.service';
+import { AiHistoryService } from '@/core/services/common/ai-history.service';
 import { AiChatHistory } from '@/core/common/config';
 import * as fs from 'fs/promises';
 import * as path from 'path';

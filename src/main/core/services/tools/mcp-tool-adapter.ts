@@ -1,4 +1,4 @@
-import { ITool } from '../tools/tool.interface';
+import { ITool } from './tool.interface';
 import { McpClient, McpToolDefinition } from './mcp-client';
 import { createLogger } from '@/core/utils/logger';
 

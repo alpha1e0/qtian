@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ToolRegistry } from '@/core/services/ai-assistant/tools/tool-registry';
-import { ITool } from '@/core/services/ai-assistant/tools/tool.interface';
+import { ToolRegistry } from '@/core/services/tools/tool-registry';
+import { ITool } from '@/core/services/tools/tool.interface';
 
 vi.mock('@/core/utils/logger', () => ({
   createLogger: vi.fn(() => ({
