@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ShellTool } from '@/core/services/tools/shell-tool';
+import { ShellTool } from '@/core/services/tools/shell-tool/shell-tool';
 
 vi.mock('@/core/utils/logger', () => ({
   createLogger: vi.fn(() => ({
