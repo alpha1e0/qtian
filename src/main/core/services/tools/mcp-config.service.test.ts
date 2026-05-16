@@ -42,6 +42,15 @@ const TEST_SERVER_B = {
   enabled: false,
 };
 
+/** 测试用远程 MCP 服务器配置 */
+const TEST_REMOTE_SERVER = {
+  type: 'remote' as const,
+  name: 'remote-api',
+  url: 'https://example.com/mcp',
+  headers: { Authorization: 'Bearer token123' },
+  enabled: true,
+};
+
 let testToolDir: string;
 let service: McpConfigService;
 
@@ -186,6 +195,50 @@ describe('McpConfigService', () => {
       const configPath = service.getConfigPath();
       expect(configPath).toContain(CONFIG_FILE);
       expect(configPath).toContain(testToolDir);
+    });
+  });
+
+  describe('remote config', () => {
+    it('读写远程 MCP 配置', async () => {
+      await service.saveConfig({ servers: [TEST_REMOTE_SERVER] });
+
+      const config = await service.getConfig();
+      expect(config.servers).toHaveLength(1);
+      expect(config.servers[0].type).toBe('remote');
+      expect(config.servers[0].name).toBe('remote-api');
+    });
+
+    it('混合 local 和 remote 配置', async () => {
+      await service.saveConfig({ servers: [TEST_SERVER_A, TEST_REMOTE_SERVER] });
+
+      const config = await service.getConfig();
+      expect(config.servers).toHaveLength(2);
+
+      // local 配置无 type 字段
+      expect(config.servers[0].name).toBe('filesystem');
+      expect((config.servers[0] as any).type).toBeUndefined();
+
+      // remote 配置有 type 字段
+      expect(config.servers[1].type).toBe('remote');
+    });
+
+    it('获取远程服务器配置', async () => {
+      await service.saveConfig({ servers: [TEST_REMOTE_SERVER] });
+
+      const server = await service.getServer('remote-api');
+      expect(server).toBeDefined();
+      expect(server!.type).toBe('remote');
+      expect((server as any).url).toBe('https://example.com/mcp');
+    });
+
+    it('删除远程服务器配置', async () => {
+      await service.saveConfig({ servers: [TEST_REMOTE_SERVER] });
+
+      const deleted = await service.deleteServer('remote-api');
+      expect(deleted).toBe(true);
+
+      const config = await service.getConfig();
+      expect(config.servers).toHaveLength(0);
     });
   });
 });

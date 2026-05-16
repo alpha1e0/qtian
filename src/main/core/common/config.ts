@@ -203,9 +203,12 @@ export type AiChatEvent =
 // ============================================================================
 
 /**
- * MCP 服务器配置
+ * 本地 MCP 服务器配置 (stdio transport)
+ * 通过 child_process 启动本地 MCP 服务器进程
  */
-export interface McpServerConfig {
+export interface McpLocalServerConfig {
+  /** 服务器类型，可选，默认 local（向后兼容） */
+  type?: 'local';
   /** 服务器唯一标识 */
   name: string;
   /** 启动命令 */
@@ -217,6 +220,26 @@ export interface McpServerConfig {
   /** 是否启用 (默认 true) */
   enabled?: boolean;
 }
+
+/**
+ * 远程 MCP 服务器配置 (Streamable HTTP transport)
+ * 通过 HTTP 连接远程 MCP 服务端点
+ */
+export interface McpRemoteServerConfig {
+  /** 服务器类型，必须为 remote */
+  type: 'remote';
+  /** 服务器唯一标识 (必填) */
+  name: string;
+  /** 远程 MCP 服务端点 URL */
+  url: string;
+  /** 自定义 HTTP 请求头 (如 Authorization) */
+  headers?: Record<string, string>;
+  /** 是否启用 (默认 true) */
+  enabled?: boolean;
+}
+
+/** MCP 服务器配置 (discriminated union) */
+export type McpServerConfig = McpLocalServerConfig | McpRemoteServerConfig;
 
 /**
  * MCP 全局配置 (存储在 assistant/tool/mcp.setting.json)

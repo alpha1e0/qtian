@@ -4,7 +4,8 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { McpToolAdapter } from '@/core/services/tools/mcp-tool-adapter';
-import { McpClient, McpToolDefinition } from '@/core/services/tools/mcp-client';
+import { McpToolDefinition } from '@/core/services/tools/mcp-client';
+import { IMcpClient } from '@/core/services/tools/mcp-client.interface';
 
 vi.mock('@/core/utils/logger', () => ({
   createLogger: vi.fn(() => ({
@@ -16,12 +17,16 @@ vi.mock('@/core/utils/logger', () => ({
 }));
 
 describe('McpToolAdapter', () => {
-  /** 创建 mock McpClient */
-  function createMockClient(): McpClient {
+  /** 创建 mock IMcpClient */
+  function createMockClient(): IMcpClient {
     return {
+      connect: vi.fn(),
+      disconnect: vi.fn(),
       callTool: vi.fn(),
+      getTools: vi.fn().mockReturnValue([]),
       isConnected: vi.fn().mockReturnValue(true),
-    } as unknown as McpClient;
+      getServerName: vi.fn().mockReturnValue('mock'),
+    };
   }
 
   const SAMPLE_TOOL: McpToolDefinition = {

@@ -1,6 +1,7 @@
 import { spawn, ChildProcess } from 'child_process';
 import { createLogger } from '@/core/utils/logger';
-import { McpServerConfig } from '@/core/common/config';
+import { McpLocalServerConfig } from '@/core/common/config';
+import { IMcpClient } from './mcp-client.interface';
 
 const logger = createLogger('McpClient');
 
@@ -19,7 +20,7 @@ export interface McpToolDefinition {
  * 通过 child_process 启动 MCP 服务器进程，经 stdin/stdout 交换 JSON-RPC 2.0 消息。
  * 不使用外部 SDK，自行实现轻量 JSON-RPC 2.0 通信。
  */
-export class McpClient {
+export class McpClient implements IMcpClient {
   private process: ChildProcess | null = null;
   private serverName: string = '';
   private tools: McpToolDefinition[] = [];
@@ -32,10 +33,10 @@ export class McpClient {
   private responseBuffer = '';
 
   /**
-   * 连接 MCP 服务器
-   * @param config - 服务器配置
+   * 连接 MCP 服务器 (stdio transport)
+   * @param config - 本地服务器配置
    */
-  async connect(config: McpServerConfig): Promise<void> {
+  async connect(config: McpLocalServerConfig): Promise<void> {
     this.serverName = config.name;
 
     try {

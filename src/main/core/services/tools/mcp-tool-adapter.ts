@@ -1,5 +1,6 @@
 import { ITool } from './tool.interface';
-import { McpClient, McpToolDefinition } from './mcp-client';
+import { McpToolDefinition } from './mcp-client';
+import { IMcpClient } from './mcp-client.interface';
 import { createLogger } from '@/core/utils/logger';
 
 const logger = createLogger('McpToolAdapter');
@@ -14,15 +15,15 @@ export class McpToolAdapter implements ITool {
   readonly description: string;
   readonly parameters: Record<string, any>;
 
-  private client: McpClient;
+  private client: IMcpClient;
   private mcpToolName: string;
 
   /**
-   * @param client - MCP 客户端实例
+   * @param client - MCP 客户端实例 (local 或 remote)
    * @param serverName - MCP 服务器名称
    * @param toolDef - MCP 工具定义
    */
-  constructor(client: McpClient, serverName: string, toolDef: McpToolDefinition) {
+  constructor(client: IMcpClient, serverName: string, toolDef: McpToolDefinition) {
     this.client = client;
     this.mcpToolName = toolDef.name;
 

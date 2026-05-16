@@ -1,7 +1,10 @@
 import { createLogger } from '@/core/utils/logger';
 import { ITool } from './tool.interface';
 import { McpConfigService } from './mcp-config.service';
+import { McpServerConfig, McpLocalServerConfig, McpRemoteServerConfig } from '@/core/common/config';
+import { IMcpClient } from './mcp-client.interface';
 import { McpClient } from './mcp-client';
+import { McpRemoteClient } from './mcp-remote-client';
 import { McpToolAdapter } from './mcp-tool-adapter';
 
 const logger = createLogger('McpManager');
@@ -17,7 +20,7 @@ const logger = createLogger('McpManager');
  */
 export class McpManager {
   private configService: McpConfigService;
-  private clients: Map<string, McpClient> = new Map();
+  private clients: Map<string, IMcpClient> = new Map();
 
   constructor() {
     this.configService = new McpConfigService();
@@ -40,7 +43,7 @@ export class McpManager {
 
     for (const serverConfig of enabledServers) {
       try {
-        const client = new McpClient();
+        const client = this.createClient(serverConfig);
         await client.connect(serverConfig);
         this.clients.set(serverConfig.name, client);
         logger.info(`MCP server '${serverConfig.name}' connected`);
@@ -116,6 +119,19 @@ export class McpManager {
    */
   getConfigService(): McpConfigService {
     return this.configService;
+  }
+
+  /**
+   * 根据配置类型创建对应的 MCP 客户端
+   * @param config - 服务器配置
+   * @returns local 或 remote 客户端实例
+   */
+  createClient(config: McpServerConfig): IMcpClient {
+    if (config.type === 'remote') {
+      return new McpRemoteClient();
+    }
+    // 默认 local (type 未设置或为 'local')
+    return new McpClient();
   }
 
   /**
