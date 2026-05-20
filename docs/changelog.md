@@ -2,6 +2,21 @@
 
 ## [1.0.0] 2026-05-20
 
+**User**: 增加 write tool，实现文件写入，参考 claude-code-source-code 的 FileWriteTool 实现
+
+**Summary**:
+
+- 新增 `WriteTool` 内置工具（`src/main/core/services/tools/write-tool/write-tool.ts`），支持 AI Agent 创建或覆盖本地文件
+- 创建新文件或覆盖已有文件，自动创建父目录（recursive mkdir）
+- 强制 LF 行尾，不继承旧文件 CRLF（防止跨平台脚本损坏）
+- 安全措施：设备文件黑名单、内容大小限制（1MB）、路径规范化
+- 错误处理：权限拒绝、只读文件系统、磁盘空间不足等友好提示
+- 新增 WriteTool 单元测试（36 个用例，全部通过）
+- 新增设计文档 `docs/specs/006-tool-write-design.md`
+- 修改 `index.ts` 导出 WriteTool，修改 `ai-assistant.handler.ts` 的 `buildTools()` 注册 `file_write`
+
+## [1.0.0] 2026-05-20
+
 **User**: 增加 read tool，实现文件读取，参考 claude-code-source-code 的 FileReadTool 实现
 
 **Summary**:
