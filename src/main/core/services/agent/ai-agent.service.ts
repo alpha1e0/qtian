@@ -1,3 +1,4 @@
+import os from 'os';
 import OpenAI from 'openai';
 import { ProxyAgent, fetch as undiciFetch } from 'undici';
 import { createLogger } from '@/core/utils/logger';
@@ -139,13 +140,13 @@ export class AiAgentService {
 
   /**
    * 构建 System Prompt
-   * 组装顺序: system_prefix → memory → agent.instructions → skills
+   * 组装顺序: system_prefix → memory → agent.instructions → skills(元数据) → 环境信息
    * @returns 完整的 System Prompt 文本
    */
   buildSystemPrompt(): string {
     const parts: string[] = [];
 
-    // 1. LLM 配置中的 system_prefix
+    // 1. LLM 配置中的 system_prefix (输出风格等全局片段)
     if (this.llmConfig.system_prefix) {
       parts.push(this.llmConfig.system_prefix);
     }
@@ -155,20 +156,38 @@ export class AiAgentService {
       parts.push(this.memoryPrompt);
     }
 
-    // 3. Agent instructions (原 role content)
+    // 3. Agent instructions (角色定义 + 行为准则)
     if (this.agent.instructions) {
       parts.push(this.agent.instructions);
     }
 
-    // 4. Skills 指令注入
+    // 4. Skills 元数据 (仅 name + description，让 LLM 知道有哪些可用技能)
     if (this.skills.length > 0) {
       const skillParts = this.skills.map((skill) => {
-        return `### ${skill.name} (v${skill.version})\n${skill.instructions}`;
+        return `- **${skill.name}** (v${skill.version}): ${skill.description}`;
       });
-      parts.push(`## 技能\n\n${skillParts.join('\n\n---\n\n')}`);
+      parts.push(`## 可用技能\n\n${skillParts.join('\n')}`);
     }
 
+    // 5. 环境信息
+    parts.push(this.buildEnvironmentInfo());
+
     return parts.join('\n\n');
+  }
+
+  /**
+   * 构建环境信息片段
+   * @returns 环境信息文本
+   */
+  private buildEnvironmentInfo(): string {
+    const lines = [
+      `## 环境信息`,
+      ``,
+      `- 操作系统: ${os.type()} (${os.platform()} ${os.release()})`,
+      `- 工作目录: ${process.cwd()}`,
+      `- 当前时间: ${getCurrentTimeString()}`,
+    ];
+    return lines.join('\n');
   }
 
   /**

@@ -47,10 +47,9 @@ assistant/          # 助手根目录
     memory/            # 记忆存储位置
 ```
 
-### 4.2 Agent定义文件 (`agent/*.md`)
+### 4.2 LLM配置（llm/*.json）
 
-
-### 4.3 LLM数据
+该目录用于存放LLM参数配置，格式如下：
 
 参考：
 ```json
@@ -65,35 +64,15 @@ assistant/          # 助手根目录
 }
 ```
 
+### 4.3 Agent定义文件 (`agent/*.md`)
+
+该目录用于存放agent定义文件，agent定义文件为Markdown格式，开头包含**YAML 元数据 (Front-matter)**
+
+详细内容参考 (./004_agent-design.md)
 
 ### 4.4 Skill数据
 
-一个标准的 AI Skill 通常以一个独立的文件夹形式存在。
-
-- **技能根目录 (`Skill_Name/`)**：存放该技能所有相关文件的总文件夹，目录名为英文、下划线、减号的组合。
-    - **`SKILL.md` (核心文件)**：技能的入口文档，包含技能的元数据、定义和工作流指令。
-    - **`scripts/` (可选)**：存放可执行代码（如 Python、Shell 脚本），用于处理 AI 无法直接完成的确定性任务。
-    - **`templates/` (可选)**：定义输出结果的固定格式模板。
-    - **`assets/` 或 `docs/` (可选)**：存放该技能依赖的背景参考资料、图片或文档。
-
-最关键的 `SKILL.md` 文件采用 **Markdown** 格式，并结合 **YAML** 元数据来定义技能属性。
-
-**(1) YAML 元数据 (Front-matter)**
-
-位于文件顶部，用于让 AI 系统识别技能的基本信息：
-
-
-```yaml
----
-name: "技能名称（如：Markdown格式化助手）"
-description: "详细描述技能用途及触发场景。AI 依靠此描述决定何时调用该技能。"
-version: "1.0.0"
----
-```
-
-**(2) 核心指令 (Instructions)**
-
-使用标准的 Markdown 语法编写，告诉 AI 具体的技能知识
+该目录用于存放skill定义文件，详细内容参考 (./005_skill-design.md)
 
 
 ## 5 接口设计 (TypeScript 抽象)

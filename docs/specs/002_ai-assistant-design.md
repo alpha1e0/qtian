@@ -850,9 +850,12 @@ Renderer                          Main Process
 
 ## 9 Preload 桥接 API
 
+`src\shared\ipc-channels.ts` 集中定义所有 IPC 频道名 (IPC_CHANNELS)，格式 qtian:模块:动作
+
+`D:\sources\qtian\src\preload\index.ts` 定义所有preload 桥接 API
 ```typescript
 // 在 preload/index.ts 中新增
-const aiAssistant = {
+const api = {
   // Agent
   listAgents: () => ipcRenderer.invoke('qtian:ai:list-agents'),
   getAgent: (name) => ipcRenderer.invoke('qtian:ai:get-agent', name),
@@ -897,8 +900,11 @@ const aiAssistant = {
   // 对话事件监听
   onChatEvent: (callback) => { ... },
   offChatEvent: () => { ... },
+  // ...
 };
 ```
+
+`src/main/core/ipc/handlers/index.ts` 定义事件处理函数
 
 ## 10 UI 组件设计补充
 

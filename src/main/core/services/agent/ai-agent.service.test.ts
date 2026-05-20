@@ -103,11 +103,14 @@ describe('AiAgentService', () => {
       expect(messages[0].content).toContain('测试助手');
     });
 
-    it('should handle empty instructions', () => {
+    it('should handle empty instructions with environment info only', () => {
       const emptyAgent: AiAgent = { ...mockAgent, instructions: '' };
       const serviceEmptyRole = new AiAgentService(mockConfig, emptyAgent);
       const messages = serviceEmptyRole.getMessages();
-      expect(messages).toHaveLength(0);
+      // 环境信息始终注入，因此 system prompt 不为空
+      expect(messages).toHaveLength(1);
+      expect(messages[0].role).toBe('system');
+      expect(messages[0].content).toContain('环境信息');
     });
 
     it('should handle only system_prefix without instructions', () => {
@@ -247,7 +250,7 @@ describe('AiAgentService', () => {
       expect(memoryIdx).toBeLessThan(instructionsIdx);
     });
 
-    it('should include skills instructions in system prompt', () => {
+    it('should include skills metadata (name + description) in system prompt', () => {
       const skills: AiSkill[] = [
         {
           name: '翻译助手',
@@ -261,16 +264,18 @@ describe('AiAgentService', () => {
       ];
       const serviceWithSkills = new AiAgentService(mockConfig, mockAgent, { skills });
       const prompt = serviceWithSkills.buildSystemPrompt();
-      expect(prompt).toContain('## 技能');
+      expect(prompt).toContain('## 可用技能');
       expect(prompt).toContain('翻译助手');
-      expect(prompt).toContain('请进行准确翻译');
+      expect(prompt).toContain('翻译'); // description
+      // 不应包含完整 instructions
+      expect(prompt).not.toContain('请进行准确翻译');
       // Skills 应在 instructions 之后
       const skillIdx = prompt.indexOf('翻译助手');
       const instructionsIdx = prompt.indexOf('测试助手');
       expect(skillIdx).toBeGreaterThan(instructionsIdx);
     });
 
-    it('should follow order: system_prefix → memory → instructions → skills', () => {
+    it('should follow order: system_prefix → memory → instructions → skills → environment', () => {
       const skills: AiSkill[] = [
         {
           name: 'Skill1',
@@ -294,10 +299,12 @@ describe('AiAgentService', () => {
       const memIdx = prompt.indexOf('MEM');
       const roleIdx = prompt.indexOf('ROLE');
       const skillIdx = prompt.indexOf('Skill1');
+      const envIdx = prompt.indexOf('环境信息');
 
       expect(sysIdx).toBeLessThan(memIdx);
       expect(memIdx).toBeLessThan(roleIdx);
       expect(roleIdx).toBeLessThan(skillIdx);
+      expect(skillIdx).toBeLessThan(envIdx);
     });
   });
 

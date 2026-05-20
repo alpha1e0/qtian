@@ -127,3 +127,8 @@ vue.config.js.web
 
 # 测试工作目录（运行时生成）
 tests/resource/workspace/
+
+# ================================
+# else
+# ================================
+.reference
