@@ -2,6 +2,23 @@
 
 ## [1.0.0] 2026-05-20
 
+**User**: 增加 edit tool，实现文件编辑，参考 claude-code-source-code 的 FileEditTool 实现
+
+**Summary**:
+
+- 新增 `EditTool` 内置工具（`src/main/core/services/tools/edit-tool/edit-tool.ts`），支持 AI Agent 通过字符串替换增量编辑文件
+- 精确字符串替换：old_string → new_string，支持单次替换和 replace_all 全局替换
+- 引号规范化：弯引号（curly quote）↔ 直引号（straight quote）兼容匹配与风格保持
+- 唯一性检查：多匹配时要求 replace_all=true 或提供更多上下文
+- 新文件创建：old_string="" 时创建新文件（含自动创建父目录）
+- 保留原始行尾：保持文件原有 CRLF/LF 风格（与 WriteTool 强制 LF 不同）
+- 安全措施：设备文件黑名单、相同字符串检查、路径规范化
+- 新增 EditTool 单元测试（37 个用例，全部通过）
+- 新增设计文档 `docs/specs/006-tool-edit-design.md`
+- 修改 `index.ts` 导出 EditTool，修改 `ai-assistant.handler.ts` 的 `buildTools()` 注册 `file_edit`
+
+## [1.0.0] 2026-05-20
+
 **User**: 增加 write tool，实现文件写入，参考 claude-code-source-code 的 FileWriteTool 实现
 
 **Summary**:
