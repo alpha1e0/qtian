@@ -6,6 +6,7 @@ export * from './tool.interface';
 export * from './tool-registry';
 export * from './shell-tool/shell-tool';
 export * from './bash-tool/bash-tool';
+export * from './read-tool/read-tool';
 export * from './bash-tool/bash-tool-path';
 export * from './bash-tool/bash-tool-security';
 export * from './mcp-client';

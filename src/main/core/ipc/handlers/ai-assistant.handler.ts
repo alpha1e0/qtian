@@ -6,7 +6,7 @@ import { AiSkillService } from '@/core/services/agent';
 import { AiConfigService } from '@/core/services/common';
 import { AiHistoryService } from '@/core/services/common';
 import { AiChatHistory, AiChatMessage } from '@/core/common/config';
-import { ShellTool } from '@/core/services/tools';
+import { ShellTool, ReadTool } from '@/core/services/tools';
 import { ITool } from '@/core/services/tools';
 import { McpManager } from '@/core/services/tools';
 import { IPC_CHANNELS } from '../channels';
@@ -129,6 +129,9 @@ function buildTools(toolNames: string[]): ITool[] {
     switch (name) {
       case 'shell_execute':
         tools.push(new ShellTool());
+        break;
+      case 'file_read':
+        tools.push(new ReadTool());
         break;
       default:
         logger.warn(`Unknown tool: ${name}, skipping`);

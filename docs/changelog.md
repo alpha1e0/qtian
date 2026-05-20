@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.0.0] 2026-05-20
+
+**User**: 增加 read tool，实现文件读取，参考 claude-code-source-code 的 FileReadTool 实现
+
+**Summary**:
+
+- 新增 `ReadTool` 内置工具（`src/main/core/services/tools/read-tool/read-tool.ts`），支持 AI Agent 读取本地文件
+- 文本文件读取：支持 offset/limit 分段读取，带行号格式化（cat -n 格式），256KB 大小限制
+- 图片文件读取：支持 PNG/JPG/JPEG/GIF/WEBP，返回 base64 编码
+- 安全措施：设备文件黑名单（/dev/zero 等）、二进制文件拒绝、路径规范化
+- 错误处理：文件不存在、权限拒绝、目录路径、大小超限等友好提示
+- 新增 ReadTool 单元测试（36 个用例，全部通过）
+- 新增设计文档 `docs/specs/006-tool-read-design.md`
+- 修改 `index.ts` 导出 ReadTool，修改 `ai-assistant.handler.ts` 的 `buildTools()` 注册 `file_read`
+
 ## [0.0.1] 2026-04-17
 
 ### 新增：快捷模式（Quick Mode）
