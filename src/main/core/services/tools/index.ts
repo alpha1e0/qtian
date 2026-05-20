@@ -10,6 +10,7 @@ export * from './read-tool/read-tool';
 export * from './write-tool/write-tool';
 export * from './edit-tool/edit-tool';
 export * from './glob-tool/glob-tool';
+export * from './grep-tool/grep-tool';
 export * from './bash-tool/bash-tool-path';
 export * from './bash-tool/bash-tool-security';
 export * from './mcp-client';

@@ -2,6 +2,21 @@
 
 ## [1.0.0] 2026-05-20
 
+**User**: 增加 grep tool，实现文件内容查找，参考 claude-code-source-code 的 GrepTool 实现
+
+**Summary**:
+
+- 新增 `GrepTool` 内置工具（`src/main/core/services/tools/grep-tool/grep-tool.ts`），支持 AI Agent 在文件内容中搜索正则表达式
+- 三种输出模式：`files_with_matches`（文件列表）、`content`（匹配行+行号+上下文）、`count`（匹配计数）
+- 支持正则匹配、大小写忽略（-i）、上下文行（-B/-A/-C）、glob 文件过滤、结果分页（head_limit）
+- 安全措施：VCS 目录排除（.git/.svn）、二进制文件跳过、行长度截断
+- 基于 Node.js 原生文件读取实现（无外部依赖）
+- 新增 GrepTool 单元测试（35 个用例，全部通过）
+- 新增设计文档 `docs/specs/006-tool-grep-design.md`
+- 修改 `index.ts` 导出 GrepTool，修改 `ai-assistant.handler.ts` 的 `buildTools()` 注册 `grep`
+
+## [1.0.0] 2026-05-20
+
 **User**: 增加 glob tool，实现文件查找，参考 claude-code-source-code 的 GlobTool 实现
 
 **Summary**:
