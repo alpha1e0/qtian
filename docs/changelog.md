@@ -2,6 +2,21 @@
 
 ## [1.0.0] 2026-05-20
 
+**User**: 增加 glob tool，实现文件查找，参考 claude-code-source-code 的 GlobTool 实现
+
+**Summary**:
+
+- 新增 `GlobTool` 内置工具（`src/main/core/services/tools/glob-tool/glob-tool.ts`），支持 AI Agent 按 glob 模式快速查找文件
+- glob 模式匹配：支持 `**`（递归目录）、`*`（单层通配）、`?`（单字符）
+- 搜索目录验证、绝对路径 pattern 处理（提取 base directory）
+- 结果按修改时间排序（最新优先）、截断限制（默认 100 条）
+- 路径相对化输出（省 token），基于 Node.js `fs.readdir` 实现（无外部依赖）
+- 新增 GlobTool 单元测试（25 个用例，全部通过）
+- 新增设计文档 `docs/specs/006-tool-glob-design.md`
+- 修改 `index.ts` 导出 GlobTool，修改 `ai-assistant.handler.ts` 的 `buildTools()` 注册 `glob`
+
+## [1.0.0] 2026-05-20
+
 **User**: 增加 edit tool，实现文件编辑，参考 claude-code-source-code 的 FileEditTool 实现
 
 **Summary**:
