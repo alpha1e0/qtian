@@ -50,6 +50,10 @@ export const IPC_CHANNELS = {
   AI_TOOL_START: 'qtian:ai:tool-start',
   AI_TOOL_RESULT: 'qtian:ai:tool-result',
 
+  // AI Assistant ask tool (双向 IPC: Main → Renderer 发问题, Renderer → Main 返回回答)
+  AI_ASK_QUESTION: 'qtian:ai:ask-question',
+  AI_ANSWER_QUESTION: 'qtian:ai:answer-question',
+
   // AI Assistant channels - Skill 管理
   AI_LIST_SKILLS: 'qtian:ai:list-skills',
   AI_GET_SKILL: 'qtian:ai:get-skill',

@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.0.0] 2026-05-21
+
+**User**: 增加 ask human tool，实现模型向人询问、确认信息，参考 claude-code-source-code 的 AskUserQuestionTool 实现
+
+**Summary**:
+
+- 新增 `AskHumanTool` 内置工具（`src/main/core/services/tools/ask-tool/ask-tool.ts`），支持 AI Agent 向用户提出多选题并等待回答
+- 支持 1-4 个问题，每题 2-4 个选项，支持单选和多选模式
+- 通过构造函数注入回调函数设计，工具本身不依赖 Electron API，便于单元测试
+- 新增双向 IPC 通信机制：`AI_ASK_QUESTION`（Main→Renderer 发送问题）、`AI_ANSWER_QUESTION`（Renderer→Main 返回回答）
+- 安全措施：参数校验（数量限制、header 唯一性、选项唯一性）、5 分钟超时保护、sender 有效性检查
+- 新增 AskHumanTool 单元测试（28 个用例，全部通过）
+- 新增设计文档 `docs/specs/006-tool-ask-design.md`
+- 修改 `index.ts` 导出 AskHumanTool，修改 `ai-assistant.handler.ts` 的 `buildTools()` 注册 `ask_human`
+- 修改 `ipc-channels.ts` 新增 `AI_ASK_QUESTION` 和 `AI_ANSWER_QUESTION` 频道
+- 修改 `preload/index.ts` 新增 `onAskQuestion` 事件监听和 `answerQuestion` invoke
+
 ## [1.0.0] 2026-05-20
 
 **User**: 增加 grep tool，实现文件内容查找，参考 claude-code-source-code 的 GrepTool 实现

@@ -105,7 +105,8 @@ const api = {
           value.channel === IPC_CHANNELS.AI_CHAT_COMPLETE ||
           value.channel === IPC_CHANNELS.AI_CHAT_ERROR ||
           value.channel === IPC_CHANNELS.AI_TOOL_START ||
-          value.channel === IPC_CHANNELS.AI_TOOL_RESULT
+          value.channel === IPC_CHANNELS.AI_TOOL_RESULT ||
+          value.channel === IPC_CHANNELS.AI_ASK_QUESTION
         ) {
           ipcRenderer.removeListener(value.channel, value.callback);
           listeners.delete(key);
@@ -130,6 +131,18 @@ const api = {
       });
       ipcRenderer.on(IPC_CHANNELS.AI_TOOL_RESULT, wrapper);
     },
+
+    // AskHumanTool 事件 (Main → Renderer: 发送问题, Renderer → Main: 返回回答)
+    onAskQuestion: (callback) => {
+      const wrapper = (event, data) => callback(data);
+      listeners.set(`ai-ask-question-${Date.now()}`, {
+        channel: IPC_CHANNELS.AI_ASK_QUESTION,
+        callback: wrapper,
+      });
+      ipcRenderer.on(IPC_CHANNELS.AI_ASK_QUESTION, wrapper);
+    },
+    answerQuestion: (toolCallId, answers) =>
+      ipcRenderer.invoke(IPC_CHANNELS.AI_ANSWER_QUESTION, toolCallId, answers),
   },
 
   // Legacy API for backward compatibility

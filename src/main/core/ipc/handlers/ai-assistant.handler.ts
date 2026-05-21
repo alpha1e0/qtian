@@ -6,9 +6,10 @@ import { AiSkillService } from '@/core/services/agent';
 import { AiConfigService } from '@/core/services/common';
 import { AiHistoryService } from '@/core/services/common';
 import { AiChatHistory, AiChatMessage } from '@/core/common/config';
-import { ShellTool, ReadTool, WriteTool, EditTool, GlobTool, GrepTool } from '@/core/services/tools';
+import { ShellTool, ReadTool, WriteTool, EditTool, GlobTool, GrepTool, AskHumanTool } from '@/core/services/tools';
 import { ITool } from '@/core/services/tools';
 import { McpManager } from '@/core/services/tools';
+import { AskQuestion } from '@/core/services/tools';
 import { IPC_CHANNELS } from '../channels';
 import { createLogger } from '@/core/utils/logger';
 
@@ -16,6 +17,15 @@ const logger = createLogger('AiAssistantHandler');
 
 // 存储活跃的对话会话 (agentId:historyId → ChatService)
 const activeChats = new Map<string, AiAgentService>();
+
+// AskHumanTool 等待队列: toolCallId → resolve 回调
+const pendingQuestions = new Map<string, {
+  resolve: (answers: Record<string, string>) => void;
+  reject: (err: Error) => void;
+}>();
+
+// 当前活跃的渲染器 sender (用于 AskHumanTool 向渲染器发送问题)
+let currentSender: Electron.WebContents | null = null;
 
 // 懒加载的服务实例
 let agentService: AiAgentMgrService | null = null;
@@ -118,6 +128,45 @@ function autoRenameIfDefault(historyData: AiChatHistory): void {
 }
 
 /**
+ * AskHumanTool 回调: 向用户发送问题并等待回答
+ * 通过 IPC 事件与渲染器通信
+ */
+function askUserViaIpc(
+  toolCallId: string,
+  questions: AskQuestion[],
+): Promise<Record<string, string>> {
+  return new Promise((resolve, reject) => {
+    if (!currentSender || currentSender.isDestroyed()) {
+      reject(new Error('No active renderer window'));
+      return;
+    }
+
+    // 设置超时 (5 分钟无回答则自动取消)
+    const timeout = setTimeout(() => {
+      pendingQuestions.delete(toolCallId);
+      reject(new Error('User did not respond within the timeout period'));
+    }, 5 * 60 * 1000);
+
+    pendingQuestions.set(toolCallId, {
+      resolve: (answers) => {
+        clearTimeout(timeout);
+        pendingQuestions.delete(toolCallId);
+        resolve(answers);
+      },
+      reject: (err) => {
+        clearTimeout(timeout);
+        pendingQuestions.delete(toolCallId);
+        reject(err);
+      },
+    });
+
+    // 向渲染器发送问题
+    currentSender.send(IPC_CHANNELS.AI_ASK_QUESTION, { toolCallId, questions });
+    logger.info(`AskHumanTool: sent ${questions.length} question(s), toolCallId=${toolCallId}`);
+  });
+}
+
+/**
  * 根据 Agent 的工具列表构建工具实例数组
  * @param toolNames - Agent 中配置的工具名称列表
  * @returns 工具实例数组
@@ -144,6 +193,9 @@ function buildTools(toolNames: string[]): ITool[] {
         break;
       case 'grep':
         tools.push(new GrepTool());
+        break;
+      case 'ask_human':
+        tools.push(new AskHumanTool(askUserViaIpc));
         break;
       default:
         logger.warn(`Unknown tool: ${name}, skipping`);
@@ -400,6 +452,10 @@ export function registerAiAssistantHandlers(): void {
     IPC_CHANNELS.AI_CHAT_MESSAGE,
     async (event, agentId: string, historyId: string, message: string) => {
       logger.info(`AI chat message: ${agentId}/${historyId}`);
+
+      // 设置当前 sender (供 AskHumanTool 向渲染器发送问题)
+      currentSender = event.sender;
+
       try {
         const key = getChatKey(agentId, historyId);
         const chatService = activeChats.get(key);
@@ -459,6 +515,8 @@ export function registerAiAssistantHandlers(): void {
         logger.error('AI chat failed', err);
         event.sender.send(IPC_CHANNELS.AI_CHAT_ERROR, { error: (err as Error).message });
         throw err;
+      } finally {
+        currentSender = null;
       }
     }
   );
@@ -481,10 +539,31 @@ export function registerAiAssistantHandlers(): void {
   });
 
   /**
+   * 渲染器回答 AskHumanTool 提出的问题
+   */
+  ipcMain.handle(
+    IPC_CHANNELS.AI_ANSWER_QUESTION,
+    async (_event, toolCallId: string, answers: Record<string, string>) => {
+      logger.info(`AskHumanTool answer received: toolCallId=${toolCallId}`);
+      const pending = pendingQuestions.get(toolCallId);
+      if (!pending) {
+        logger.warn(`No pending question found for toolCallId=${toolCallId}`);
+        return { success: false, error: 'No pending question found' };
+      }
+      pending.resolve(answers);
+      return { success: true };
+    },
+  );
+
+  /**
    * 重新生成最后一条回复
    */
   ipcMain.handle(IPC_CHANNELS.AI_REGENERATE, async (event, agentId: string, historyId: string) => {
     logger.info(`AI regenerate: ${agentId}/${historyId}`);
+
+    // 设置当前 sender (供 AskHumanTool 向渲染器发送问题)
+    currentSender = event.sender;
+
     try {
       const key = getChatKey(agentId, historyId);
       const chatService = activeChats.get(key);
@@ -543,6 +622,8 @@ export function registerAiAssistantHandlers(): void {
       logger.error('AI regenerate failed', err);
       event.sender.send(IPC_CHANNELS.AI_CHAT_ERROR, { error: (err as Error).message });
       throw err;
+    } finally {
+      currentSender = null;
     }
   });
 
