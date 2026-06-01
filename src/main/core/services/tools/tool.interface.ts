@@ -29,4 +29,13 @@ export interface ITool {
    * @returns 执行结果文本
    */
   execute(args: Record<string, any>): Promise<string>;
+
+  /**
+   * 工具执行后的可选钩子 — 用于在 tool result 之后追加额外消息
+   * 目前仅 SkillTool 使用，将 skill 正文注入为 user message
+   * @param args 工具参数 (已解析的 JSON 对象)
+   * @param result execute() 的返回结果
+   * @returns 需要追加的额外消息内容，返回 null 表示不追加
+   */
+  afterExecute?(args: Record<string, any>, result: string): Promise<string | null>;
 }

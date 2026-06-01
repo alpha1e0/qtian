@@ -166,7 +166,12 @@ export class AiAgentService {
       const skillParts = this.skills.map((skill) => {
         return `- **${skill.name}** (v${skill.version}): ${skill.description}`;
       });
-      parts.push(`## 可用技能\n\n${skillParts.join('\n')}`);
+      parts.push(
+        `## 可用技能\n\n`
+        + `${skillParts.join('\n')}\n\n`
+        + `当需要执行某个技能时，请调用 \`skill\` 工具并传入技能的目录名 (\`dir_name\`)。`
+        + `技能的完整指令将自动加载到对话中供你执行。`,
+      );
     }
 
     // 5. 环境信息
@@ -441,7 +446,7 @@ export class AiAgentService {
             };
 
             // 执行工具
-            const toolResult = await this.executeTool(name, argsStr);
+            const { result: toolResult, tool } = await this.executeToolWithInstance(name, argsStr);
 
             // 通知 UI: 工具执行结果
             yield {
@@ -460,6 +465,21 @@ export class AiAgentService {
               model: this.llmConfig.model,
               time: getCurrentTimeString(),
             });
+
+            // 检查工具是否实现 afterExecute 钩子，追加额外消息
+            if (typeof tool.afterExecute === 'function') {
+              const parsedArgs = this.safeParseArgs(argsStr);
+              const extraContent = await tool.afterExecute(parsedArgs, toolResult);
+              if (extraContent) {
+                this.messages.push({
+                  role: 'user',
+                  content: extraContent,
+                  timestamp: Date.now(),
+                  model: this.llmConfig.model,
+                  time: getCurrentTimeString(),
+                });
+              }
+            }
           }
 
           // 继续下一轮
@@ -496,24 +516,38 @@ export class AiAgentService {
   }
 
   /**
-   * 执行指定工具
+   * 执行指定工具并返回结果和工具实例
    * @param name - 工具名称
    * @param argsStr - 工具参数 JSON 字符串
-   * @returns 工具执行结果文本
+   * @returns 工具执行结果文本和工具实例
    */
-  private async executeTool(name: string, argsStr: string): Promise<string> {
+  private async executeToolWithInstance(name: string, argsStr: string): Promise<{ result: string; tool: ITool }> {
     const tool = this.toolRegistry.get(name);
     if (!tool) {
-      return `Error: Tool '${name}' not found`;
+      return { result: `Error: Tool '${name}' not found`, tool: { name, description: '', parameters: {}, execute: async () => '' } };
     }
 
     try {
       const args = JSON.parse(argsStr || '{}');
-      return await tool.execute(args);
+      const result = await tool.execute(args);
+      return { result, tool };
     } catch (err) {
       const errMsg = (err as Error).message;
       logger.error(`Tool '${name}' execution failed: ${errMsg}`);
-      return `Error: Tool execution failed: ${errMsg}`;
+      return { result: `Error: Tool execution failed: ${errMsg}`, tool };
+    }
+  }
+
+  /**
+   * 安全解析工具参数 JSON
+   * @param argsStr - JSON 字符串
+   * @returns 解析后的对象
+   */
+  private safeParseArgs(argsStr: string): Record<string, any> {
+    try {
+      return JSON.parse(argsStr || '{}');
+    } catch {
+      return {};
     }
   }
 

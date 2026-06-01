@@ -6,7 +6,7 @@ import { AiSkillService } from '@/core/services/agent';
 import { AiConfigService } from '@/core/services/common';
 import { AiHistoryService } from '@/core/services/common';
 import { AiChatHistory, AiChatMessage } from '@/core/common/config';
-import { ShellTool, ReadTool, WriteTool, EditTool, GlobTool, GrepTool, AskHumanTool } from '@/core/services/tools';
+import { ShellTool, ReadTool, WriteTool, EditTool, GlobTool, GrepTool, AskHumanTool, SkillTool } from '@/core/services/tools';
 import { ITool } from '@/core/services/tools';
 import { McpManager } from '@/core/services/tools';
 import { AskQuestion } from '@/core/services/tools';
@@ -393,6 +393,14 @@ export function registerAiAssistantHandlers(): void {
         }
 
         const tools = [...builtInTools, ...mcpTools];
+
+        // 如果 Agent 配置了 skills，注册 SkillTool 用于按需加载 skill 正文
+        if (agent.skills && agent.skills.length > 0) {
+          const skillServiceInstance = getSkillService();
+          tools.push(new SkillTool(async (dirName) => {
+            return skillServiceInstance.getSkill(dirName);
+          }));
+        }
 
         // 加载 Agent 引用的 Skills
         const skills: any[] = [];
