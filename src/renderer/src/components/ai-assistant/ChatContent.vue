@@ -82,13 +82,28 @@ export default {
 .messages-container {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
-  background: #fafafa;
+  padding: 24px 20px;
+  background:
+    radial-gradient(ellipse at 15% 30%, rgba(99, 102, 241, 0.025) 0%, transparent 50%),
+    radial-gradient(ellipse at 85% 70%, rgba(139, 92, 246, 0.02) 0%, transparent 50%),
+    var(--surface-base);
 }
 
 .message {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
   max-width: 80%;
+  animation: messageSlideIn 0.3s ease-out;
+}
+
+@keyframes messageSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .user-message {
@@ -101,7 +116,8 @@ export default {
 
 .loading-indicator {
   text-align: center;
-  padding: 10px;
-  color: #999;
+  padding: 16px;
+  color: var(--accent);
+  font-size: 18px;
 }
 </style>

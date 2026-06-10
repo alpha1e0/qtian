@@ -53,16 +53,21 @@ export default {
 
 <style scoped>
 .tool-call-view {
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
   margin: 8px 0;
-  background: #fafafa;
+  background: var(--surface-base);
   overflow: hidden;
+  transition: border-color 0.2s ease;
+}
+
+.tool-call-view:hover {
+  border-color: var(--border-medium);
 }
 
 .tool-call-error {
-  border-color: #f56c6c;
-  background: #fef0f0;
+  border-color: var(--color-danger);
+  background: #fef2f2;
 }
 
 .tool-call-header {
@@ -71,24 +76,30 @@ export default {
   justify-content: space-between;
   padding: 8px 12px;
   cursor: pointer;
-  background: #f0f0f0;
+  background: rgba(0, 0, 0, 0.02);
   user-select: none;
+  transition: background 0.15s ease;
+}
+
+.tool-call-header:hover {
+  background: rgba(0, 0, 0, 0.04);
 }
 
 .tool-call-error .tool-call-header {
-  background: #fde2e2;
+  background: #fee2e2;
 }
 
 .tool-name {
   font-weight: 500;
   font-size: 13px;
-  color: #606266;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
 }
 
 .expand-icon {
-  transition: transform 0.2s;
+  transition: transform 0.25s ease;
   font-size: 14px;
-  color: #909399;
+  color: var(--text-muted);
 }
 
 .expand-icon.expanded {
@@ -108,25 +119,28 @@ export default {
 }
 
 .section-label {
-  font-size: 12px;
-  font-weight: 500;
-  color: #909399;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
   display: block;
   margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .tool-args,
 .tool-result {
-  background: #fff;
-  border: 1px solid #ebeef5;
-  border-radius: 4px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
   padding: 8px;
   font-size: 12px;
-  font-family: 'Consolas', 'Monaco', monospace;
+  font-family: var(--font-mono);
   white-space: pre-wrap;
   word-break: break-all;
   max-height: 300px;
   overflow-y: auto;
   margin: 0;
+  line-height: 1.5;
 }
 </style>

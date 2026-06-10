@@ -144,9 +144,9 @@ export default {
 .custom-titlebar {
   display: flex;
   align-items: center;
-  height: 30px;
-  background: #f0f0f0;
-  border-bottom: 1px solid #dcdcdc;
+  height: 32px;
+  background: var(--surface-dark);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   -webkit-app-region: drag;
   user-select: none;
   flex-shrink: 0;
@@ -161,39 +161,42 @@ export default {
 
 .titlebar-title {
   font-size: 12px;
-  color: #555;
+  color: var(--text-on-dark-secondary);
   font-weight: 500;
+  letter-spacing: 0.3px;
 }
 
 .titlebar-icon {
   width: 16px;
   height: 16px;
   margin-right: 6px;
+  opacity: 0.9;
 }
 
 .titlebar-menus {
-  margin-top: 3px;
+  margin-top: 2px;
   display: flex;
   align-items: center;
-  margin-left: 6px;
+  margin-left: 4px;
   -webkit-app-region: no-drag;
   height: 100%;
 }
 
 .menu-item {
   padding: 0 10px;
-  height: 30px;
+  height: 28px;
   display: flex;
   align-items: center;
   cursor: pointer;
-  color: #333;
+  color: var(--text-on-dark-secondary);
   font-size: 13px;
-  border-radius: 3px;
-  transition: background 0.1s;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
 }
 
 .menu-item:hover {
-  background: rgba(0, 0, 0, 0.08);
+  background: var(--surface-dark-hover);
+  color: var(--text-on-dark);
 }
 
 .titlebar-controls {
@@ -205,19 +208,20 @@ export default {
 
 .ctrl-btn {
   width: 46px;
-  height: 30px;
+  height: 32px;
   border: none;
   background: transparent;
-  color: #666;
+  color: var(--text-on-dark-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s;
+  transition: all 0.15s ease;
 }
 
 .ctrl-btn:hover {
-  background: #e0e0e0;
+  background: var(--surface-dark-hover);
+  color: var(--text-on-dark);
 }
 
 .ctrl-btn-close:hover {
@@ -227,7 +231,7 @@ export default {
 
 .menu-separator {
   height: 1px;
-  background: #dcdcdc;
+  background: rgba(255, 255, 255, 0.07);
   margin: 4px 0;
 }
 </style>

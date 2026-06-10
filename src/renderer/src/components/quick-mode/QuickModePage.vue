@@ -522,28 +522,30 @@ export default {
   display: flex;
   flex-direction: column;
   align-items: center;
-  /* justify-content: center; */
   justify-content: flex-start;
   overflow: hidden;
   padding-bottom: 8px;
+  background: var(--surface-base);
 }
 
-/* ===== 初始状态 ===== */
+/* ===== Initial state ===== */
 .initial-state {
   width: 100%;
   display: flex;
   justify-content: center;
-  padding: 0px 8px 8px 8px;
+  padding: 4px 8px 8px;
 }
 
 .chat-input-section {
   width: 100%;
   max-width: 970px;
-  background: #fff;
-  border-radius: 2px;
-  padding: 5px 10px 5px 10px;
+  background: var(--surface-card);
+  border-radius: var(--radius-lg);
+  padding: 6px 12px;
   position: relative;
   -webkit-app-region: no-drag;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-light);
 }
 
 .section-header {
@@ -551,14 +553,14 @@ export default {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 4px;
-  height: 29px;
-  padding: 2px 5px 2px 7px
+  height: 28px;
+  padding: 2px 5px 2px 7px;
 }
 
 .agent-label {
   font-size: 14px;
   font-weight: 500;
-  color: #606266;
+  color: var(--text-secondary);
 }
 
 .chat-input {
@@ -566,12 +568,18 @@ export default {
 }
 
 .chat-input :deep(.el-textarea__inner) {
-  border-radius: 8px;
-  font-size: 16px;
+  border-radius: var(--radius-md);
+  font-size: 15px;
   padding: 12px;
-  border: none;
+  border: 1px solid var(--border-light);
   box-shadow: none;
-  background: #f5f5f5;
+  background: var(--surface-base);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.chat-input :deep(.el-textarea__inner:focus) {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 .input-footer {
@@ -590,7 +598,6 @@ export default {
   width: 140px;
 }
 
-/* 下拉面板最多显示3条，超出滚动 */
 .input-selectors :deep(.el-select-dropdown) {
   max-height: 108px;
   overflow-y: auto;
@@ -601,7 +608,7 @@ export default {
   gap: 8px;
 }
 
-/* ===== 回答状态 ===== */
+/* ===== Answering state ===== */
 .answering-state {
   width: 100%;
   display: flex;
@@ -612,14 +619,16 @@ export default {
 .answering-card {
   width: 100%;
   max-width: 950px;
-  background: #fff;
-  border-radius: 2px;
-  padding: 5px 10px 5px 10px;
+  background: var(--surface-card);
+  border-radius: var(--radius-lg);
+  padding: 6px 12px;
   position: relative;
   -webkit-app-region: no-drag;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-light);
 }
 
 .answering-card .section-header {
@@ -627,19 +636,20 @@ export default {
 }
 
 .answering-card :deep(.el-divider) {
-  margin: 12px 0;
+  margin: 10px 0;
+  border-color: var(--border-light);
 }
 
 .question-card {
-  background: #f0f5ff;
-  border: 1px solid #d9e4f8;
-  border-radius: 10px;
+  background: var(--accent-gradient);
+  color: #ffffff;
+  border-radius: var(--radius-md);
   padding: 10px 14px;
   font-size: 14px;
   line-height: 1.6;
-  color: #333;
   word-break: break-word;
   margin-bottom: 12px;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.2);
 }
 
 .answer-area {
@@ -649,22 +659,24 @@ export default {
 }
 
 .answer-content {
-  background: white;
-  color: #333;
-  border-radius: 12px 12px 12px 4px;
-  padding: 10px 14px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  background: var(--surface-card);
+  color: var(--text-primary);
+  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-lg) 4px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-light);
   font-size: 14px;
-  line-height: 1.6;
+  line-height: 1.7;
   word-break: break-word;
 }
 
-/* Markdown 渲染样式 */
+/* Markdown rendering */
 .answer-content :deep(h1),
 .answer-content :deep(h2),
 .answer-content :deep(h3) {
-  margin: 12px 0 8px;
-  font-weight: 600;
+  margin: 14px 0 8px;
+  font-weight: 650;
+  color: var(--text-primary);
 }
 
 .answer-content :deep(h1) { font-size: 18px; }
@@ -672,15 +684,16 @@ export default {
 .answer-content :deep(h3) { font-size: 15px; }
 
 .answer-content :deep(pre) {
-  background: #f5f5f5;
-  border-radius: 6px;
-  padding: 10px;
+  background: #f3f2ef;
+  border-radius: var(--radius-sm);
+  padding: 12px;
   overflow-x: auto;
-  margin: 8px 0;
+  margin: 10px 0;
+  border: 1px solid var(--border-light);
 }
 
 .answer-content :deep(code) {
-  font-family: 'Consolas', 'Monaco', monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
 }
 
@@ -690,8 +703,9 @@ export default {
 }
 
 .answer-content :deep(a) {
-  color: #409eff;
+  color: var(--accent);
   text-decoration: none;
+  font-weight: 500;
 }
 
 .answer-content :deep(a:hover) {
@@ -704,19 +718,27 @@ export default {
 }
 
 .answer-content :deep(strong) {
-  font-weight: 600;
+  font-weight: 650;
+}
+
+.answer-content :deep(blockquote) {
+  border-left: 3px solid var(--accent);
+  padding-left: 12px;
+  margin: 8px 0;
+  color: var(--text-secondary);
+  font-style: italic;
 }
 
 .loading-indicator {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #999;
+  color: var(--accent);
   padding: 8px 0;
 }
 
 .error-message {
-  color: #f56c6c;
+  color: var(--color-danger);
   font-size: 14px;
   padding: 8px 0;
 }
@@ -728,7 +750,7 @@ export default {
   margin-top: 12px;
 }
 
-/* ===== 响应式 ===== */
+/* ===== Responsive ===== */
 @media (max-width: 768px) {
   .initial-state {
     padding: 20px;

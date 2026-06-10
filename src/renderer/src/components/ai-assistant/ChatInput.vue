@@ -102,9 +102,10 @@ export default {
 
 <style scoped>
 .chat-input {
-  border-top: 1px solid #e0e0e0;
-  background: white;
+  border-top: 1px solid var(--border-light);
+  background: var(--surface-card);
   padding: 12px 20px 16px;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.03);
 }
 
 .input-main {
@@ -112,8 +113,16 @@ export default {
 }
 
 .input-main :deep(.el-textarea__inner) {
-  font-family: inherit;
-  line-height: 1.6;
+  font-family: var(--font-sans);
+  line-height: 1.7;
+  font-size: 14px;
+  border-radius: var(--radius-md);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.input-main :deep(.el-textarea__inner:focus) {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 .input-footer {

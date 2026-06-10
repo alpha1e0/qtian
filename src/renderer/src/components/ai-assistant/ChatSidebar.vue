@@ -117,16 +117,16 @@ export default {
 
 <style scoped>
 .chat-sidebar {
-  width: 220px;
-  background: #f5f5f5;
-  border-right: 1px solid #ddd;
+  width: 240px;
+  background: var(--surface-dark-secondary);
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
 }
 
 .sidebar-header {
-  padding: 16px 12px 8px;
+  padding: 16px 14px 10px;
 }
 
 .history-list {
@@ -137,38 +137,40 @@ export default {
 
 .history-item {
   padding: 10px 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   margin-bottom: 2px;
-  transition: background 0.15s;
+  transition: all 0.15s ease;
 }
 
 .history-item:hover {
-  background: #e8e8e8;
+  background: var(--surface-dark-hover);
 }
 
 .history-item.active {
-  background: #d4e4ff;
+  background: var(--surface-dark-active);
 }
 
 .history-title {
-  font-size: 16px;
-  color: #333;
+  font-size: 13px;
+  color: var(--text-on-dark);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-weight: 450;
 }
 
 .history-meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 6px;
+  margin-top: 4px;
 }
 
 .history-time {
-  font-size: 14px;
-  color: #999;
+  font-size: 11px;
+  color: var(--text-on-dark-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .history-actions {
@@ -176,7 +178,7 @@ export default {
   align-items: center;
   gap: 6px;
   opacity: 0;
-  transition: opacity 0.15s;
+  transition: opacity 0.15s ease;
 }
 
 .history-item:hover .history-actions {
@@ -184,20 +186,20 @@ export default {
 }
 
 .action-icon {
-  font-size: 14px;
-  color: #999;
+  font-size: 13px;
+  color: var(--text-on-dark-muted);
   cursor: pointer;
-  transition: color 0.15s;
+  transition: color 0.15s ease;
 }
 
 .action-icon:hover {
-  color: #409eff;
+  color: var(--accent);
 }
 
 .history-empty {
-  padding: 20px 12px;
+  padding: 24px 14px;
   text-align: center;
-  color: #999;
+  color: var(--text-on-dark-muted);
   font-size: 13px;
 }
 </style>

@@ -197,7 +197,7 @@ export default {
 
 <style scoped>
 .chat-message {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
   max-width: 80%;
 }
 
@@ -212,69 +212,86 @@ export default {
 .message-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 4px;
+  gap: 8px;
+  margin-bottom: 6px;
   font-size: 12px;
-  color: #999;
 }
 
 .message-role-icon {
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .message-role-name {
   font-weight: 600;
-  color: #666;
+  color: var(--text-secondary);
+  font-size: 13px;
 }
 
 .message-model {
-  color: #aaa;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--accent-soft);
+  padding: 1px 6px;
+  border-radius: 4px;
 }
 
 .message-time {
-  color: #bbb;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .message-bubble {
   word-break: break-word;
-  line-height: 1.6;
+  line-height: 1.7;
   font-size: 14px;
 }
 
 .chat-message-user .message-bubble {
-  background: #e3f2fd;
-  color: #333;
-  border-radius: 12px 12px 4px 12px;
-  padding: 10px 14px;
+  background: var(--accent-gradient);
+  color: #ffffff;
+  border-radius: var(--radius-lg) var(--radius-lg) 4px var(--radius-lg);
+  padding: 12px 16px;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
 }
 
 .chat-message-assistant .message-bubble {
-  background: white;
-  color: #333;
-  border-radius: 12px 12px 12px 4px;
-  padding: 10px 14px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  background: var(--surface-card);
+  color: var(--text-primary);
+  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-lg) 4px;
+  padding: 12px 16px;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-light);
 }
 
-/* 操作按钮 */
+/* Action buttons */
 .message-actions {
   display: flex;
   gap: 2px;
-  margin-top: 4px;
+  margin-top: 6px;
   opacity: 0;
-  transition: opacity 0.2s;
+  transition: opacity 0.2s ease;
 }
 
 .chat-message:hover .message-actions {
   opacity: 1;
 }
 
-/* 编辑模式 */
+.message-actions :deep(.el-button) {
+  color: var(--text-muted);
+}
+
+.message-actions :deep(.el-button:hover) {
+  color: var(--accent);
+}
+
+/* Edit mode */
 .message-edit {
-  background: white;
-  border-radius: 8px;
-  padding: 10px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  background: var(--surface-card);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-light);
 }
 
 .edit-actions {
@@ -284,12 +301,41 @@ export default {
   margin-top: 8px;
 }
 
-/* Markdown 渲染样式 */
+/* === Markdown: user bubble (white text on gradient) === */
+.chat-message-user .message-bubble :deep(a) {
+  color: #c7d2fe;
+  text-decoration: underline;
+}
+
+.chat-message-user .message-bubble :deep(code) {
+  background: rgba(255, 255, 255, 0.15);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: #e0e0ff;
+}
+
+.chat-message-user .message-bubble :deep(pre) {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.chat-message-user .message-bubble :deep(pre code) {
+  background: transparent;
+  padding: 0;
+}
+
+/* === Markdown: assistant bubble (dark text on white) === */
 .message-bubble :deep(h1),
 .message-bubble :deep(h2),
 .message-bubble :deep(h3) {
-  margin: 12px 0 8px;
-  font-weight: 600;
+  margin: 14px 0 8px;
+  font-weight: 650;
+  color: var(--text-primary);
 }
 
 .message-bubble :deep(h1) { font-size: 18px; }
@@ -297,26 +343,29 @@ export default {
 .message-bubble :deep(h3) { font-size: 15px; }
 
 .message-bubble :deep(pre) {
-  background: #f5f5f5;
-  border-radius: 6px;
-  padding: 10px;
+  background: #f3f2ef;
+  border-radius: var(--radius-sm);
+  padding: 12px;
   overflow-x: auto;
-  margin: 8px 0;
+  margin: 10px 0;
+  border: 1px solid var(--border-light);
 }
 
 .message-bubble :deep(code) {
-  font-family: 'Consolas', 'Monaco', monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
 }
 
 .message-bubble :deep(pre code) {
   background: transparent;
   padding: 0;
+  border: none;
 }
 
 .message-bubble :deep(a) {
-  color: #409eff;
+  color: var(--accent);
   text-decoration: none;
+  font-weight: 500;
 }
 
 .message-bubble :deep(a:hover) {
@@ -329,6 +378,32 @@ export default {
 }
 
 .message-bubble :deep(strong) {
+  font-weight: 650;
+}
+
+.message-bubble :deep(blockquote) {
+  border-left: 3px solid var(--accent);
+  padding-left: 12px;
+  margin: 8px 0;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.message-bubble :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0;
+}
+
+.message-bubble :deep(th),
+.message-bubble :deep(td) {
+  border: 1px solid var(--border-medium);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.message-bubble :deep(th) {
+  background: #f3f2ef;
   font-weight: 600;
 }
 </style>

@@ -460,9 +460,8 @@ export default {
 .ai-assistant-page {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  background: #f8f9fa;
-  border-radius: 8px;
+  height: 100%;
+  background: var(--surface-base);
   overflow: hidden;
 }
 
@@ -477,6 +476,7 @@ export default {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: var(--surface-base);
 }
 
 .placeholder {
@@ -484,6 +484,7 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
+  background: var(--surface-base);
 }
 
 .placeholder-inner {
