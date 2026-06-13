@@ -948,7 +948,8 @@ const api = {
     "default_llm_config": "default",
     "max_tool_rounds": 10,
     "context_compress_threshold": 0.75,
-    "tool_timeout_ms": 30000
+    "tool_timeout_ms": 30000,
+    "tavily_api_key": ""
   }
 }
 ```
