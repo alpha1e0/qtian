@@ -21,6 +21,8 @@ AI助手包含 **快捷模式（quick-mode）** 和 **普通模式（normal-mode
 | 总体设计 | 项目总体设计 | ./002_ai-assistant-design.md |
 | 快捷模式UI设计 | 快捷模式UI设计 | ./003_quick-mode-ui-design.md |
 | 普通模式UI设计 | 普通模式UI设计 | ./003_normal-mode-chat-ui-design.md |
+| Todo 应用需求 | Todo 应用（含 FTS5 搜索、文档系统、Todo 驱动 AI 任务）需求 | ./100_todo-app-req.md |
+| Todo 应用设计 | Todo 应用补充设计 | ./100_todo-app-design.md |
 
 
 ## 3. 公共模块
@@ -33,11 +35,12 @@ AI助手包含 **快捷模式（quick-mode）** 和 **普通模式（normal-mode
 安装目录/
 	  workspace/         # 工作目录，保存配置、数据文件、任务数据等
         assistant/         # 保存LLM配置、Agent定义、Skill定义等和助手定义相关的内容
-        projects/           # 项目目录
+        app_modules/       # 应用模块目录
+        projects/          # 项目目录
         log/               # 日志目录
         qtian.json         # 配置文件
 	  app/               # 应用exe目录
-		    qtian.exe      # 应用主程序
+		qtian.exe          # 应用主程序
 ```
 
 工作目录默认为：`%LocalAppData%/Qtian/workspace`（Windows），如果设置了环境变量 `QTIAN_WORKSPACE`则优先使用环境变量中的目录为工作目录

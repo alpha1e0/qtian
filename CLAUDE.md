@@ -1,6 +1,9 @@
 # Qtian项目
 
-**简介**：一个基于 Electron + TypeScript + VUE 的AI助手应用。
+**简介**：综合AI 助手应用，包含：
+
+1. 通用Agent模块：规划、任务、问答。
+2. 应用模块：Todo、笔记等。
 
 ##  Role & Style
 
@@ -10,6 +13,7 @@
 
 ## Tech Stack
 
+- **编程语言**：TypeScript
 - **前端**： Electron、Vue 3 (Composition API)
 - **UI组件**：Element Plus
 - **打包**：electron-vite
@@ -24,7 +28,7 @@
 - `src/main/`: 主进程，核心业务逻辑（禁止在此处写 UI 代码）。
 - `src/renderer/`: 渲染进程，前端UI实现，VUE实现。
 - `src/preload/`：预加载脚本。
-- `docs/specs/`: 需求文档，xxx-req.md是需求文档，xxx-design.md是设计文档。。
+- `docs/specs/`: 需求文档，xxx-req.md是需求文档，xxx-design.md是设计文档；设计文档的总览在**001_index.md**
 - `docs/usage/`: 手册文档。
 - `data/`：存放数据文件，例如数据库初始化sql语句
 - `tests/e2e`：存放冒烟、集成自动化测试脚本
