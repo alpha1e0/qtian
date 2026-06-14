@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.0.0] 2026-06-14
+
+**User**: 根据 `docs/specs/006-tool-search.md` 给 agent 开发联网搜索工具，使用 Tavily API
+
+**Summary**:
+
+- 新增 `WebSearchTool` 内置工具（`src/main/core/services/tools/web-search-tool/web-search-tool.ts`），通过 Tavily Search API 实现 AI Agent 联网搜索
+- 工具名 `web_search`，必填参数 `query`；可选参数 `max_results`(1-10,默认5)、`search_depth`(basic/advanced)、`include_domains[]`、`exclude_domains[]`、`include_answer`(默认true)
+- 输出 Markdown 格式：answer 摘要 + `## Sources` 超链接列表 + 结果计数
+- 通过构造函数注入 `apiKeyProvider: () => string` 回调读取最新 API key，工具本身不依赖配置模块，便于单元测试和动态刷新
+- 使用 `undici.fetch` + `AbortController` 实现 30s 超时；单条 content 截断 500 字符防 token 爆炸
+- 错误处理覆盖：参数校验、API key 缺失、HTTP 4xx/5xx、超时、网络异常、JSON 解析失败
+- 新增 WebSearchTool 单元测试（40 个用例，全部通过）
+- 扩展 `ConfigData` 接口与 `Config` 类：顶层新增 `tavily_api_key` 字段，`initConfig` 读取
+- 新增设计文档章节：`docs/specs/006-tool-search.md` §4.3-§4.9
+- 修改 `src/main/core/services/tools/index.ts` 导出 `WebSearchTool`
+- 修改 `src/main/core/ipc/handlers/ai-assistant.handler.ts` `buildTools()` 添加 `web_search` case，通过 `() => config.tavilyApiKey` 注入 API key
+
 ## [1.0.0] 2026-05-21
 
 **User**: 增加 ask human tool，实现模型向人询问、确认信息，参考 claude-code-source-code 的 AskUserQuestionTool 实现

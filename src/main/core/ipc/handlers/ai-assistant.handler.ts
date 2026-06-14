@@ -6,12 +6,13 @@ import { AiSkillService } from '@/core/services/agent';
 import { AiConfigService } from '@/core/services/common';
 import { AiHistoryService } from '@/core/services/common';
 import { AiChatHistory, AiChatMessage } from '@/core/common/config';
-import { ShellTool, ReadTool, WriteTool, EditTool, GlobTool, GrepTool, AskHumanTool, SkillTool } from '@/core/services/tools';
+import { ShellTool, ReadTool, WriteTool, EditTool, GlobTool, GrepTool, AskHumanTool, SkillTool, WebSearchTool } from '@/core/services/tools';
 import { ITool } from '@/core/services/tools';
 import { McpManager } from '@/core/services/tools';
 import { AskQuestion } from '@/core/services/tools';
 import { IPC_CHANNELS } from '../channels';
 import { createLogger } from '@/core/utils/logger';
+import { config } from '@/core/common/context';
 
 const logger = createLogger('AiAssistantHandler');
 
@@ -196,6 +197,9 @@ function buildTools(toolNames: string[]): ITool[] {
         break;
       case 'ask_human':
         tools.push(new AskHumanTool(askUserViaIpc));
+        break;
+      case 'web_search':
+        tools.push(new WebSearchTool(() => config.tavilyApiKey));
         break;
       default:
         logger.warn(`Unknown tool: ${name}, skipping`);

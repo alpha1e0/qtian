@@ -13,6 +13,7 @@ export * from './glob-tool/glob-tool';
 export * from './grep-tool/grep-tool';
 export * from './ask-tool/ask-tool';
 export * from './skill-tool/skill-tool';
+export * from './web-search-tool/web-search-tool';
 export * from './bash-tool/bash-tool-path';
 export * from './bash-tool/bash-tool-security';
 export * from './mcp-client';

@@ -108,3 +108,137 @@ curl -X POST https://api.tavily.com/search \
 
 从 `qtian.json` 中参数 `tavily_api_key`获取
 
+### 4.3 工具接口定义
+
+工具名称：`web_search`
+
+```ts
+class WebSearchTool implements ITool {
+  readonly name = 'web_search';
+  readonly description = '...'; // 详见需求文档 §2
+  readonly parameters = { /* JSON Schema，详见下表 */ };
+
+  constructor(apiKeyProvider: () => string) {}
+  async execute(args: Record<string, any>): Promise<string> {}
+}
+```
+
+**参数 JSON Schema**
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| query | string | 是 | 搜索关键词 |
+| max_results | number | 否 | 返回结果条数，默认 5，范围 1-10 |
+| search_depth | string | 否 | `basic`(默认) / `advanced` |
+| include_domains | string[] | 否 | 仅包含这些域名的结果 |
+| exclude_domains | string[] | 否 | 排除这些域名的结果 |
+| include_answer | boolean | 否 | 是否返回 Tavily 生成的摘要答案，默认 true |
+
+**构造参数**
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| apiKeyProvider | () => string | 同步函数，返回最新 API key（从 config 读取，避免硬编码、便于单测注入） |
+
+### 4.4 执行流程
+
+```
+execute(args)
+  ├─ 1. 参数校验
+  │     ├─ query 必填且为字符串、非空
+  │     ├─ max_results 1-10
+  │     ├─ search_depth ∈ {basic, advanced}
+  │     └─ include_domains / exclude_domains 为字符串数组
+  ├─ 2. 获取 API key (apiKeyProvider())
+  │     └─ 为空 → 返回错误提示
+  ├─ 3. 构造 Tavily 请求 body
+  │     { query, max_results, search_depth, include_domains,
+  │       exclude_domains, include_answer: true, topic: 'general' }
+  ├─ 4. fetch POST https://api.tavily.com/search
+  │     ├─ headers: Content-Type + Authorization Bearer
+  │     ├─ signal: AbortController (默认 30s)
+  │     └─ HTTP 非 2xx → 抛错并返回错误文本
+  ├─ 5. 解析 JSON 响应
+  │     ├─ network/timeout → 错误文本
+  │     └─ JSON 解析失败 → 错误文本
+  └─ 6. formatResults() 格式化输出
+```
+
+### 4.5 输出格式
+
+成功时返回 Markdown 文本：
+
+```
+<answer 字段，若 include_answer=true 且非空>
+
+## Sources
+
+- [Title 1](https://example.com/1)
+  Content snippet... (最多 500 字符)
+- [Title 2](https://example.com/2)
+  Content snippet...
+
+Found 5 results in 1.67s
+```
+
+无结果：
+
+```
+No results found for: <query>
+```
+
+错误：
+
+```
+Error: <具体错误信息>
+```
+
+### 4.6 常量配置
+
+| 常量 | 值 | 说明 |
+|------|----|------|
+| TAVILY_ENDPOINT | `https://api.tavily.com/search` | Tavily 搜索接口地址 |
+| DEFAULT_TIMEOUT_MS | 30000 | 默认请求超时 |
+| DEFAULT_MAX_RESULTS | 5 | 默认返回结果数 |
+| MAX_RESULTS_LIMIT | 10 | 返回结果数上限 |
+| MAX_CONTENT_LENGTH | 500 | 单条结果 content 截断长度，防 token 爆炸 |
+
+### 4.7 错误处理
+
+| 场景 | 行为 |
+|------|------|
+| query 缺失/非字符串/空 | 返回 `Error: "query" is required and must be a non-empty string` |
+| max_results 越界 | 返回 `Error: "max_results" must be between 1 and 10` |
+| search_depth 非法 | 返回 `Error: "search_depth" must be "basic" or "advanced"` |
+| API key 未配置 | 返回 `Error: Tavily API key is not configured` |
+| HTTP 4xx/5xx | 返回 `Error: Tavily API request failed: HTTP <status> <message>` |
+| 请求超时 (AbortError) | 返回 `Error: Tavily API request timed out after 30s` |
+| 网络异常 | 返回 `Error: Failed to call Tavily API: <message>` |
+| JSON 解析失败 | 返回 `Error: Invalid response from Tavily API` |
+
+### 4.8 代码组织
+
+```
+web-search-tool/
+  ├── web-search-tool.ts          # WebSearchTool 主实现 + 结果格式化
+  └── web-search-tool.test.ts     # 单元测试 (mock undici fetch)
+```
+
+注册位置：
+- `src/main/core/services/tools/index.ts` 导出
+- `src/main/core/ipc/handlers/ai-assistant.handler.ts` `buildTools()` 中按 `web_search` 名称注册
+- API key 注入：`new WebSearchTool(() => config.tavilyApiKey)`
+
+### 4.9 配置文件扩展
+
+`qtian.json` 增加顶层 `tavily_api_key` 字段：
+
+```json
+{
+  "ai_assistant": { ... },
+  "tavily_api_key": "tvly-xxxxxxxxx"
+}
+```
+
+`src/main/core/common/context.ts` 的 `ConfigData` 与 `Config` 类需同步扩展，运行时由 `config.initConfig()` 读取。
+

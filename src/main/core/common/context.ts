@@ -172,6 +172,8 @@ export interface AiAssistantConfig {
  */
 export interface ConfigData {
   ai_assistant?: AiAssistantConfig;
+  /** Tavily 搜索 API Key (供 WebSearchTool 使用) */
+  tavily_api_key?: string;
 }
 
 export class Config {
@@ -182,6 +184,8 @@ export class Config {
     maxToolRounds: number;
     toolTimeoutMs: number;
   };
+  /** Tavily 搜索 API Key (供 WebSearchTool 使用) */
+  tavilyApiKey: string;
 
   constructor() {
     this.aiAssistant = {
@@ -190,6 +194,7 @@ export class Config {
       maxToolRounds: 10,
       toolTimeoutMs: 30000,
     };
+    this.tavilyApiKey = '';
   }
 
   /**
@@ -207,6 +212,9 @@ export class Config {
         this.aiAssistant.maxToolRounds = cfgObj.ai_assistant.max_tool_rounds ?? 10;
         this.aiAssistant.toolTimeoutMs = cfgObj.ai_assistant.tool_timeout_ms ?? 30000;
       }
+
+      // Tavily API key
+      this.tavilyApiKey = cfgObj.tavily_api_key ?? '';
     } catch (err) {
       throw new Error(`Cannot read config file '${cfgPath}': ${err}`);
     }
