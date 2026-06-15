@@ -1,4 +1,4 @@
-# 100 Todo 应用 — 设计文档
+# 100 Todo 应用（todo-app） — 设计文档
 
 > 基于需求文档 `100_todo-app-req.md` 的补充设计。包含数据模型、模块划分、Service/IPC 接口、全文搜索、文档系统、Todo 驱动 AI 任务、UI 组件等。
 
@@ -46,7 +46,7 @@ todo_app/                         # todo 应用模块根目录
 ### 2.2 源码目录结构
 
 ```
-src/main/core/services/todo/
+src/main/core/services/app-modules/todo-app/
 ├── index.ts                              # 模块导出
 ├── todo-app.service.ts                   # 模块入口（DB 初始化 + Service 装配）
 ├── todo-category.service.ts              # Category CRUD
@@ -59,15 +59,15 @@ src/main/core/services/todo/
 ├── *.test.ts                             # 与源码并列，覆盖每个 Service
 
 src/main/core/ipc/handlers/
-└── todo.handler.ts                       # todo 应用 IPC handlers
+└── todo-app.handler.ts                       # todo 应用 IPC handlers
 
 src/shared/
 └── ipc-channels.ts                       # 扩展 TODO_* channel 常量
 
 data/
-└── todo.sql                              # todo 应用数据库初始化脚本
+└── todo-app.sql                              # todo 应用数据库初始化脚本
 
-src/renderer/src/components/todo-app/
+src/renderer/src/components/app-modules/todo-app/
 ├── TodoAppPage.vue                       # 主页面（左中右三栏）
 ├── TodoSidebar.vue                       # 左侧导航（category/label 双视图）
 ├── TodoListPanel.vue                     # 中间 todo list 展示
@@ -100,7 +100,7 @@ src/renderer/src/components/todo-app/
 
 ## 3 完整类型定义
 
-> 所有类型集中定义在 `src/main/core/services/todo/types.ts`，渲染进程通过 `@shared/types` 共享。
+> 所有类型集中定义在 `src/main/core/services/app-modules/todo-app/types.ts`，渲染进程通过 `@shared/types` 共享。
 
 ### 3.1 Category
 
@@ -853,13 +853,51 @@ class TodoTaskService {
 
 #### 7.2.1 依赖选型
 
+##### 候选分词库对比
+
 | 候选 | 评估 |
 | :--- | :--- |
 | **`nodejieba`** | 原生 C++ addon，性能高；需要 electron-rebuild，跨平台预编译二进制完整；社区活跃 |
 | `@node-rs/jieba` | Rust 实现 + napi-rs，预编译二进制丰富，无需 rebuild；推荐替代 nodejieba |
 | 纯 JS 实现（如 `jieba-js`） | 性能差，不推荐 |
 
-> **推荐**：`@node-rs/jieba`，免 rebuild、Windows/Linux/macOS 均有预编译，与 electron-vite 兼容良好。
+##### 备选方案对比：应用层分词 vs SQL 层分词
+
+> `wangfenjin/simple` 是 SQLite FTS5 的 C++ tokenizer 扩展，支持中文+拼音搜索，分词在 SQL 层完成，可通过 `db.loadExtension()` 加载。与现有 "`@node-rs/jieba` + FTS5 `unicode61`" 方案的核心差异在于**分词发生的位置**。
+
+| 维度 | `@node-rs/jieba` + `unicode61`（应用层分词，当前方案） | `wangfenjin/simple`（SQL 层分词） |
+| :--- | :--- | :--- |
+| 分词位置 | Node 应用层预分词，FTS5 仅按空白切分 | SQLite 内置 tokenizer（C++ 扩展），SQL 层直接分词 |
+| 拼音搜索 | 不支持 | 支持（含多音字） |
+| FTS 同步 | 必须在 Service 层事务内显式 `syncFts()`，易遗漏 | 可用触发器自动同步（分词在 SQL 层完成） |
+| 跨平台打包 | `@node-rs/jieba` 提供 Win/Linux/macOS 预编译二进制，electron-vite 友好 | 需手动编译 `.dll`/`.so`/`.dylib` 并随包分发；better-sqlite3 需 `db.loadExtension()`（默认禁用）；asar unpack 额外配置 |
+| Node/Electron 集成 | 标准 npm 依赖 | 无官方 npm 包，社区案例集中在 Flutter/Go/Rust |
+| 维护活跃度 | napi-rs 团队维护，活跃 | 个人项目，更新频率低 |
+| 性能 | 写入有 Node↔C++ 跨层开销；读取一致 | 写入略快（SQL 层一次完成）；读取一致 |
+| 分词质量 | `@node-rs/jieba` 基于 cppjieba，质量好 | 提供 `simple`（字符级）+ `jieba`（词级）两种 tokenizer，质量相当 |
+
+##### 决策：保持 `@node-rs/jieba` 方案
+
+理由：
+
+1. **打包风险**：本项目用 `electron-vite + electron-builder`，引入 `simple` 需要为 3 个平台编译并管理原生二进制 + 配置 `loadExtension` + asar unpack，复杂度显著上升；`@node-rs/jieba` 是成熟方案。todo.db 是独立小库（§4），数据量不会大，写入性能差异可忽略。
+2. **维护风险**：`simple` 是个人维护的 C++ 扩展，Node/Electron 集成案例稀少；后续 Node/SQLite 升级时可能踩坑。
+3. **FTS 同步负担可工程化解决**："显式 `syncFts()`" 确实易遗漏，但可在 Service 基类或装饰器层强制统一处理，并不致命。
+
+##### 拼音搜索的折中方案（保留现有架构）
+
+若后续需要拼音搜索能力，不必切换到 `simple`：
+- 在 `TodoSearchService.syncFts()` 中对 rawText 同时生成拼音（如 `pinyin-pro` 纯 JS 包），拼到 body 末尾再交给 jieba 分词。
+- 查询时同样把 query 转拼音一起 MATCH。
+- 成本：纯 JS 依赖，无原生扩展打包负担。
+
+##### 何时重新评估切换到 `simple`
+
+仅当出现以下强需求时再考虑：
+- 必须支持原生拼音搜索（输 "gongzuo" 命中 "工作"）且折中方案效果不达标。
+- 数据量增长到十万级以上、写入性能成为瓶颈（todo 场景不太可能）。
+
+> **最终结论**：采用 `@node-rs/jieba`（应用层预分词 + FTS5 `unicode61` tokenizer），免 rebuild、Windows/Linux/macOS 均有预编译，与 electron-vite 兼容良好。
 
 #### 7.2.2 分词策略
 
@@ -1063,6 +1101,8 @@ TodoTaskService.createFromItem(itemId, { agentName, llmConfigName, extraPrompt }
 | UI | 复用 chat-event 流式渲染（任务面板内嵌） | Agent/LLM 选择、运行/重跑/取消按钮、历史任务列表 |
 
 ## 9 UI 组件设计
+
+**如何路由到todo-app**: 在菜单（src\renderer\src\components\common\TitleBar.vue）增加一个新的一级菜单“应用”，其中增加“代办应用”，点击后路由到todo-app
 
 ### 9.1 整体布局（左中右三栏）
 

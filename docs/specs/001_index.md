@@ -10,10 +10,7 @@
 
 ## 2. 功能模块列表 (Feature Registry)
 
-AI助手包含 **快捷模式（quick-mode）** 和 **普通模式（normal-mode）**:
 
-- **快捷模式（quick-mode）**，一次性的临时对话，快捷键换出，对话结果不保存，快捷模式可手动转换为普通模式
-- **普通模式（normal-mode）**，完整模式，记录历史，多伦对话
 
 | 模块名称 | 简述 | 关联文档 |
 | :--- | :--- | :--- |
@@ -23,6 +20,12 @@ AI助手包含 **快捷模式（quick-mode）** 和 **普通模式（normal-mode
 | 普通模式UI设计 | 普通模式UI设计 | ./003_normal-mode-chat-ui-design.md |
 | Todo 应用需求 | Todo 应用（含 FTS5 搜索、文档系统、Todo 驱动 AI 任务）需求 | ./100_todo-app-req.md |
 | Todo 应用设计 | Todo 应用补充设计 | ./100_todo-app-design.md |
+
+
+**注意**： AI助手包含 **快捷模式（quick-mode）** 和 **普通模式（normal-mode）**:
+
+- **快捷模式（quick-mode）**，一次性的临时对话，快捷键换出，对话结果不保存，快捷模式可手动转换为普通模式
+- **普通模式（normal-mode）**，完整模式，记录历史，多伦对话
 
 
 ## 3. 公共模块
