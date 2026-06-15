@@ -18,7 +18,7 @@
 | 标签作用域 | **全局共享**，跨 category/todo_list | 与 UI 左侧"label 方式"导航一致 |
 | 文档存储 | 内容存数据库；图片/附件存文件系统 `attach/` | 数据库仅存元数据 + 正文，附件按 hash 分目录避免性能瓶颈 |
 | 进度联动 | todo_item 新增 `is_manual_progress` 标记；为 true 时父进度自动计算跳过该子项 | 用户要求保留手动进度不被覆盖 |
-| Todo 驱动任务 | todo_item 通过 `agent_task_id` 关联**独立任务实体** `todo_agent_task` | 任务 ≠ 对话；任务承载状态/进度/多轮对话引用；与现有 AiChatHistory 解耦 |
+| Todo 驱动任务 | todo_item 通过 `agent_task_id` 关联**通用任务实体**（`007_task-design.md` 定义的 `task` + `task_agent`）；todo-app 作为 Source 模块接入 | 任务系统已公共化（见 `007_task-design.md`），避免每个应用各自实现；任务 ≠ 对话 |
 | 任务 Agent 选择 | **由用户在创建任务时选择**（agent + llm 配置） | 用户要求；提升灵活性 |
 | 任务子项组装 | 启动任务时递归收集所有子 todo_item，拼装为 prompt 上下文 | 用户要求；子项作为输入而非并行子任务 |
 | 任务结果回收 | 任务完成后自动生成**总结文档**，关联 todo_item；不回写 progress | 用户要求；任务结果沉淀为可读文档 |
@@ -55,7 +55,7 @@ src/main/core/services/app-modules/todo-app/
 ├── todo-label.service.ts                 # Label CRUD
 ├── todo-document.service.ts              # Document CRUD + 附件落盘
 ├── todo-search.service.ts                # FTS5 全文搜索封装
-├── todo-task.service.ts                  # Todo 驱动 AI 任务管理
+├── todo-task.service.ts                  # 适配层：prompt 组装 + 委托 TaskManager（见 007）
 ├── *.test.ts                             # 与源码并列，覆盖每个 Service
 
 src/main/core/ipc/handlers/
@@ -242,43 +242,32 @@ interface TodoDocument {
 }
 ```
 
-### 3.6 TodoAgentTask（驱动 AI 任务）
+### 3.6 任务实体（迁移至公共任务系统）
 
-```typescript
-/**
- * 由 todo_item 驱动的 AI 任务实体
- *
- * 设计原则：
- * - 任务 ≠ 对话。一个任务关联一个 AiChatHistory，任务承载状态/进度。
- * - 任务可重跑：每次重跑创建新 task + 新 chat_history + 新总结文档。
- * - 任务不参与软删除（历史必须保留），但 todo_item 可软删除（级联隐藏）。
- */
-interface TodoAgentTask {
-  id: number;
-  /** 关联的 todo_item ID */
-  todo_item_id: number;
-  /**
-   * 任务输入 prompt（组装后）：
-   * 包含 todo_item.title/description/task_prompt + 所有子 todo_item 拼装文本
-   * 真实拼装规则见 §8.3
-   */
-  prompt: string;
-  /** 任务状态（与 todo_item.status 解耦，独立流转） */
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
-  /** 关联的 Agent 名（创建任务时由用户选择） */
-  agent_name: string;
-  /** 关联的 LLM 配置名（创建任务时由用户选择） */
-  llm_config_name: string;
-  /** 任务对应的对话历史 ID（关联 AiChatHistory，pending 时为 null） */
-  chat_history_id: string | null;
-  /** 任务完成后自动生成的总结文档 ID（关联 todo_document.id，未生成时为 null） */
-  summary_doc_id: number | null;
-  /** 错误信息（status=failed 时填充） */
-  error_message: string | null;
-  created_at: number;
-  updated_at: number;
-}
-```
+> **重要变更**：原 `TodoAgentTask` 已抽象为**公共任务系统**，详见 `007_task-design.md`。
+>
+> todo-app 不再定义独立的任务表/类型，改为：
+> - 复用 `007` 定义的 `task`（主表）+ `task_agent`（Agent 扩展表）
+> - todo_app 作为 **Source 模块**接入：`source='todo-app'`，`source_ref_id=todo_item_id`
+> - 任务生命周期（创建/运行/取消/查询）由 `TaskManager` 统一管理
+> - todo-app 仅负责：prompt 组装（§8.3）、结果回收（生成总结文档，§8.4）
+
+**字段映射**（原 `TodoAgentTask` → 通用任务系统）：
+
+| 原 TodoAgentTask 字段 | 迁移后位置 | 说明 |
+| :--- | :--- | :--- |
+| `id` | `task.id` | 公共主表 |
+| `todo_item_id` | `task.source_ref_id`（`source='todo-app'`） | 来源业务实体 |
+| `prompt` | `task_agent.prompt` | Agent 扩展表 |
+| `status` | `task.status` | 公共主表（状态机一致） |
+| `agent_name` | `task_agent.agent_name` | Agent 扩展表 |
+| `llm_config_name` | `task_agent.llm_config_name` | Agent 扩展表 |
+| `chat_history_id` | `task_agent.chat_history_id` | agent_id 固定为 `task:agent:<task_id>` |
+| `summary_doc_id` | `task_agent.result_meta`（JSON: `{ summary_doc_id }`） | 由 todo-app 的 source result handler 写入 |
+| `error_message` | `task.error_message` | 公共主表 |
+| `created_at` / `updated_at` | `task.created_at` / `task.updated_at` | 公共主表 |
+
+完整类型定义（`Task`、`TaskAgent`、`TaskAgentView`、`ITaskExecutor` 等）见 `007_task-design.md` §3。
 
 ### 3.7 搜索结果
 
@@ -315,20 +304,15 @@ interface TodoSearchHistory {
 }
 
 /**
- * 任务自动生成的总结文档元信息（与 TodoDocument 关联）
+ * 【已废弃】任务总结文档元信息
+ *
+ * 迁移至公共任务系统后，总结文档的关联关系由以下组合提供：
+ * - task_agent.result_meta.summary_doc_id → todo_document.id
+ * - todo_document.todo_item_id → todo_item.id
+ * - task_agent.chat_history_id → 回溯原始对话
+ *
+ * 无需独立类型，直接查询 task + task_agent + todo_document 即可。
  */
-interface TodoTaskSummary {
-  /** 关联的任务 ID */
-  task_id: number;
-  /** 关联的 todo_item ID */
-  todo_item_id: number;
-  /** 总结生成的文档 ID（todo_document.id） */
-  document_id: number;
-  /** 任务对应的 chat_history_id（用于回溯原始对话） */
-  chat_history_id: string;
-  /** 生成时间 */
-  created_at: number;
-}
 ```
 
 ## 4 数据库设计 (`data/todo.sql`)
@@ -451,26 +435,19 @@ CREATE INDEX IF NOT EXISTS idx_doc_category ON todo_document(todo_category_id) W
 CREATE INDEX IF NOT EXISTS idx_doc_item     ON todo_document(todo_item_id)     WHERE deleted_at IS NULL;
 
 -- ============================================================
--- TodoAgentTask（不软删除；保留全部任务历史用于重跑追溯）
+-- 任务实体（已迁移至公共任务系统）
 -- ============================================================
-CREATE TABLE IF NOT EXISTS todo_agent_task (
-  id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  todo_item_id    INTEGER NOT NULL,
-  prompt          TEXT NOT NULL,
-  status          TEXT NOT NULL DEFAULT 'pending',
-  agent_name      TEXT NOT NULL,
-  llm_config_name TEXT NOT NULL,
-  chat_history_id TEXT,
-  summary_doc_id  INTEGER,
-  error_message   TEXT,
-  created_at      INTEGER NOT NULL,
-  updated_at      INTEGER NOT NULL,
-  CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
-  FOREIGN KEY (todo_item_id)   REFERENCES todo_item(id)     ON DELETE NO ACTION,
-  FOREIGN KEY (summary_doc_id) REFERENCES todo_document(id) ON DELETE NO ACTION
-);
-CREATE INDEX IF NOT EXISTS idx_task_item   ON todo_agent_task(todo_item_id);
-CREATE INDEX IF NOT EXISTS idx_task_status ON todo_agent_task(status);
+-- 原 todo_agent_task 表已废弃。
+-- 任务数据现存储在独立的 workspace/task/task.db：
+--   - task 主表（公共字段：id/type/source/source_ref_id/status/progress/...）
+--   - task_agent 扩展表（prompt/agent_name/llm_config_name/chat_history_id/result_meta）
+--
+-- todo-app 与任务的关联：
+--   task.source='todo-app' AND task.source_ref_id=todo_item.id
+--
+-- todo_item.agent_task_id 字段保留（指向最新的 task.id），便于详情页快速定位当前任务。
+--
+-- 完整表结构见 007_task-design.md §4.2
 
 -- ============================================================
 -- 搜索历史
@@ -527,7 +504,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS todo_fts USING fts5(
 | `TodoLabelService` | Label CRUD（name 唯一） |
 | `TodoDocumentService` | Document CRUD + 附件落盘（hash 命名） |
 | `TodoSearchService` | FTS5 查询封装 + snippet 拼接 |
-| `TodoTaskService` | Todo 驱动 AI 任务的创建/查询/取消/结果回收 |
+| `TodoTaskService` | **适配层**：prompt 组装 + 委托 `TaskManager` + 总结文档生成；不再管理任务生命周期（见 `007_task-design.md`） |
 
 ### 5.2 关键 Service 接口
 
@@ -684,35 +661,42 @@ class TodoSearchService {
 
 ```typescript
 /**
- * Todo 驱动 AI 任务 Service
+ * Todo 驱动 AI 任务 Service（适配层）
  *
- * 与 AiAgentService 协作：
- *  - 本 Service 负责任务生命周期、prompt 组装、结果回收
- *  - AiAgentService 负责 streaming tool-use loop 执行
+ * 迁移至公共任务系统后的职责收敛（见 007_task-design.md）：
+ * - 本 Service 不再管理任务生命周期（创建/运行/取消/状态 由 TaskManager 负责）
+ * - 仅负责 todo-app 侧的业务逻辑：
+ *   1. 从 todo_item 组装 prompt（§8.3）
+ *   2. 委托 TaskManager 创建并运行 Agent 任务
+ *   3. 注册 source result handler，生成总结文档（§8.4）
+ *   4. 提供 todo-app 特有的查询封装
  *
- * 任务生命周期：
- *   pending -> running -> completed (生成总结文档)
- *                    \-> failed
- *                    \-> cancelled (用户主动取消)
- *   重跑：新建 task + 新 chat_history + 新总结文档（旧 task 保留）
+ * 依赖：TaskManager（构造注入）。
  */
 class TodoTaskService {
+  constructor(private taskManager: TaskManager) {
+    // 注册 todo-app 的 Agent 任务完成回调
+    this.taskManager.registerSourceResultHandler(
+      'todo-app',
+      'agent',
+      this.handleAgentTaskResult.bind(this)
+    );
+  }
+
   /**
-   * 从 todo_item 创建任务（首次执行或重跑均走此方法）
+   * 从 todo_item 创建 Agent 任务并立即运行（首次执行或重跑均走此方法）
    *
    * 步骤：
    * 1. 读取 todo_item（未删除）；若 task_prompt 与子 todo 均为空，抛出业务错误
-   * 2. 调用 TodoItemService.collectSubtree 收集所有子 todo_item
+   * 2. TodoItemService.collectSubtree 收集所有子 todo_item
    * 3. 组装完整 prompt（见 §8.3）
-   * 4. 写入 todo_agent_task (status=pending, agent_name/llm_config_name 来自参数)
-   * 5. 调用 AiHistoryService.createHistory 创建独立对话，回填 chat_history_id
-   * 6. 调用 AiAgentService.initChat + sendMessage
-   * 7. 更新 todo_item.agent_task_id 指向本任务（覆盖旧值，旧 task 历史仍保留）
+   * 4. 委托 TaskManager.createAgentTask（source='todo-app', source_ref_id=itemId）
+   * 5. TaskManager.runTask(taskId) 立即运行
+   * 6. 更新 todo_item.agent_task_id 指向新任务（覆盖旧值，旧 task 历史仍保留）
    *
-   * @param itemId todo_item ID
-   * @param options 必填：agentName + llmConfigName（用户在 UI 选择）
+   * @returns 创建的 TaskAgentView
    */
-  createFromItem(
+  createTaskFromItem(
     itemId: number,
     options: {
       agentName: string;
@@ -720,43 +704,47 @@ class TodoTaskService {
       /** 额外附加在 prompt 末尾的输入（如用户运行时补充），可选 */
       extraPrompt?: string;
     }
-  ): TodoAgentTask;
-
-  /** 取消任务：AiAgentService.abort + status=cancelled */
-  cancel(taskId: number): void;
-
-  /** 查询任务最新状态 */
-  getById(taskId: number): TodoAgentTask | undefined;
-  /** 列出某 todo_item 的所有任务（按 created_at 降序） */
-  listByItem(itemId: number): TodoAgentTask[];
+  ): TaskAgentView;
 
   /**
-   * 任务执行完成回调（由 IPC chat-event done 触发）
+   * 重跑任务：等价于 createTaskFromItem（新建 task，旧 task 作为历史保留）
+   */
+  rerun(itemId: number, options: { agentName: string; llmConfigName: string; extraPrompt?: string }): TaskAgentView;
+
+  /** 列出某 todo_item 的所有任务（封装 TaskManager.listBySource） */
+  listByItem(itemId: number): TaskView[];
+
+  /**
+   * Agent 任务完成回调（由 TaskManager 在任务 completed 后调用）
    *
-   * 1. 读取对应 chat_history 全部 assistant 消息，拼接为对话全文
-   * 2. 调用 LLM 生成总结（独立调用，非流式；prompt 见 §8.4）
+   * 1. 从 executionResult.rawOutput 读取对话 messages
+   * 2. 调用 LLM 生成总结（单轮对话，prompt 见 §8.4）
    * 3. TodoDocumentService.createSummaryForTask 写入总结文档
-   * 4. task.status = completed，summary_doc_id 回填
-   * 5. 不修改 todo_item.progress（用户要求）
+   * 4. 更新 todo_item.agent_task_id 指向本任务
+   * 5. return { summary_doc_id: doc.id }（写入 task_agent.result_meta）
+   * 6. 不修改 todo_item.progress（用户要求）
+   *
+   * 注意：handler 抛错不影响 task 的 completed 状态（见 007 §3.5）
    */
-  markCompleted(taskId: number): Promise<void>;
-  markFailed(taskId: number, errorMessage: string): void;
+  private handleAgentTaskResult(
+    task: Task,
+    result: TaskExecutionResult
+  ): Promise<Record<string, unknown>>;
 
-  /**
-   * 重跑任务：等价于对同一 todo_item 调用 createFromItem
-   * 旧 task 保留为历史；新 task 成为 todo_item.agent_task_id 当前指向
-   */
-  rerun(itemId: number, options: { agentName: string; llmConfigName: string; extraPrompt?: string }): TodoAgentTask;
+  // 取消 / 查询 / 事件订阅等通用操作直接走 TaskManager（qtian:task:* IPC），
+  // 不在此 Service 重复封装。
 }
 ```
 
-### 5.3 与现有 AI 助手模块的集成点
+### 5.3 与公共任务系统 / AI 助手模块的集成点
 
 | 集成点 | 说明 |
 | :--- | :--- |
-| `AiAgentService` | `TodoTaskService.createFromItem` 复用现有 streaming tool-use loop 引擎；任务执行 + 总结生成均通过该 Service |
-| `AiHistoryService` | 任务创建时创建独立 history（`agent_id` 使用任务选定的 Agent）；`agent_id` 命名规范见 §8.5 |
-| `AI_CHAT_EVENT` 推送 | 任务执行过程的事件通过现有 `qtian:ai:chat-event` 通道推送，前端按 `historyId === task.chat_history_id` 过滤匹配 |
+| `TaskManager`（007） | `TodoTaskService.createTaskFromItem` 委托其创建并运行 Agent 任务；todo-app 注册 source result handler 接收完成回调 |
+| `AgentTaskExecutor`（007） | 实际执行 Agent 对话，内部调用 `AiAgentService` |
+| `AiAgentService` | 复用现有 streaming tool-use loop 引擎；任务执行 + 总结生成（单轮调用）均通过该 Service |
+| `AiHistoryService` | 任务执行时创建独立 history（`agent_id = 'task:agent:<taskId>'`）；命名规范见 §8.5 |
+| `qtian:task:event` 推送 | 任务事件通过 007 统一通道推送，前端按 `taskId` 过滤渲染（取代原 `qtian:ai:chat-event` 过滤） |
 | `AiAgentMgrService` | UI 在创建任务前调用 `listAgents()` 渲染 Agent 选择下拉 |
 | `AiConfigService` | UI 在创建任务前调用 `listConfigs()` 渲染 LLM 配置下拉 |
 | `ToolRegistry` | 任务中可用工具集由 Agent 定义决定，与 todo 模块无关 |
@@ -819,14 +807,17 @@ class TodoTaskService {
 'qtian:todo:delete-search-history'  // (id) → void
 'qtian:todo:clear-search-history'   // () → void
 
-// ===== Todo 驱动任务 =====
-'qtian:todo:list-runnable-agents'   // () → Array<{ name, alias, description }>  可在任务中使用的 Agent
-'qtian:todo:list-runnable-llms'     // () → string[]  可在任务中使用的 LLM 配置名
-'qtian:todo:create-task'            // (itemId, { agentName, llmConfigName, extraPrompt? }) → TodoAgentTask
-'qtian:todo:rerun-task'             // (itemId, { agentName, llmConfigName, extraPrompt? }) → TodoAgentTask  重跑
-'qtian:todo:cancel-task'            // (taskId) → void
-'qtian:todo:get-task'               // (taskId) → TodoAgentTask | undefined
-'qtian:todo:list-tasks-by-item'     // (itemId) → TodoAgentTask[]  含历史
+// ===== Todo 驱动任务（业务封装，底层委托 qtian:task:*） =====
+'qtian:todo:list-runnable-agents'      // () → Array<{ name, alias, description }>  可在任务中使用的 Agent
+'qtian:todo:list-runnable-llms'        // () → string[]  可在任务中使用的 LLM 配置名
+'qtian:todo:create-task-from-item'     // (itemId, { agentName, llmConfigName, extraPrompt? }) → TaskAgentView  内部组装 prompt + 运行
+'qtian:todo:rerun-task'                // (itemId, { agentName, llmConfigName, extraPrompt? }) → TaskAgentView  重跑（等价 create-task-from-item）
+'qtian:todo:list-tasks-by-item'        // (itemId) → TaskView[]  封装 qtian:task:list-by-source
+
+// 以下通用操作直接走 qtian:task:*（见 007_task-design.md §7），不再在 todo-app 重复：
+//   qtian:task:cancel        取消任务
+//   qtian:task:get           查询任务详情
+//   qtian:task:event         订阅任务事件（流式输出 / 进度 / 状态变更）
 
 // ===== 配置 =====
 'qtian:todo:get-config'             // → TodoAppConfig
@@ -835,7 +826,7 @@ class TodoTaskService {
 
 ### 6.3 渲染进程桥接（preload）
 
-参照 002 设计 §9，在 `window.todoApp.*` 暴露对应方法。事件监听复用 `window.aiAssistant.onChatEvent`，前端通过 `historyId === task.chat_history_id` 过滤。
+参照 002 设计 §9，在 `window.todoApp.*` 暴露对应方法。任务事件监听改用 007 的 `qtian:task:event` 通道（`window.task.onEvent`），前端按 `event.taskId === task.id` 过滤匹配。
 
 ## 7 全文搜索设计
 
@@ -965,11 +956,15 @@ LIMIT ?;
 
 ### 8.1 总体原则
 
-1. 任务由 **todo_item** 驱动，**一个 todo_item 一次只对应一个"当前任务"**（`agent_task_id` 字段指向最新 task）。
+> **任务系统已公共化**：任务实体、生命周期管理、执行引擎由 `007_task-design.md` 的 `TaskManager` + `AgentTaskExecutor` 统一提供。本节仅描述 **todo-app 特有**的业务逻辑（prompt 组装、总结文档生成）。通用机制（创建/运行/取消/事件/状态机）见 `007`。
+
+todo-app 侧的原则：
+
+1. 任务由 **todo_item** 驱动，**一个 todo_item 一次只对应一个"当前任务"**（`todo_item.agent_task_id` 指向最新 task.id）。
 2. 子 todo_item **不并行执行**：所有子 todo_item 文本拼装进 prompt，作为任务上下文输入。
-3. 任务可重跑：**新建 task + 新 chat_history + 新总结文档**，旧 task 作为历史保留可查看。
+3. 任务可重跑：**新建 task + 新 chat_history + 新总结文档**，旧 task 作为历史保留可查看（重跑机制见 007 §5）。
 4. 任务**不回写 todo_item.progress / status**（用户要求）。
-5. 任务结束后**自动生成一篇总结文档**关联到 todo_item。
+5. 任务结束后由 todo-app 注册的 **source result handler** 自动生成一篇总结文档关联到 todo_item（见 007 §3.5）。
 
 ### 8.2 端到端流程
 
@@ -980,30 +975,33 @@ LIMIT ?;
 弹出对话框：选择 Agent + LLM 配置（可填额外 prompt）
   │
   ▼
-TodoTaskService.createFromItem(itemId, { agentName, llmConfigName, extraPrompt })
+TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraPrompt })
   │
-  ├─ 1. 读取 todo_item（含校验：未删除、task_prompt 非空 或 有子 todo）
-  ├─ 2. TodoItemService.collectSubtree(itemId) 收集所有子 todo（含孙子）
+  ├─ 1. 读取 todo_item（校验：未删除、task_prompt 非空 或 有子 todo）
+  ├─ 2. TodoItemService.collectSubtree(itemId) 收集所有子 todo
   ├─ 3. 组装完整 prompt（见 §8.3）
-  ├─ 4. 写入 todo_agent_task (status=pending, agent_name, llm_config_name, prompt)
-  ├─ 5. AiHistoryService.createHistory({ agent_id, title=`todo#${itemId}` })
-  │     └─ 回填 task.chat_history_id
-  ├─ 6. todo_item.agent_task_id = task.id  (覆盖旧指向)
-  ├─ 7. AiAgentService.initChat(agentName, historyId, llmConfigName)
-  ├─ 8. AiAgentService.sendMessage(prompt)  → 通过 qtian:ai:chat-event 推流
+  ├─ 4. 委托 TaskManager.createAgentTask({
+  │        source: 'todo-app', source_ref_id: itemId,
+  │        title, prompt, agent_name, llm_config_name
+  │      }) → 创建 task + task_agent 记录
+  ├─ 5. TaskManager.runTask(taskId)
+  │      ├─ AgentTaskExecutor 接管（见 007 §6）
+  │      ├─ 创建 AiChatHistory（agent_id = 'task:agent:<taskId>'）
+  │      ├─ 实例化 AiAgentService + sendMessage(prompt)
+  │      └─ AiChatEvent → TaskEvent 透传 → qtian:task:event（前端按 taskId 过滤渲染）
+  ├─ 6. todo_item.agent_task_id = task.id（覆盖旧指向，旧 task 历史保留）
   │
-  └─ 任务结束（IPC 监听 chat-event: done | error）
+  └─ 任务结束（TaskManager 自动驱动状态流转）
        │
-       ├─ done → TodoTaskService.markCompleted(taskId)
-       │            ├─ 读取 chat_history 全部 assistant 消息
-       │            ├─ AiAgentService 调用一次 LLM 生成总结（独立调用，非流式）
-       │            ├─ TodoDocumentService.createSummaryForTask(...)
-       │            │     └─ 写入 todo_document (name=任务总结+时间, todo_item_id 关联)
-       │            ├─ task.summary_doc_id = doc.id
-       │            └─ task.status = completed
+       ├─ completed → TaskManager 查找 source result handler（todo-app:agent）
+       │              └─ TodoTaskService.handleAgentTaskResult(task, result)
+       │                    ├─ 从 result.rawOutput 读取对话 messages
+       │                    ├─ 调用 LLM 生成总结（§8.4）
+       │                    ├─ TodoDocumentService.createSummaryForTask(...)
+       │                    └─ return { summary_doc_id } → 写入 task_agent.result_meta
        │
-       └─ error → TodoTaskService.markFailed(taskId, errorMessage)
-                     └─ task.status = failed, error_message 回填
+       ├─ failed    → task.status = failed, error_message 回填（007 统一处理）
+       └─ cancelled → task.status = cancelled（007 统一处理）
 ```
 
 ### 8.3 Prompt 组装规则
@@ -1058,18 +1056,21 @@ TodoTaskService.createFromItem(itemId, { agentName, llmConfigName, extraPrompt }
 - 不要重复原文细节，做归纳
 ```
 
-### 8.5 Agent / LLM 命名与历史归属
+### 8.5 对话历史归属（与 AI 助手隔离）
 
-- 任务对应的 AiChatHistory 使用 `agent_id = 'todo-task:<todo_item_id>'` 命名（不污染 AI 助手主历史列表，因为 AI 助手侧栏按 agent_id 列表）。
-- 或更简单：复用用户选定的 `agent_name` 作为 agent_id，但加 history 标记 `meta.source = 'todo-task'`（待与 AI 助手模块确认是否支持 meta 字段）。
-- **建议方案**：在 AiChatHistory 增加 `meta: { source?: string; todo_task_id?: number }` 字段，AI 助手侧栏通过 `source != 'todo-task'` 过滤掉任务对话。
+任务对话历史采用 `007_task-design.md` §6.4 的方案：
+- `agent_id = 'task:agent:<task_id>'`（历史文件位于 `workspace/assistant/history/task:agent:<id>/`）
+- AI 助手侧栏按 `agent_id` 列表历史，`task:agent:*` 自然不出现
+- **无需修改 `AiChatHistory` 结构**（替代早期考虑的 `meta` 字段方案，解决了原 §12 T-1）
+
+`task_agent.chat_history_id` 存储该对话历史 ID，用于回溯原始对话。
 
 ### 8.6 重跑机制
 
 - UI 在 todo_item 详情页同时提供「运行任务」和「重跑」按钮：
   - 首次执行（todo_item.agent_task_id == null）→ 显示「运行任务」
   - 已有任务（agent_task_id != null）→ 显示「重跑」+「查看历史任务」
-- 重跑 = `TodoTaskService.rerun(itemId, options)` → 内部调用 `createFromItem`，新 task 自动覆盖 `agent_task_id` 指向。
+- 重跑 = `TodoTaskService.rerun(itemId, options)` → 内部调用 `createTaskFromItem`，新 task 自动覆盖 `todo_item.agent_task_id` 指向。
 - 旧 task 不删除，可通过 `list-tasks-by-item` 查看历史，每个历史 task 都有对应的总结文档。
 
 ### 8.7 任务面板 UI
@@ -1090,15 +1091,17 @@ TodoTaskService.createFromItem(itemId, { agentName, llmConfigName, extraPrompt }
 └────────────────────────────────────┘
 ```
 
-### 8.8 与现有 AI 助手的边界
+### 8.8 与公共任务系统 / AI 助手的边界
 
 | 维度 | 复用 | 新增 |
 | :--- | :--- | :--- |
-| 引擎 | `AiAgentService` (streaming tool-use loop) | — |
-| 对话存储 | `AiChatHistory` 文件 | `todo_agent_task` 表（元数据 + chat_history_id + summary_doc_id） |
-| 事件推送 | `AI_CHAT_EVENT` 通道 | — |
-| 总结生成 | `AiAgentService` 独立调用一次 LLM（非流式） | — |
-| UI | 复用 chat-event 流式渲染（任务面板内嵌） | Agent/LLM 选择、运行/重跑/取消按钮、历史任务列表 |
+| 任务引擎 | `TaskManager` + `AgentTaskExecutor`（007） | — |
+| 对话执行 | `AiAgentService`（streaming tool-use loop，由 AgentTaskExecutor 调用） | — |
+| 对话存储 | `AiChatHistory` 文件（agent_id 隔离） | — |
+| 任务存储 | `task` + `task_agent` 表（007，`workspace/task/task.db`） | — |
+| 事件推送 | `qtian:task:event`（007 统一通道） | — |
+| 总结生成 | `AiAgentService` 单轮调用 LLM | todo-app 的 source result handler（生成 `todo_document`） |
+| UI | 复用 ChatMessage 渲染 Agent 流（订阅 `qtian:task:event`） | Agent/LLM 选择、运行/重跑按钮、历史任务列表 |
 
 ## 9 UI 组件设计
 
@@ -1186,11 +1189,12 @@ TodoTaskService.createFromItem(itemId, { agentName, llmConfigName, extraPrompt }
 - 各 Service 的 restore 方法
 - 软删除恢复时 FTS 重建
 
-### Phase 5: Todo 驱动 AI 任务
-- `todo_agent_task` 表
-- `TodoTaskService.createFromItem` + 子 todo 收集 + prompt 组装
-- 与 `AiAgentService` 集成（initChat + sendMessage + 事件监听）
-- 任务完成后调用 LLM 生成总结 + `TodoDocumentService.createSummaryForTask`
+### Phase 5: Todo 驱动 AI 任务（依赖 007 任务系统）
+- 前置：完成 007 任务系统 Phase 1（`TaskManager` + `AgentTaskExecutor`）
+- `TodoTaskService.createTaskFromItem`（适配层）+ 子 todo 收集 + prompt 组装（§8.3）
+- 注册 todo-app source result handler（生成总结文档，§8.4）
+- `qtian:todo:create-task-from-item` / `list-tasks-by-item` IPC
+- 任务面板订阅 `qtian:task:event` 渲染 Agent 流
 - `TaskRunDialog.vue` + `TaskPanel.vue` + `TaskHistoryList.vue`
 - 重跑支持
 
@@ -1224,7 +1228,7 @@ TodoTaskService.createFromItem(itemId, { agentName, llmConfigName, extraPrompt }
 
 | 编号 | 待办 | 依赖方 | 备注 |
 | :--- | :--- | :--- | :--- |
-| T-1 | AiChatHistory 是否可扩展 `meta: { source?: string; todo_task_id?: number }` 字段，用于侧栏过滤 | AI 助手模块 | 见 §8.5；若不支持，则用 `agent_id='todo-task:<itemId>'` 隔离 |
+| T-1 | ~~AiChatHistory 是否可扩展 `meta` 字段~~ **已解决** | — | 采用 007 §6.4 方案：`agent_id = 'task:agent:<taskId>'` 隔离，无需 meta 字段 |
 | T-2 | AiAgentService 是否支持非流式独立调用（用于生成总结） | AI 助手模块 | 见 §8.4；若不支持，需新增 `summarize()` 接口 |
 
 ---
@@ -1238,8 +1242,9 @@ TodoTaskService.createFromItem(itemId, { agentName, llmConfigName, extraPrompt }
 | `Config` | `qtian.json` 新增 `todo_app` 配置段（默认 category、排序、显示偏好） |
 | `IPC_CHANNELS` | 扩展 `TODO_*` 常量 |
 | `registerAllHandlers` | 注册 `registerTodoHandlers` |
-| `AiAgentService` | `TodoTaskService` 复用 streaming tool-use loop；任务结束总结也通过其独立调用 |
-| `AiHistoryService` | 任务创建独立 chat_history，通过 meta 或 agent_id 隔离（见 §12 T-1） |
+| `TaskManager`（007） | `TodoTaskService.createTaskFromItem` 委托其创建/运行 Agent 任务；注入到 todo-app 作为 Source 模块 |
+| `AgentTaskExecutor`（007） | 内部复用 `AiAgentService` 执行对话；任务结束触发 todo-app 的 result handler 生成总结 |
+| `AiHistoryService` | 任务对话独立 chat_history，`agent_id = 'task:agent:<taskId>'` 隔离（见 §8.5） |
 | `local-resource-protocol` | 复用，新增 `attach://` 前缀解析到 `appModulesTodoAttachDir` |
 
 ## 附录 B: 测试策略

@@ -18,6 +18,7 @@
 | 总体设计 | 项目总体设计 | ./002_ai-assistant-design.md |
 | 快捷模式UI设计 | 快捷模式UI设计 | ./003_quick-mode-ui-design.md |
 | 普通模式UI设计 | 普通模式UI设计 | ./003_normal-mode-chat-ui-design.md |
+| 任务系统设计 | 公共任务系统（任务抽象、TaskManager、AgentTaskExecutor、Source 机制） | ./007_task-design.md |
 | Todo 应用需求 | Todo 应用（含 FTS5 搜索、文档系统、Todo 驱动 AI 任务）需求 | ./100_todo-app-req.md |
 | Todo 应用设计 | Todo 应用补充设计 | ./100_todo-app-design.md |
 
@@ -38,6 +39,7 @@
 安装目录/
 	  workspace/         # 工作目录，保存配置、数据文件、任务数据等
         assistant/         # 保存LLM配置、Agent定义、Skill定义等和助手定义相关的内容
+        task/              # 公共任务系统数据（task.db，见007）
         app_modules/       # 应用模块目录
         projects/          # 项目目录
         log/               # 日志目录
