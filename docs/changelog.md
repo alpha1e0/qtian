@@ -1,5 +1,53 @@
 # Changelog
 
+## [1.0.0] 2026-06-16
+
+**User**: 按照 `docs/specs/007_task-design.md` 进行开发，完成任务管理功能
+
+**Summary**:
+
+本次开发落地任务系统 **Phase 1：核心框架**（设计文档 §14），为后续扩展 APP（todo-app 等）提供统一的 Agent 任务调度基础设施。
+
+### 新增模块
+
+- **数据层**
+  - `data/task.sql`：task 主表 + task_agent 扩展表 + 索引（type/status/source），独立 `task.db`
+  - `TaskDb`（`src/main/core/services/task/task-db.ts`）：封装 task/task_agent 的 CRUD、JOIN 查询、定点字段更新（status/progress/chat_history_id/result_meta）、崩溃恢复（running→failed，COALESCE 保留已有错误信息）；插入采用"主表+扩展表"两步并在扩展表失败时回滚主记录
+
+- **核心服务**
+  - `task.types.ts`：Task / TaskType / TaskSource / TaskStatus / TaskAgent / TaskAgentView / ITaskExecutor / TaskExecutionContext / TaskCancelToken / TaskExecutionResult / TaskEvent / SourceResultHandler / AgentTaskCreateInput 等类型；`TaskExecutionError`、`TaskCancelledError` 异常类；`TASK_TERMINAL_STATUSES` 等校验常量
+  - `TaskEventBroadcaster`：按 WebContents 维护订阅（全部任务或指定 taskId），自动清理已销毁 WebContents，send 异常隔离；`broadcast` 按订阅过滤减少 IPC 流量，`broadcastToAll` 兜底
+  - `AgentTaskExecutor`：复用 `AiAgentService`，`agent_id='task:agent:<taskId>'` 与 AI 助手主历史隔离；AiChatEvent→TaskEvent 翻译（context_compress 降级为 log）；取消令牌驱动 `agentService.abort()`；历史持久化失败不阻断完成
+  - `TaskManager`：CRUD + 状态机（pending→running→completed/failed/cancelled）+ 执行器注册表 + source handler 注册表 + 运行态 Map（含取消令牌）+ 崩溃恢复 + 事件广播；重复运行拒绝（仅 pending 可 run）；source handler 失败仅记入 `result_meta.handler_error` 不影响 completed
+
+- **IPC / 启动**
+  - `src/shared/ipc-channels.ts`：新增 `TASK_*` 频道（create-agent-task/run/cancel/get/list-by-source/list/subscribe/unsubscribe/event）
+  - `src/main/core/ipc/handlers/task.handler.ts`：任务 IPC handlers，subscribe/unsubscribe 绑定 `event.sender`
+  - `task-bootstrap.ts`：进程级单例引导（建表 + 崩溃恢复 + 注册 AgentTaskExecutor + 注册 IPC），幂等
+  - `src/preload/index.ts`：新增 `window.task.*` API 与 `window.task`，`onEvent` 返回取消订阅函数便于组件卸载清理
+  - `src/main/index.ts`：app ready 阶段 `bootstrapTaskSystem()`
+
+- **WPath 扩展**：`src/main/core/common/context.ts` 新增 `taskDir`、`taskDbPath`、`getTaskSqlFile()`
+
+### 重构
+
+- 提取 `src/main/core/services/tools/build-tools.ts`（`buildBuiltInTools`）公共化内置工具构建逻辑，注入 `askUserViaIpc` / `getTavilyApiKey` 提供者；`ai-assistant.handler.ts` 改为委托调用，消除重复并支持任务执行器复用
+
+### 测试
+
+- 新增 93 个单元测试，全部通过：
+  - `task-db.test.ts`（42）：建表、CRUD、JOIN、状态/进度/历史/元数据更新、崩溃恢复、COALESCE 语义、分页 clamp、字段校验
+  - `task-event-broadcaster.test.ts`（15）：订阅/广播/过滤、多 taskId 去重、销毁清理、send 异常隔离、broadcastToAll
+  - `agent-task-executor.test.ts`（14）：事件翻译、取消（注册前/迭代中）、错误传播、历史保存失败容错
+  - `task-manager.service.test.ts`（22）：状态机流转、重复运行拒绝、取消（running/pending/终态）、source handler 成功合并/失败容错、崩溃恢复、运行态计数
+- 全量回归：agent + tools 499 用例无回归；task 模块文件级 `vi.mock('better-sqlite3')` 未影响既有 doc 测试
+
+### 范围说明
+
+- **未做**：Phase 2（todo-app 接入：`createTaskFromItem` / 总结文档 / todo-app IPC）依赖尚未存在的 todo-app 代码模块；Phase 3（全局任务中心 UI、任务队列）；渲染进程 UI 组件（设计文档 §11 已声明不在本期）
+- **已知限制**：任务上下文的 `ask_human` 工具暂未接入（需任务级独立 IPC 双向通信），`buildBuiltInTools` 会告警跳过；web_search 已通过 `getTavilyApiKey` 接入
+- **测试 DB 策略**：task 测试采用文件级 `vi.mock('better-sqlite3')` + 针对 task schema 的轻量内存 SQL 执行器，不污染既有全局 doc 专用 mock
+
 ## [1.0.0] 2026-06-14
 
 **User**: 根据 `docs/specs/006-tool-search.md` 给 agent 开发联网搜索工具，使用 Tavily API

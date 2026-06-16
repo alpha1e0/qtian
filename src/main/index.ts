@@ -10,6 +10,7 @@ import * as path from 'path';
 
 import { config, wpath } from './core/common/context';
 import { registerAllHandlers } from './core/ipc/handlers';
+import { bootstrapTaskSystem } from './core/services/task/task-bootstrap';
 import { VERSION } from './core/common/constants';
 import { createLogger, LogLevel } from './core/utils/logger';
 import { registerLocalResourceProtocol } from './core/utils/local-resource-protocol';
@@ -202,6 +203,13 @@ app.on('ready', async () => {
   registerLocalResourceProtocol(protocol);
   registerAllHandlers();
   registerWindowControlHandlers();
+
+  // 引导任务系统（建表 + 崩溃恢复 + 注册执行器 + IPC handlers）
+  try {
+    bootstrapTaskSystem();
+  } catch (err) {
+    logger.error('Failed to bootstrap task system', err);
+  }
 
   if (isDevelopment && !process.env.IS_TEST) {
     logger.info('Development mode - Vue Devtools available');

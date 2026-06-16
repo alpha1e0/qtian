@@ -69,6 +69,17 @@ export const IPC_CHANNELS = {
   MCP_RELOAD: 'qtian:ai:mcp-reload',
   MCP_LIST_CONFIGS: 'qtian:ai:mcp-list-configs',
   MCP_DELETE_CONFIG: 'qtian:ai:mcp-delete-config',
+
+  // Task 系统频道（公共任务基础设施）
+  TASK_CREATE_AGENT_TASK: 'qtian:task:create-agent-task',
+  TASK_RUN: 'qtian:task:run',
+  TASK_CANCEL: 'qtian:task:cancel',
+  TASK_GET: 'qtian:task:get',
+  TASK_LIST_BY_SOURCE: 'qtian:task:list-by-source',
+  TASK_LIST: 'qtian:task:list',
+  TASK_SUBSCRIBE: 'qtian:task:subscribe',
+  TASK_UNSUBSCRIBE: 'qtian:task:unsubscribe',
+  TASK_EVENT: 'qtian:task:event',
 } as const;
 
 /**

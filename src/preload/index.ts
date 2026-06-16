@@ -149,6 +149,44 @@ const api = {
   getServerAddr: () => ipcRenderer.invoke('get-server-addr'),
   getTips: (arg1) => ipcRenderer.invoke('get-tips', arg1),
 
+  // Task 系统公共 API
+  task: {
+    // 创建 / 运行 / 取消
+    createAgentTask: (input) => ipcRenderer.invoke(IPC_CHANNELS.TASK_CREATE_AGENT_TASK, input),
+    run: (taskId) => ipcRenderer.invoke(IPC_CHANNELS.TASK_RUN, taskId),
+    cancel: (taskId) => ipcRenderer.invoke(IPC_CHANNELS.TASK_CANCEL, taskId),
+
+    // 查询
+    get: (taskId) => ipcRenderer.invoke(IPC_CHANNELS.TASK_GET, taskId),
+    listBySource: (source, sourceRefId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.TASK_LIST_BY_SOURCE, source, sourceRefId),
+    list: (filter) => ipcRenderer.invoke(IPC_CHANNELS.TASK_LIST, filter),
+
+    // 订阅 / 取消订阅任务事件
+    subscribe: (taskId) => ipcRenderer.invoke(IPC_CHANNELS.TASK_SUBSCRIBE, taskId),
+    unsubscribe: (taskId) => ipcRenderer.invoke(IPC_CHANNELS.TASK_UNSUBSCRIBE, taskId),
+
+    // 事件监听（返回取消订阅函数，便于组件卸载时清理）
+    onEvent: (callback) => {
+      const wrapper = (event, data) => callback(data);
+      listeners.set(`task-event-${Date.now()}`, {
+        channel: IPC_CHANNELS.TASK_EVENT,
+        callback: wrapper,
+      });
+      ipcRenderer.on(IPC_CHANNELS.TASK_EVENT, wrapper);
+      // 返回取消订阅函数
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.TASK_EVENT, wrapper);
+        for (const [key, value] of listeners.entries()) {
+          if (value.callback === wrapper) {
+            listeners.delete(key);
+            break;
+          }
+        }
+      };
+    },
+  },
+
   // Generic IPC invoke (for channels not covered by namespaced APIs)
   invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
 
@@ -195,3 +233,4 @@ contextBridge.exposeInMainWorld('api', api);
 
 // Also expose for convenience
 contextBridge.exposeInMainWorld('aiAssistant', api.ai);
+contextBridge.exposeInMainWorld('task', api.task);

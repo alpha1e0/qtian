@@ -22,6 +22,10 @@ export class WPath {
   readonly assistantToolDir: string;
   readonly assistantHistoryDir: string;
   readonly assistantMemoryDir: string;
+  /** 任务系统工作目录（公共基础设施，独立于 app_modules） */
+  readonly taskDir: string;
+  /** 任务系统数据库文件路径（独立 task.db） */
+  readonly taskDbPath: string;
   readonly configPath: string;
 
   // Legacy property aliases for backward compatibility
@@ -116,6 +120,11 @@ export class WPath {
     this.assistantMemoryDir = path.join(this.assistantDir, 'memory');
     this.ensureDirectory(this.assistantMemoryDir);
 
+    // Task system directories (公共基础设施，独立数据库 task.db)
+    this.taskDir = path.join(this.workspace, 'task');
+    this.ensureDirectory(this.taskDir);
+    this.taskDbPath = path.join(this.taskDir, 'task.db');
+
     // Configuration and data files
     // Configuration file: qtian.json (unified config file name)
     this.configPath = path.join(this.workspace, 'qtian.json');
@@ -133,6 +142,18 @@ export class WPath {
       ? process.cwd()
       : (process.resourcesPath || process.cwd());
     return path.join(basePath, 'data', 'qtian.sql');
+  }
+
+  /**
+   * Get task system SQL file path (data/task.sql)
+   * 与 getSqlFile() 采用相同的环境判定逻辑
+   */
+  getTaskSqlFile(): string {
+    const isDevOrTest = process.env.NODE_ENV === 'development' || process.env.IS_TEST === 'true';
+    const basePath = isDevOrTest
+      ? process.cwd()
+      : (process.resourcesPath || process.cwd());
+    return path.join(basePath, 'data', 'task.sql');
   }
 
   /**

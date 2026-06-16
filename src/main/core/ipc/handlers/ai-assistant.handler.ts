@@ -6,8 +6,9 @@ import { AiSkillService } from '@/core/services/agent';
 import { AiConfigService } from '@/core/services/common';
 import { AiHistoryService } from '@/core/services/common';
 import { AiChatHistory, AiChatMessage } from '@/core/common/config';
-import { ShellTool, ReadTool, WriteTool, EditTool, GlobTool, GrepTool, AskHumanTool, SkillTool, WebSearchTool } from '@/core/services/tools';
+import { SkillTool } from '@/core/services/tools';
 import { ITool } from '@/core/services/tools';
+import { buildBuiltInTools } from '@/core/services/tools/build-tools';
 import { McpManager } from '@/core/services/tools';
 import { AskQuestion } from '@/core/services/tools';
 import { IPC_CHANNELS } from '../channels';
@@ -169,44 +170,18 @@ function askUserViaIpc(
 
 /**
  * 根据 Agent 的工具列表构建工具实例数组
+ *
+ * 委托给共享的 buildBuiltInTools，注入 AI 助手侧的依赖提供者：
+ * - ask_human → 通过 IPC 向当前渲染器发问
+ * - web_search → 读取全局 config 的 Tavily Key
  * @param toolNames - Agent 中配置的工具名称列表
  * @returns 工具实例数组
  */
 function buildTools(toolNames: string[]): ITool[] {
-  const tools: ITool[] = [];
-
-  for (const name of toolNames) {
-    switch (name) {
-      case 'shell_execute':
-        tools.push(new ShellTool());
-        break;
-      case 'file_read':
-        tools.push(new ReadTool());
-        break;
-      case 'file_write':
-        tools.push(new WriteTool());
-        break;
-      case 'file_edit':
-        tools.push(new EditTool());
-        break;
-      case 'glob':
-        tools.push(new GlobTool());
-        break;
-      case 'grep':
-        tools.push(new GrepTool());
-        break;
-      case 'ask_human':
-        tools.push(new AskHumanTool(askUserViaIpc));
-        break;
-      case 'web_search':
-        tools.push(new WebSearchTool(() => config.tavilyApiKey));
-        break;
-      default:
-        logger.warn(`Unknown tool: ${name}, skipping`);
-    }
-  }
-
-  return tools;
+  return buildBuiltInTools(toolNames, {
+    askUserViaIpc,
+    getTavilyApiKey: () => config.tavilyApiKey,
+  });
 }
 
 /**
