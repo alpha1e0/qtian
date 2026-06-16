@@ -11,6 +11,7 @@ import * as path from 'path';
 import { config, wpath } from './core/common/context';
 import { registerAllHandlers } from './core/ipc/handlers';
 import { bootstrapTaskSystem } from './core/services/task/task-bootstrap';
+import { bootstrapTodoApp } from './core/services/app-modules/todo-app/todo-app-bootstrap';
 import { VERSION } from './core/common/constants';
 import { createLogger, LogLevel } from './core/utils/logger';
 import { registerLocalResourceProtocol } from './core/utils/local-resource-protocol';
@@ -204,6 +205,9 @@ app.on('ready', async () => {
   registerAllHandlers();
   registerWindowControlHandlers();
 
+  // 先读取配置（todo-app 等模块依赖 config.todoApp）
+  await readConfig();
+
   // 引导任务系统（建表 + 崩溃恢复 + 注册执行器 + IPC handlers）
   try {
     bootstrapTaskSystem();
@@ -211,11 +215,17 @@ app.on('ready', async () => {
     logger.error('Failed to bootstrap task system', err);
   }
 
+  // 引导 todo-app 模块（建表 + 装配 Service + 注册 IPC handlers）
+  try {
+    bootstrapTodoApp();
+  } catch (err) {
+    logger.error('Failed to bootstrap todo app', err);
+  }
+
   if (isDevelopment && !process.env.IS_TEST) {
     logger.info('Development mode - Vue Devtools available');
   }
 
-  readConfig();
   await createWindow();
 
   // 创建系统托盘（需要 mainWindow 已创建）

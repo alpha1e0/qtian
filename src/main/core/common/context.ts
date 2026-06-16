@@ -26,6 +26,14 @@ export class WPath {
   readonly taskDir: string;
   /** 任务系统数据库文件路径（独立 task.db） */
   readonly taskDbPath: string;
+  /** 扩展 APP 模块根目录（workspace/app_modules） */
+  readonly appModulesDir: string;
+  /** todo-app 工作目录（workspace/app_modules/todo_app） */
+  readonly appModulesTodoDir: string;
+  /** todo-app 附件目录（workspace/app_modules/todo_app/attach） */
+  readonly appModulesTodoAttachDir: string;
+  /** todo-app 数据库文件路径（独立 todo.db） */
+  readonly todoDbPath: string;
   readonly configPath: string;
 
   // Legacy property aliases for backward compatibility
@@ -125,6 +133,15 @@ export class WPath {
     this.ensureDirectory(this.taskDir);
     this.taskDbPath = path.join(this.taskDir, 'task.db');
 
+    // 扩展 APP 模块目录
+    this.appModulesDir = path.join(this.workspace, 'app_modules');
+    this.ensureDirectory(this.appModulesDir);
+    this.appModulesTodoDir = path.join(this.appModulesDir, 'todo_app');
+    this.ensureDirectory(this.appModulesTodoDir);
+    this.appModulesTodoAttachDir = path.join(this.appModulesTodoDir, 'attach');
+    this.ensureDirectory(this.appModulesTodoAttachDir);
+    this.todoDbPath = path.join(this.appModulesTodoDir, 'todo.db');
+
     // Configuration and data files
     // Configuration file: qtian.json (unified config file name)
     this.configPath = path.join(this.workspace, 'qtian.json');
@@ -154,6 +171,18 @@ export class WPath {
       ? process.cwd()
       : (process.resourcesPath || process.cwd());
     return path.join(basePath, 'data', 'task.sql');
+  }
+
+  /**
+   * Get todo-app SQL file path (data/todo-app.sql)
+   * 与 getTaskSqlFile() 采用相同的环境判定逻辑
+   */
+  getTodoAppSqlFile(): string {
+    const isDevOrTest = process.env.NODE_ENV === 'development' || process.env.IS_TEST === 'true';
+    const basePath = isDevOrTest
+      ? process.cwd()
+      : (process.resourcesPath || process.cwd());
+    return path.join(basePath, 'data', 'todo-app.sql');
   }
 
   /**
@@ -189,12 +218,29 @@ export interface AiAssistantConfig {
 }
 
 /**
+ * Todo 应用配置（对应 qtian.json 的 todo_app 段）
+ */
+export interface TodoAppConfigData {
+  /** 默认选中的 category id（null 表示根） */
+  default_category_id?: number | null;
+  /** 默认排序：created_at | updated_at | due_date | priority */
+  default_sort?: string;
+  /** 是否在侧栏显示已完成 todo */
+  show_completed?: boolean;
+  /** 递归层级上限 */
+  max_category_depth?: number;
+  max_todo_item_depth?: number;
+}
+
+/**
  * Application configuration
  */
 export interface ConfigData {
   ai_assistant?: AiAssistantConfig;
   /** Tavily 搜索 API Key (供 WebSearchTool 使用) */
   tavily_api_key?: string;
+  /** Todo 应用配置 */
+  todo_app?: TodoAppConfigData;
 }
 
 export class Config {
@@ -207,6 +253,14 @@ export class Config {
   };
   /** Tavily 搜索 API Key (供 WebSearchTool 使用) */
   tavilyApiKey: string;
+  /** Todo 应用配置 */
+  todoApp: {
+    defaultCategoryId: number | null;
+    defaultSort: string;
+    showCompleted: boolean;
+    maxCategoryDepth: number;
+    maxTodoItemDepth: number;
+  };
 
   constructor() {
     this.aiAssistant = {
@@ -216,6 +270,13 @@ export class Config {
       toolTimeoutMs: 30000,
     };
     this.tavilyApiKey = '';
+    this.todoApp = {
+      defaultCategoryId: null,
+      defaultSort: 'created_at',
+      showCompleted: true,
+      maxCategoryDepth: 4,
+      maxTodoItemDepth: 4,
+    };
   }
 
   /**
@@ -236,6 +297,15 @@ export class Config {
 
       // Tavily API key
       this.tavilyApiKey = cfgObj.tavily_api_key ?? '';
+
+      // Todo app config
+      if (cfgObj.todo_app) {
+        this.todoApp.defaultCategoryId = cfgObj.todo_app.default_category_id ?? null;
+        this.todoApp.defaultSort = cfgObj.todo_app.default_sort ?? 'created_at';
+        this.todoApp.showCompleted = cfgObj.todo_app.show_completed ?? true;
+        this.todoApp.maxCategoryDepth = cfgObj.todo_app.max_category_depth ?? 4;
+        this.todoApp.maxTodoItemDepth = cfgObj.todo_app.max_todo_item_depth ?? 4;
+      }
     } catch (err) {
       throw new Error(`Cannot read config file '${cfgPath}': ${err}`);
     }

@@ -80,6 +80,49 @@ export const IPC_CHANNELS = {
   TASK_SUBSCRIBE: 'qtian:task:subscribe',
   TASK_UNSUBSCRIBE: 'qtian:task:unsubscribe',
   TASK_EVENT: 'qtian:task:event',
+
+  // Todo 应用频道（Phase 1-2 范围：数据层 + 文档系统）
+  // Category
+  TODO_GET_CATEGORY_TREE: 'qtian:todo:get-category-tree',
+  TODO_CREATE_CATEGORY: 'qtian:todo:create-category',
+  TODO_UPDATE_CATEGORY: 'qtian:todo:update-category',
+  TODO_DELETE_CATEGORY: 'qtian:todo:delete-category',
+  TODO_RESTORE_CATEGORY: 'qtian:todo:restore-category',
+
+  // TodoList
+  TODO_LIST_TODO_LISTS: 'qtian:todo:list-todo-lists',
+  TODO_GET_TODO_LIST: 'qtian:todo:get-todo-list',
+  TODO_CREATE_TODO_LIST: 'qtian:todo:create-todo-list',
+  TODO_UPDATE_TODO_LIST: 'qtian:todo:update-todo-list',
+  TODO_DELETE_TODO_LIST: 'qtian:todo:delete-todo-list',
+  TODO_RESTORE_TODO_LIST: 'qtian:todo:restore-todo-list',
+
+  // TodoItem
+  TODO_GET_TODO_ITEM: 'qtian:todo:get-todo-item',
+  TODO_GET_TODO_ITEM_TREE: 'qtian:todo:get-todo-item-tree',
+  TODO_CREATE_TODO_ITEM: 'qtian:todo:create-todo-item',
+  TODO_UPDATE_TODO_ITEM: 'qtian:todo:update-todo-item',
+  TODO_DELETE_TODO_ITEM: 'qtian:todo:delete-todo-item',
+  TODO_RESTORE_TODO_ITEM: 'qtian:todo:restore-todo-item',
+  TODO_UPDATE_TODO_ITEM_STATUS: 'qtian:todo:update-todo-item-status',
+
+  // Label
+  TODO_LIST_LABELS: 'qtian:todo:list-labels',
+  TODO_CREATE_LABEL: 'qtian:todo:create-label',
+  TODO_UPDATE_LABEL: 'qtian:todo:update-label',
+  TODO_DELETE_LABEL: 'qtian:todo:delete-label',
+  TODO_LIST_TODO_ITEMS_BY_LABEL: 'qtian:todo:list-todo-items-by-label',
+
+  // Document
+  TODO_LIST_DOCS_BY_CATEGORY: 'qtian:todo:list-docs-by-category',
+  TODO_LIST_DOCS_BY_ITEM: 'qtian:todo:list-docs-by-item',
+  TODO_GET_DOCUMENT: 'qtian:todo:get-document',
+  TODO_SAVE_DOCUMENT: 'qtian:todo:save-document',
+  TODO_DELETE_DOCUMENT: 'qtian:todo:delete-document',
+  TODO_SAVE_ATTACHMENT: 'qtian:todo:save-attachment',
+
+  // Config
+  TODO_GET_CONFIG: 'qtian:todo:get-config',
 } as const;
 
 /**

@@ -72,6 +72,12 @@ const menus = [
     ],
   },
   {
+    label: '应用',
+    items: [
+      { id: 'todo-app', label: '代办应用' },
+    ],
+  },
+  {
     label: '帮助',
     items: [
       { id: 'about', label: '关于' },
@@ -127,6 +133,9 @@ export default {
           break;
         case 'normal-mode':
           this.$emit('switch-mode', 'normal');
+          break;
+        case 'todo-app':
+          this.$emit('switch-mode', 'todo-app');
           break;
         case 'quit':
           window.electron.appQuit();

@@ -187,6 +187,55 @@ const api = {
     },
   },
 
+  // Todo 应用 API（Phase 1-2：数据层 + 文档系统）
+  todoApp: {
+    // Category
+    getCategoryTree: () => ipcRenderer.invoke(IPC_CHANNELS.TODO_GET_CATEGORY_TREE),
+    createCategory: (data) => ipcRenderer.invoke(IPC_CHANNELS.TODO_CREATE_CATEGORY, data),
+    updateCategory: (id, patch) => ipcRenderer.invoke(IPC_CHANNELS.TODO_UPDATE_CATEGORY, id, patch),
+    deleteCategory: (id) => ipcRenderer.invoke(IPC_CHANNELS.TODO_DELETE_CATEGORY, id),
+    restoreCategory: (id) => ipcRenderer.invoke(IPC_CHANNELS.TODO_RESTORE_CATEGORY, id),
+
+    // TodoList
+    listTodoLists: (categoryId) => ipcRenderer.invoke(IPC_CHANNELS.TODO_LIST_TODO_LISTS, categoryId),
+    getTodoList: (id) => ipcRenderer.invoke(IPC_CHANNELS.TODO_GET_TODO_LIST, id),
+    createTodoList: (data) => ipcRenderer.invoke(IPC_CHANNELS.TODO_CREATE_TODO_LIST, data),
+    updateTodoList: (id, patch) => ipcRenderer.invoke(IPC_CHANNELS.TODO_UPDATE_TODO_LIST, id, patch),
+    deleteTodoList: (id) => ipcRenderer.invoke(IPC_CHANNELS.TODO_DELETE_TODO_LIST, id),
+    restoreTodoList: (id) => ipcRenderer.invoke(IPC_CHANNELS.TODO_RESTORE_TODO_LIST, id),
+
+    // TodoItem
+    getTodoItem: (id) => ipcRenderer.invoke(IPC_CHANNELS.TODO_GET_TODO_ITEM, id),
+    getTodoItemTree: (listId) => ipcRenderer.invoke(IPC_CHANNELS.TODO_GET_TODO_ITEM_TREE, listId),
+    createTodoItem: (data) => ipcRenderer.invoke(IPC_CHANNELS.TODO_CREATE_TODO_ITEM, data),
+    updateTodoItem: (id, patch) => ipcRenderer.invoke(IPC_CHANNELS.TODO_UPDATE_TODO_ITEM, id, patch),
+    deleteTodoItem: (id) => ipcRenderer.invoke(IPC_CHANNELS.TODO_DELETE_TODO_ITEM, id),
+    restoreTodoItem: (id) => ipcRenderer.invoke(IPC_CHANNELS.TODO_RESTORE_TODO_ITEM, id),
+    updateTodoItemStatus: (id, status) =>
+      ipcRenderer.invoke(IPC_CHANNELS.TODO_UPDATE_TODO_ITEM_STATUS, id, status),
+
+    // Label
+    listLabels: () => ipcRenderer.invoke(IPC_CHANNELS.TODO_LIST_LABELS),
+    createLabel: (data) => ipcRenderer.invoke(IPC_CHANNELS.TODO_CREATE_LABEL, data),
+    updateLabel: (id, patch) => ipcRenderer.invoke(IPC_CHANNELS.TODO_UPDATE_LABEL, id, patch),
+    deleteLabel: (id) => ipcRenderer.invoke(IPC_CHANNELS.TODO_DELETE_LABEL, id),
+    listTodoItemsByLabel: (labelId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.TODO_LIST_TODO_ITEMS_BY_LABEL, labelId),
+
+    // Document
+    listDocsByCategory: (categoryId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.TODO_LIST_DOCS_BY_CATEGORY, categoryId),
+    listDocsByItem: (itemId) => ipcRenderer.invoke(IPC_CHANNELS.TODO_LIST_DOCS_BY_ITEM, itemId),
+    getDocument: (id) => ipcRenderer.invoke(IPC_CHANNELS.TODO_GET_DOCUMENT, id),
+    saveDocument: (data) => ipcRenderer.invoke(IPC_CHANNELS.TODO_SAVE_DOCUMENT, data),
+    deleteDocument: (id) => ipcRenderer.invoke(IPC_CHANNELS.TODO_DELETE_DOCUMENT, id),
+    saveAttachment: (buffer, ext) =>
+      ipcRenderer.invoke(IPC_CHANNELS.TODO_SAVE_ATTACHMENT, buffer, ext),
+
+    // Config
+    getConfig: () => ipcRenderer.invoke(IPC_CHANNELS.TODO_GET_CONFIG),
+  },
+
   // Generic IPC invoke (for channels not covered by namespaced APIs)
   invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
 
@@ -234,3 +283,4 @@ contextBridge.exposeInMainWorld('api', api);
 // Also expose for convenience
 contextBridge.exposeInMainWorld('aiAssistant', api.ai);
 contextBridge.exposeInMainWorld('task', api.task);
+contextBridge.exposeInMainWorld('todoApp', api.todoApp);

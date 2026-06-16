@@ -63,10 +63,10 @@ export function registerLocalResourceProtocol(protocol: Protocol): void {
   protocol.registerFileProtocol('local-resource', (request, callback) => {
     const filePath = fromLocalResourceUrl(request.url);
 
-    // 安全校验：检查文件扩展名
+    // 安全校验：检查文件扩展名（白名单内才允许加载）
     const ext = path.extname(filePath).toLowerCase();
     if (!ALLOWED_EXTENSIONS.has(ext) && !ALLOWED_EXTENSIONS.has(path.extname(filePath))) {
-      logger.warn(`Blocked non-image file access: ${filePath}`);
+      logger.warn(`Blocked file access (extension not allowed): ${filePath}`);
       callback({ error: -2 }); // net::FAILED
       return;
     }

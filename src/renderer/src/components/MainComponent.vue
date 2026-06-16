@@ -16,6 +16,7 @@
 <script>
 import QuickModePage from './quick-mode/QuickModePage.vue';
 import AiAssistantPage from './ai-assistant/AiAssistantPage.vue';
+import TodoAppPage from './app-modules/todo-app/TodoAppPage.vue';
 import CustomTitleBar from './common/TitleBar.vue';
 
 export default {
@@ -24,6 +25,7 @@ export default {
   components: {
     QuickModePage,
     AiAssistantPage,
+    TodoAppPage,
     CustomTitleBar,
   },
 
@@ -75,6 +77,8 @@ export default {
       } else if (mode === 'normal') {
         this.clearPending();
         this.switchToAiAssistant();
+      } else if (mode === 'todo-app') {
+        this.currentComponent = 'TodoAppPage';
       }
     },
 

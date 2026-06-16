@@ -16,6 +16,7 @@ export default defineConfig({
         'dist-electron/',
         '**/*.test.ts',
         '**/*.spec.ts',
+        '**/todo-mock-db.ts',
         'src/renderer/',
         'src/main/core/vitest.setup.ts'
       ],

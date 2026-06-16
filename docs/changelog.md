@@ -2,6 +2,77 @@
 
 ## [1.0.0] 2026-06-16
 
+**User**: 按照 `docs/specs/100_todo-app-design.md` 开发 todo-app Phase 1（数据层 + 三栏 UI）+ Phase 2（文档系统 + Markdown 编辑器）
+
+**Summary**:
+
+本次开发落地 todo-app（代办应用）**Phase 1-2**，包含完整的数据层、Service 层、IPC 集成、三栏 UI 和文档编辑器。未做 Phase 3（FTS 全文搜索）、Phase 4（统一回收站 UI）、Phase 5（Todo 驱动 AI 任务）、Phase 6（增强打磨）。
+
+### 新增模块
+
+- **数据层**
+  - `data/todo-app.sql`：6 张表（todo_category / todo_list / todo_label / todo_item / todo_item_label / todo_document），全部启用软删除（deleted_at），Label 用部分唯一索引（`WHERE deleted_at IS NULL`）；不含 FTS5 虚拟表（Phase 3）
+  - `TodoDb`（`src/main/core/services/app-modules/todo-app/todo-db.ts`）：封装建表 + `getDBManager()` 供 Service 层执行跨表查询；业务查询不下沉到 TodoDb（避免类过大）
+
+- **类型与常量**（`types.ts`）
+  - TodoCategory / TodoList / TodoItem / TodoLabel / TodoDocument / TodoCategoryNode / TodoItemNode / TodoAppConfig
+  - `MAX_CATEGORY_DEPTH = 4`、`MAX_TODO_ITEM_DEPTH = 4`
+  - `VALID_STATUS_TRANSITIONS` 状态机映射（init → in_progress/done/abandoned；done → in_progress；abandoned → init）
+
+- **Service 层**（5 个 Service + 模块入口 + 引导）
+  - `TodoLabelService`：全局标签 CRUD（部分唯一索引保证 name 唯一性）；`setItemLabels` / `getItemLabels` 维护多对多关联；软删除后同名可重建
+  - `TodoCategoryService`：递归分组 CRUD + 深度校验（第 5 层抛错）+ `getTree`（内存构建树 + `list_count` 递归聚合）+ 递归软删除级联（category → list → item → document）+ `restore`（parent 已删则提升至根）+ 环检测（不能移动到子孙下）
+  - `TodoListService`：列表 CRUD + 级联软删除（list → item → document）
+  - `TodoItemService`：条目 CRUD + 深度校验 + 状态机校验 + `recalcParentProgress`（父进度 = AVG 未删除且非 `is_manual_progress` 子项；`is_manual_progress=true` 时跳过；含 `Set<number> visited` 防环检测；create/update/delete 后自动触发）+ `collectSubtree`（Phase 5 任务拼装用，按 depth+created_at 排序）+ done 自动设 progress=100
+  - `TodoDocumentService`：Markdown 文档 CRUD + `saveAttachment`（sha256 前 16 位命名 + 前 2 位分桶 + 去重）；category_id 和 item_id 互斥校验
+  - `TodoAppService`：模块入口，装配所有子 Service + 读取 `config.todoApp` 运行时配置
+  - `todo-app-bootstrap.ts`：进程级单例引导（建表 + 装配 Service + 注册 IPC），幂等；Phase 5 注入点
+
+- **IPC / Preload / 主进程集成**
+  - `src/shared/ipc-channels.ts`：新增 26 个 `TODO_*` 频道（Category / TodoList / TodoItem / Label / Document / Config），含设计文档遗漏的 `TODO_GET_TODO_ITEM`
+  - `src/main/core/ipc/handlers/todo-app.handler.ts`：注册全部 TODO_* handler
+  - `src/preload/index.ts`：新增 `window.todoApp.*` 命名空间（30 个方法）+ `contextBridge.exposeInMainWorld('todoApp', ...)`
+  - `src/main/index.ts`：`app.on('ready')` 调整为 `await readConfig()` → `bootstrapTodoApp()`（在 `bootstrapTaskSystem()` 之后）
+
+- **基础设施扩展**
+  - `context.ts`：WPath 新增 `appModulesDir` / `appModulesTodoDir` / `appModulesTodoAttachDir` / `todoDbPath` / `getTodoAppSqlFile()`；Config 新增 `todo_app` 配置段（defaultCategoryId / defaultSort / showCompleted / maxCategoryDepth / maxTodoItemDepth）
+  - `constants.ts`：MIME_MAP 扩展附件类型（pdf/txt/docx/xlsx/md/csv/zip/json 等共 18 种）
+  - `local-resource-protocol.ts`：ALLOWED_EXTENSIONS 自动同步 MIME_MAP（白名单扩展）；更新警告消息
+
+- **UI 组件**（`src/renderer/src/components/app-modules/todo-app/`，Element Plus 实现）
+  - `TodoAppPage.vue`：三栏布局（左 240px / 中 flex:1 / 右 320px），管理全局状态
+  - `TodoSidebar.vue`：分类树 / 标签云视图切换
+  - `TodoCategoryTree.vue`：el-tree 递归渲染，支持新建子分类 / 重命名 / 删除（移至回收站）
+  - `TodoLabelCloud.vue`：el-tag 标签云
+  - `TodoListPanel.vue`：列表选择 + items 树渲染 + 新建列表/条目
+  - `TodoItemRow.vue`：el-checkbox（done 切换）+ 缩进层级（depth*20px）+ 优先级颜色标记 + 递归子项展开
+  - `TodoItemDetail.vue`：el-form 编辑（title/description/task_prompt/status/priority/due_at/is_manual_progress/progress/label_ids）+ 关联文档列表
+  - `TodoDocumentEditor.vue`：vditor Markdown 编辑器（IR 模式）+ 附件上传（图片自动落盘 attach/ 目录并插入 local-resource:// URL）
+
+- **路由集成**
+  - `TitleBar.vue`：新增"应用"菜单 → "代办应用"
+  - `MainComponent.vue`：`handleSwitchMode` 新增 `'todo-app'` 分支
+
+### 测试
+
+- 新增 116 个单元测试，全部通过：
+  - `todo-db.test.ts`（8）：建表幂等、getDBManager 可用、SQL 文件不存在时抛错
+  - `todo-label.service.test.ts`（16）：CRUD、name 唯一性、软删除后同名重建、setItemLabels 全量覆盖、关联清理
+  - `todo-category.service.test.ts`（22）：递归深度（第 5 层拒绝）、getTree 多层树 + list_count 聚合、软删除级联、restore parent 已删提升至根、环检测
+  - `todo-list.service.test.ts`（12）：CRUD、按 categoryId/null 过滤、级联软删除 item
+  - `todo-item.service.test.ts`（38）：状态机全部合法/非法转换、进度联动（普通/手动/混合/多级）、递归深度、collectSubtree 排序、软删除递归子项 + 父进度重算
+  - `todo-document.service.test.ts`（20）：saveAttachment hash 去重/分桶/实际写文件、category_id+item_id 互斥
+- 测试 DB 策略：文件级 `vi.mock('better-sqlite3')` + 通用内存 SQL 执行器（`todo-mock-db.ts`），支持 6 表 INSERT/SELECT/UPDATE/DELETE + WHERE/JOIN/IN/COUNT/GROUP BY/ORDER BY
+- 全量回归：840 用例通过（2 个 GlobalShortcutManager 失败为 pre-existing，与本次改动无关）
+
+### 范围说明
+
+- **未做**：Phase 3（FTS5 全文搜索 + todo_search_history）、Phase 4（统一回收站 UI）、Phase 5（Todo 驱动 AI 任务：createTaskFromItem / 总结文档 / source result handler）、Phase 6（增强打磨：vditor 打包资源本地化、拖拽排序、快捷键等）
+- **已知限制**：vditor CDN 指向 `node_modules/visor/dist`，打包时需将 dist 复制到 resources 并更新 cdn 路径；软删除"删除"按钮当前直接软删除（无回收站 UI，Phase 4 补充）
+- **设计决策**：配置复用 `qtian.json` 的 `todo_app` 段；附件协议复用 `local-resource://`；TodoDb 暴露 `getDBManager()` 业务查询在 Service 层；`bootstrapTodoApp()` 与 task 系统一致（独立引导 + 隔离失败）
+
+## [1.0.0] 2026-06-16
+
 **User**: 按照 `docs/specs/007_task-design.md` 进行开发，完成任务管理功能
 
 **Summary**:
