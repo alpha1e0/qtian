@@ -25,15 +25,35 @@
       @toggle-status="handleToggleStatus"
     />
 
-    <!-- 右侧详情 -->
+    <!-- 右侧详情：状态机路由 -->
     <TodoItemDetail
-      v-if="selectedItemId"
+      v-if="rightPanelView === 'item-detail'"
+      :key="`item-${selectedItemId}-${detailKey}`"
       class="todo-item-detail"
       :item-id="selectedItemId"
       @updated="handleItemUpdated"
+      @open-doc="openDoc"
+    />
+    <TodoCategoryDetail
+      v-else-if="rightPanelView === 'category-detail'"
+      :key="`cat-${selectedCategoryId}-${detailKey}`"
+      class="todo-item-detail"
+      :category-id="selectedCategoryId"
+      :category-name="selectedCategoryName"
+      @open-doc="openDoc"
+    />
+    <TodoDocumentEditor
+      v-else-if="rightPanelView === 'document-editor'"
+      class="todo-item-detail todo-item-detail-wide"
+      :doc-id="activeDoc?.id ?? null"
+      :item-id="activeDoc?.itemId ?? null"
+      :category-id="activeDoc?.categoryId ?? null"
+      :title-path="activeDoc?.titlePath ?? ''"
+      @back="handleEditorBack"
+      @saved="handleDocSaved"
     />
     <div v-else class="todo-item-detail todo-item-detail-empty">
-      <el-empty description="选择一个待办条目查看详情" />
+      <el-empty description="选择一个待办条目或分类查看详情" />
     </div>
   </div>
 </template>
@@ -42,11 +62,13 @@
 import TodoSidebar from './TodoSidebar.vue';
 import TodoListPanel from './TodoListPanel.vue';
 import TodoItemDetail from './TodoItemDetail.vue';
+import TodoCategoryDetail from './TodoCategoryDetail.vue';
+import TodoDocumentEditor from './TodoDocumentEditor.vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
 export default {
   name: 'TodoAppPage',
-  components: { TodoSidebar, TodoListPanel, TodoItemDetail },
+  components: { TodoSidebar, TodoListPanel, TodoItemDetail, TodoCategoryDetail, TodoDocumentEditor },
   data() {
     return {
       categoryTree: [],
@@ -55,7 +77,20 @@ export default {
       selectedLabelId: null,
       selectedListId: null,
       selectedItemId: null,
+      // 右侧视图状态机：'empty' | 'item-detail' | 'category-detail' | 'document-editor'
+      rightPanelView: 'empty',
+      // 当前打开的文档上下文（编辑器视图使用）
+      activeDoc: null,
+      // 强制右侧详情组件刷新（文档保存后刷新关联列表）
+      detailKey: 0,
     };
+  },
+  computed: {
+    /** 从 categoryTree 中递归解析当前分类名称（用于 TodoCategoryDetail 标题与 titlePath） */
+    selectedCategoryName() {
+      if (!this.selectedCategoryId) return '';
+      return this.findCategoryName(this.categoryTree, this.selectedCategoryId) || '';
+    },
   },
   async mounted() {
     await Promise.all([this.loadCategoryTree(), this.loadLabels()]);
@@ -77,15 +112,30 @@ export default {
         console.error(err);
       }
     },
+    /** 递归查找分类名称（树可能为空或多层） */
+    findCategoryName(nodes, targetId) {
+      if (!Array.isArray(nodes)) return '';
+      for (const node of nodes) {
+        if (node.id === targetId) return node.name;
+        const found = this.findCategoryName(node.children, targetId);
+        if (found) return found;
+      }
+      return '';
+    },
     handleSelectCategory(categoryId) {
       this.selectedCategoryId = categoryId;
       this.selectedLabelId = null;
       this.selectedItemId = null;
+      this.activeDoc = null;
+      this.rightPanelView = categoryId ? 'category-detail' : 'empty';
     },
     handleSelectLabel(labelId) {
       this.selectedLabelId = labelId;
       this.selectedCategoryId = null;
       this.selectedItemId = null;
+      this.activeDoc = null;
+      // 标签视图暂无独立详情面板，先回退到 empty
+      this.rightPanelView = 'empty';
     },
     async handleCreateCategory({ name, parentId }) {
       try {
@@ -114,6 +164,7 @@ export default {
         await this.loadCategoryTree();
         if (this.selectedCategoryId === id) {
           this.selectedCategoryId = null;
+          this.rightPanelView = 'empty';
         }
         ElMessage.success('已删除');
       } catch (err) {
@@ -125,9 +176,18 @@ export default {
     handleSelectList(listId) {
       this.selectedListId = listId;
       this.selectedItemId = null;
+      this.activeDoc = null;
+      // 选中列表但未选条目时，根据是否有分类决定回退到分类详情或空
+      if (this.selectedCategoryId) {
+        this.rightPanelView = 'category-detail';
+      } else {
+        this.rightPanelView = 'empty';
+      }
     },
     handleSelectItem(itemId) {
       this.selectedItemId = itemId;
+      this.activeDoc = null;
+      this.rightPanelView = 'item-detail';
     },
     async handleToggleStatus({ id, status }) {
       try {
@@ -137,7 +197,39 @@ export default {
       }
     },
     handleItemUpdated() {
-      // 详情更新后可触发列表刷新（由 TodoListPanel 自行刷新）
+      // TodoListPanel 自行 watch categoryId/currentListId 刷新；这里仅作为事件出口
+    },
+    /**
+     * 子组件请求打开文档：切换到编辑器视图。
+     * payload: { id?, itemId?, categoryId?, titlePath }
+     */
+    openDoc(payload) {
+      this.activeDoc = {
+        id: payload.id ?? null,
+        itemId: payload.itemId ?? null,
+        categoryId: payload.categoryId ?? null,
+        titlePath: payload.titlePath ?? '',
+      };
+      this.rightPanelView = 'document-editor';
+    },
+    /** 编辑器返回：依据 activeDoc 上下文回退到上一级视图 */
+    handleEditorBack() {
+      if (this.activeDoc?.itemId) {
+        this.rightPanelView = 'item-detail';
+      } else if (this.activeDoc?.categoryId) {
+        this.rightPanelView = 'category-detail';
+      } else if (this.selectedItemId) {
+        this.rightPanelView = 'item-detail';
+      } else if (this.selectedCategoryId) {
+        this.rightPanelView = 'category-detail';
+      } else {
+        this.rightPanelView = 'empty';
+      }
+      this.activeDoc = null;
+    },
+    /** 文档保存后刷新对应源详情（通过 :key 强制重渲染） */
+    handleDocSaved() {
+      this.detailKey += 1;
     },
   },
 };
@@ -169,6 +261,12 @@ export default {
   flex-shrink: 0;
   border-left: 1px solid rgba(255, 255, 255, 0.06);
   overflow-y: auto;
+}
+
+/* 文档编辑器视图：右侧扩展到 600px 以获得更合理的编辑宽度 */
+.todo-item-detail-wide {
+  width: 600px;
+  overflow: hidden;
 }
 
 .todo-item-detail-empty {

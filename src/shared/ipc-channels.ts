@@ -120,6 +120,8 @@ export const IPC_CHANNELS = {
   TODO_SAVE_DOCUMENT: 'qtian:todo:save-document',
   TODO_DELETE_DOCUMENT: 'qtian:todo:delete-document',
   TODO_SAVE_ATTACHMENT: 'qtian:todo:save-attachment',
+  // 基于文件路径的附件保存（避免大文件经 IPC 序列化整个 buffer）
+  TODO_SAVE_ATTACHMENT_FROM_PATH: 'qtian:todo:save-attachment-from-path',
 
   // Config
   TODO_GET_CONFIG: 'qtian:todo:get-config',

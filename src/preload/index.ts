@@ -231,6 +231,8 @@ const api = {
     deleteDocument: (id) => ipcRenderer.invoke(IPC_CHANNELS.TODO_DELETE_DOCUMENT, id),
     saveAttachment: (buffer, ext) =>
       ipcRenderer.invoke(IPC_CHANNELS.TODO_SAVE_ATTACHMENT, buffer, ext),
+    saveAttachmentFromPath: (filePath) =>
+      ipcRenderer.invoke(IPC_CHANNELS.TODO_SAVE_ATTACHMENT_FROM_PATH, filePath),
 
     // Config
     getConfig: () => ipcRenderer.invoke(IPC_CHANNELS.TODO_GET_CONFIG),

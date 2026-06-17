@@ -1,5 +1,60 @@
 # Changelog
 
+## [1.0.0] 2026-06-17
+
+**User**: Phase 2 恢复开发：对齐参考代码的文档编辑器 + 内嵌布局 + Category 文档 UI
+
+**Summary**:
+
+在断电前 commit `f5de66a`（Phase 1-2 后端 + 编辑器最小可用版）基础上恢复开发，聚焦三件事：编辑器生产力功能补齐（G1-G5）、Category 级文档 UI（G6）、编辑器从 dialog 改为右侧内嵌（G7）。打包资源本地化（G8）按用户决定留待 Phase 6 处理。
+
+### 变更
+
+- **IPC 扩展**（`src/shared/ipc-channels.ts` / `src/main/core/ipc/handlers/todo-app.handler.ts` / `src/preload/index.ts`）
+  - 新增 `TODO_SAVE_ATTACHMENT_FROM_PATH` 频道：基于文件路径的附件保存，主进程直接 `fs.readFileSync` 落盘，避免大文件经 IPC 序列化整个 buffer 的开销
+  - preload 暴露 `window.todoApp.saveAttachmentFromPath(filePath)`，与原 `saveAttachment(buffer, ext)` 并存（剪贴板粘贴仍走 buffer 分支）
+
+- **`TodoDocumentEditor.vue` 重写**（对齐 `tmp/vditor-example.vue`）
+  - G1 顶部工具条：标题路径（来自 prop `titlePath`）+ 字数统计（vditor counter 回调）+ 手动保存按钮 + 返回按钮
+  - G2 自动保存：`after` 回调启动 `setInterval(autoSaveDocument, 30000)`；`isLoadingDoc` / `saving` 防重入；`beforeUnmount` 清理定时器
+  - G3 手动保存 Ctrl+S：mounted 注册 `keydown` 监听；metaKey 兼容 macOS；unmounted 移除
+  - G4 文本替换 Ctrl+R：`el-dialog` + 正则 `new RegExp(source, 'g')`；正则无效时提示而非崩溃；`doReplace` 计数反馈
+  - G5 图片样式替换：`/!\[(.*?)\]\((.*?)\)/g` → `<img src='..' height='400' alt='..'>`
+  - 纯文本粘贴按钮：`navigator.clipboard.readText()` 后追加到当前内容末尾
+  - 上传 handler 优化：区分 `file.path`（走 `saveAttachmentFromPath`）和剪贴板（`arrayBuffer()` + `saveAttachment`）；返回 `null` / 错误字符串符合 vditor 约定
+  - props 新增 `titlePath`；emits 新增 `back`；保留 `saved`
+  - 协议策略：统一 `local-resource://`（复用现有白名单），未引入 `local-resource-md://`
+
+- **`TodoCategoryDetail.vue` 新增**（spec §3.5 / §9.1）
+  - Category 维度文档列表 UI：顶部"分类名 + 新建文档"头部 + 文档列表（含 updated_at 简短时间）
+  - 新建文档：先 `ElMessageBox.prompt` 收集名称 → `saveDocument({ todo_category_id })` 创建占位 → emit `open-doc({ id, categoryId, titlePath: '分类名 / 文档名' })`
+  - 打开文档：直接 emit `open-doc({ id, categoryId, titlePath })`
+  - props: `categoryId`、`categoryName`（由父组件从 categoryTree 解析）；emits: `open-doc`；公开 `refresh()` 供父组件调用
+
+- **`TodoItemDetail.vue` 改造**
+  - 移除内嵌 `<el-dialog>` 块、`docEditorVisible` / `editingDoc` / `TodoDocumentEditor` import
+  - `handleCreateDoc` / `handleOpenDoc` 改为 emit `open-doc({ id?, itemId, titlePath: '条目标题 / 文档名' })`，由父组件路由到编辑器视图
+  - 新建文档采用"先创建占位再打开"两步流程，确保编辑器拿到真实 `docId`（用于自动保存）
+
+- **`TodoAppPage.vue` 改造**（G7：dialog → 内嵌）
+  - 引入 `rightPanelView` 状态机：`'empty' | 'item-detail' | 'category-detail' | 'document-editor'`
+  - 引入 `activeDoc` 状态：`{ id?, itemId?, categoryId?, titlePath }`
+  - 引入 `detailKey` 计数器：文档保存后自增，通过 `:key` 强制 `TodoItemDetail` / `TodoCategoryDetail` 重新挂载以刷新文档列表
+  - 动态宽度：默认右侧 320px；`document-editor` 视图通过 `.todo-item-detail-wide` 切换到 600px
+  - 路由策略：选 category（无 item）→ category-detail；选 item → item-detail；子组件 emit `open-doc` → document-editor；编辑器 emit `back` → 依据 `activeDoc.itemId/categoryId` 回退
+  - 新增 `selectedCategoryName` computed：递归遍历 categoryTree 解析分类名，供 `TodoCategoryDetail` 展示与 `titlePath` 拼装
+
+### 范围说明
+
+- **不做**：G8 vditor 打包资源本地化（用户决定 Phase 6 处理）；不引入 `local-resource-md://` 协议
+- **不修改**：`TodoDocumentService.ts`（后端 API 满足需求）、`local-resource-protocol.ts`（已支持白名单）、数据/Service 测试
+- **不引入新依赖**：复用 vditor ^3.10.7 + element-plus
+- **测试约定**：UI 无新单测（遵循 CLAUDE.md §2：`src/main` 必测、UI 不强制）；新增 IPC handler 与既有 `TODO_SAVE_ATTACHMENT` 风格一致，未单测
+
+### 回归
+
+- 后端无逻辑改动：`vitest run src/main/core/services/app-modules/todo-app` 现有 116 用例应保持全绿
+
 ## [1.0.0] 2026-06-16
 
 **User**: 按照 `docs/specs/100_todo-app-design.md` 开发 todo-app Phase 1（数据层 + 三栏 UI）+ Phase 2（文档系统 + Markdown 编辑器）

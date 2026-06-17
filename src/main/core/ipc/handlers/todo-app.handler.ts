@@ -1,4 +1,6 @@
 import { ipcMain } from 'electron';
+import * as fs from 'fs';
+import * as path from 'path';
 
 import { IPC_CHANNELS } from '../channels';
 import { createLogger } from '@/core/utils/logger';
@@ -157,6 +159,16 @@ export function registerTodoAppHandlers(todoAppService: TodoAppService): void {
   ipcMain.handle(IPC_CHANNELS.TODO_SAVE_ATTACHMENT, async (_e, buffer: Buffer, ext: string) => {
     return doc.saveAttachment(Buffer.from(buffer), ext);
   });
+
+  // 基于文件路径的附件保存：主进程直接读取文件落盘，避免大文件经 IPC 传输完整 buffer
+  ipcMain.handle(
+    IPC_CHANNELS.TODO_SAVE_ATTACHMENT_FROM_PATH,
+    async (_e, filePath: string) => {
+      const buffer = fs.readFileSync(filePath);
+      const ext = path.extname(filePath);
+      return doc.saveAttachment(buffer, ext);
+    },
+  );
 
   // ===== Config =====
   ipcMain.handle(IPC_CHANNELS.TODO_GET_CONFIG, async () => {

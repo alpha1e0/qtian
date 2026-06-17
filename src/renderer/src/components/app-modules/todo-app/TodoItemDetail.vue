@@ -113,34 +113,18 @@
           <span class="doc-name">{{ doc.name }}</span>
         </div>
       </div>
-
-      <!-- 文档编辑器弹窗 -->
-      <el-dialog
-        v-model="docEditorVisible"
-        :title="editingDoc ? editingDoc.name : '新建文档'"
-        width="80%"
-        top="5vh"
-        destroy-on-close
-      >
-        <TodoDocumentEditor
-          v-if="docEditorVisible"
-          :doc-id="editingDoc ? editingDoc.id : null"
-          :item-id="itemId"
-          @saved="handleDocSaved"
-        />
-      </el-dialog>
     </div>
   </div>
 </template>
 
 <script>
 import { Plus, Document } from '@element-plus/icons-vue';
-import { ElMessage } from 'element-plus';
-import TodoDocumentEditor from './TodoDocumentEditor.vue';
+import { ElMessage, ElMessageBox } from 'element-plus';
 
 export default {
   name: 'TodoItemDetail',
-  components: { Plus, Document, TodoDocumentEditor },
+  components: { Plus, Document },
+  emits: ['updated', 'open-doc'],
   props: {
     itemId: { type: Number, required: true },
   },
@@ -151,8 +135,6 @@ export default {
       allLabels: [],
       documents: [],
       hasChildren: false,
-      docEditorVisible: false,
-      editingDoc: null,
       saveTimer: null,
     };
   },
@@ -252,16 +234,41 @@ export default {
         ElMessage.error(err.message || '标签更新失败');
       }
     },
-    handleCreateDoc() {
-      this.editingDoc = null;
-      this.docEditorVisible = true;
+    /**
+     * 新建文档：先弹框收集名称，落库后通知父组件切换到编辑器视图。
+     * 这里采用"创建+打开"两步，保证父组件能拿到真实 docId。
+     */
+    async handleCreateDoc() {
+      try {
+        const { value } = await ElMessageBox.prompt('请输入文档名称', '新建关联文档', {
+          confirmButtonText: '创建',
+          cancelButtonText: '取消',
+        });
+        if (!value || !value.trim()) return;
+        const created = await window.todoApp.saveDocument({
+          name: value.trim(),
+          content: '',
+          todo_item_id: this.itemId,
+          todo_category_id: null,
+        });
+        await this.loadDocuments();
+        this.$emit('open-doc', {
+          id: created.id,
+          itemId: this.itemId,
+          titlePath: `${this.formData?.title || ''} / ${created.name}`,
+        });
+        ElMessage.success('文档已创建');
+      } catch (err) {
+        if (err === 'cancel') return;
+        ElMessage.error(err.message || '创建失败');
+      }
     },
     handleOpenDoc(doc) {
-      this.editingDoc = doc;
-      this.docEditorVisible = true;
-    },
-    async handleDocSaved() {
-      await this.loadDocuments();
+      this.$emit('open-doc', {
+        id: doc.id,
+        itemId: this.itemId,
+        titlePath: `${this.formData?.title || ''} / ${doc.name}`,
+      });
     },
   },
 };
