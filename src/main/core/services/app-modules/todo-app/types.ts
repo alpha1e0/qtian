@@ -7,6 +7,7 @@
  * 渲染进程（通过 preload 桥接的类型推断）共享。
  *
  * Phase 1-2 范围：不含 FTS 搜索结果类型、不含任务适配层类型。
+ * Phase 3 补充：TodoSearchResult / TodoSearchHistory / TodoFtsEntityType（见文件末尾）。
  */
 
 // ============================================================================
@@ -177,4 +178,50 @@ export interface TodoAppConfig {
   showCompleted: boolean;
   maxCategoryDepth: number;
   maxTodoItemDepth: number;
+}
+
+// ============================================================================
+// 全文搜索（Phase 3）
+// ============================================================================
+
+/**
+ * FTS 实体类型集合。
+ *
+ * 与 §7.1 一致：**不包含 label**（label 不纳入 FTS 索引）。
+ */
+export type TodoFtsEntityType = 'category' | 'todo_list' | 'todo_item' | 'document';
+
+/**
+ * 全文搜索命中结果（统一返回结构）。
+ *
+ * 与 docs/specs/100_todo-app-design.md §3.7 一致。
+ */
+export interface TodoSearchResult {
+  /** 命中类型 */
+  type: TodoFtsEntityType;
+  /** 命中实体 ID */
+  id: number;
+  /** 命中实体标题/名称（主表回查补全，避免 snippet 截断） */
+  title: string;
+  /** FTS snippet（高亮上下文，已包含 `<mark>` 标签；优先用 title_snippet，无命中时用 body_snippet） */
+  snippet: string;
+  /** 所属 category 路径（根→父，不含自身；用于 UI 展示面包屑） */
+  category_path: string[];
+  /** BM25 相关度分数（越小越相关） */
+  rank: number;
+}
+
+/**
+ * 搜索历史条目。
+ *
+ * 与 docs/specs/100_todo-app-design.md §3.7 一致。
+ */
+export interface TodoSearchHistory {
+  id: number;
+  /** 用户原始输入（未做分词处理） */
+  query: string;
+  /** 该 query 命中结果数（用于 UI 展示） */
+  hit_count: number;
+  /** 最后一次搜索时间（Unix ms） */
+  searched_at: number;
 }

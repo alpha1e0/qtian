@@ -39,6 +39,17 @@ export function createTodoMemDbFactory(): { default: any; Database: any } {
       // no-op
     }
 
+    /**
+     * 事务 mock：不模拟 BEGIN/COMMIT/ROLLBACK 语义，仅返回一个直接调用 fn 的包装器。
+     *
+     * 与 better-sqlite3 的 `db.transaction(fn)` 签名一致（返回一个**新函数**，
+     * 调用该函数时执行 fn）。`DBManager.transaction(fn)` 会立即调用 `()`
+     * 取结果，因此这里返回 `() => fn()` 即可让链路 `transaction(fn)() === fn()` 成立。
+     */
+    transaction<T>(fn: () => T): () => T {
+      return () => fn();
+    }
+
     prepare(sql: string) {
       return {
         all: (...params: any[]) => this.execAll(sql, params),
@@ -68,6 +79,53 @@ export function createTodoMemDbFactory(): { default: any; Database: any } {
       params: any[],
     ): { changes: number; lastInsertRowid: number | bigint } {
       const trimmed = sql.trim().replace(/\s+/g, ' ');
+
+      // INSERT INTO todo_search_history (...) VALUES (...) ON CONFLICT(query) DO UPDATE SET ...
+      // UPSERT：依赖唯一列冲突时更新（FTS 历史表用）
+      const upsertMatch = trimmed.match(
+        /^INSERT INTO (\w+) \(([^)]+)\)\s*VALUES\s*\(([^)]+)\)\s*ON CONFLICT\((\w+)\)\s*DO UPDATE SET\s+(.+)$/i,
+      );
+      if (upsertMatch) {
+        const [, tableName, colsStr, valsStr, conflictCol, setStr] = upsertMatch;
+        const rows = this.ensureTable(tableName);
+        const cols = colsStr.split(',').map((c) => c.trim());
+        const valTokens = this.splitByComma(valsStr);
+        const parsedRow: Record<string, any> = {};
+        let paramIdx = 0;
+        cols.forEach((col, idx) => {
+          const token = valTokens[idx]?.trim();
+          if (token === '?') {
+            parsedRow[col] = params[paramIdx];
+            paramIdx += 1;
+          } else if (/^NULL$/i.test(token)) {
+            parsedRow[col] = null;
+          } else if (/^'(.*)'$/.test(token)) {
+            parsedRow[col] = token.slice(1, -1);
+          } else if (/^-?\d+$/.test(token)) {
+            parsedRow[col] = parseInt(token, 10);
+          }
+        });
+
+        // 查找冲突行
+        const existing = rows.find((r) => r[conflictCol] === parsedRow[conflictCol]);
+        if (existing) {
+          // 解析 SET col=excluded.col, ... — 从 excluded 引用取值
+          const setParts = this.splitByComma(setStr);
+          for (const part of setParts) {
+            const sm = part.match(/^(\w+)\s*=\s*excluded\.(\w+)$/i);
+            if (sm) {
+              existing[sm[1]] = parsedRow[sm[2]];
+            }
+          }
+          return { changes: 1, lastInsertRowid: existing.id ?? 0 };
+        }
+        // 无冲突：插入新行
+        const seq = this.seqs.get(tableName)! + 1;
+        this.seqs.set(tableName, seq);
+        const newRow: Record<string, any> = { id: seq, ...parsedRow };
+        rows.push(newRow);
+        return { changes: 1, lastInsertRowid: seq };
+      }
 
       // INSERT INTO table (cols) VALUES (?, ?, NULL, ...)
       const insMatch = trimmed.match(/^INSERT (?:OR IGNORE )?INTO (\w+) \(([^)]+)\)\s*VALUES\s*\(([^)]+)\)/i);
@@ -137,6 +195,12 @@ export function createTodoMemDbFactory(): { default: any; Database: any } {
       // sqlite_master 初始化检查 → 返回空（DBManager.isInitialized 用）
       if (/FROM sqlite_master/i.test(trimmed)) {
         return [];
+      }
+
+      // FTS5 全文搜索查询（Phase 3）：SELECT ... FROM todo_fts WHERE todo_fts MATCH ?
+      // 支持 snippet() / bm25() — 在 mock 中用简单 token 匹配模拟
+      if (/FROM todo_fts\b/.test(trimmed) && /todo_fts MATCH/i.test(trimmed)) {
+        return this.execFtsSearch(trimmed, params);
       }
 
       // SELECT ... 可能含 COUNT(*) AS xxx
@@ -276,6 +340,17 @@ export function createTodoMemDbFactory(): { default: any; Database: any } {
             conditions.push({ type: 'in', col, values: subIds.ids, paramConsumed: subIds.consumed });
             paramCursor += subIds.consumed;
           }
+          continue;
+        }
+
+        // col IN (?, ?, ?) — 参数化 IN 列表（syncFtsBatch 级联清理 FTS 用）
+        const inParamListMatch = part.match(/^([\w.]+)\s+IN\s*\((\?(?:\s*,\s*\?)*)\)$/i);
+        if (inParamListMatch) {
+          const col = this.stripAlias(inParamListMatch[1]);
+          const count = (inParamListMatch[2].match(/\?/g) || []).length;
+          const values = params.slice(paramCursor, paramCursor + count);
+          paramCursor += count;
+          conditions.push({ type: 'in', col, values, paramConsumed: count });
           continue;
         }
 
@@ -461,6 +536,122 @@ export function createTodoMemDbFactory(): { default: any; Database: any } {
         result.push({ [groupCol]: key, [cntColMatch]: members.length });
       }
       return isCount ? result : result;
+    }
+
+    // ------------------------------------------------------------------------
+    // FTS5 全文搜索（Phase 3 mock）
+    // ------------------------------------------------------------------------
+
+    /**
+     * 模拟 FTS5 MATCH 查询。
+     *
+     * 真实 FTS5 由 better-sqlite3 提供（含 bm25/snippet），但在 vitest 下
+     * better-sqlite3 原生模块无法加载（编译为 Electron ABI），故用 token
+     * 集合匹配近似实现：
+     * - 解析 MATCH 参数（双引号包裹的 phrase）→ query token 列表
+     * - 对每条 todo_fts 行，拆分 title/body 为 token 集合
+     * - AND 语义：所有 query token 必须在 title∪body 中出现
+     * - rank 近似：title 命中 -10*count，body 命中 -1*count（越小越相关）
+     * - snippet：命中 token 包裹 `<mark>`
+     *
+     * 这只是近似实现，用于验证 Service 层逻辑（syncFts/search 编排、
+     * history、category_path），不保证与真实 FTS5 排序完全一致。
+     */
+    private execFtsSearch(sql: string, params: any[]): Record<string, any>[] {
+      // 参数布局：snippet(title) 4 + snippet(body) 4 + bm25 2 + MATCH 1 + LIMIT 1 = 12
+      // MATCH 参数位于索引 10，LIMIT 位于索引 11
+      const ftsQueryRaw = String(params[10] ?? '');
+      const limit = typeof params[11] === 'number' ? params[11] : 30;
+      const markOpen = String(params[0] ?? '<mark>');
+      const markClose = String(params[3] ? '<mark>' : '<mark>'); // 占位，实际用 params[0]
+
+      // 解析 MATCH 查询：抽取双引号包裹的 phrase token
+      const queryTokens: string[] = [];
+      const phraseRe = /"([^"]*)"/g;
+      let pm: RegExpExecArray | null;
+      while ((pm = phraseRe.exec(ftsQueryRaw)) !== null) {
+        const tok = pm[1].trim().toLowerCase();
+        if (tok.length > 0) queryTokens.push(tok);
+      }
+      if (queryTokens.length === 0) return [];
+
+      const rows = this.tables.get('todo_fts') ?? [];
+      const results: Record<string, any>[] = [];
+      for (const row of rows) {
+        const titleTokens = String(row.title ?? '')
+          .split(' ')
+          .map((t) => t.trim().toLowerCase())
+          .filter(Boolean);
+        const bodyTokens = String(row.body ?? '')
+          .split(' ')
+          .map((t) => t.trim().toLowerCase())
+          .filter(Boolean);
+        const titleSet = new Set(titleTokens);
+        const bodySet = new Set(bodyTokens);
+
+        // AND 匹配
+        const allPresent = queryTokens.every(
+          (q) => titleSet.has(q) || bodySet.has(q),
+        );
+        if (!allPresent) continue;
+
+        // 计算 rank（越小越相关）
+        let titleHits = 0;
+        let bodyHits = 0;
+        for (const q of queryTokens) {
+          if (titleSet.has(q)) titleHits += 1;
+          if (bodySet.has(q)) bodyHits += 1;
+        }
+        // title 权重 10、body 权重 1；负值使命中越多 rank 越小（越相关）
+        const rank = -(titleHits * 10 + bodyHits * 1);
+
+        // snippet：用 markOpen/markClose 包裹命中 token
+        const titleSnippet = this.buildSnippet(
+          titleTokens,
+          queryTokens,
+          params[0],
+          params[1],
+          params[2],
+        );
+        const bodySnippet = this.buildSnippet(
+          bodyTokens,
+          queryTokens,
+          params[4],
+          params[5],
+          params[6],
+        );
+
+        results.push({
+          entity_type: row.entity_type,
+          entity_id: row.entity_id,
+          title_snippet: titleSnippet,
+          body_snippet: bodySnippet,
+          rank,
+        });
+      }
+
+      // ORDER BY rank ASC + LIMIT
+      results.sort((a, b) => a.rank - b.rank);
+      return results.slice(0, limit);
+    }
+
+    /** 构造 snippet 字符串：命中 token 包裹 mark 标签 */
+    private buildSnippet(
+      tokens: string[],
+      queryTokens: string[],
+      markOpen: string,
+      markClose: string,
+      ellipsis: string,
+    ): string {
+      if (tokens.length === 0) return '';
+      const querySet = new Set(queryTokens);
+      const parts = tokens.map((t) =>
+        querySet.has(t) ? `${markOpen}${t}${markClose}` : t,
+      );
+      // 简单实现：只返回包含命中 token 的局部上下文
+      const firstHit = tokens.findIndex((t) => querySet.has(t));
+      if (firstHit === -1) return '';
+      return parts.join(' ');
     }
 
     // ------------------------------------------------------------------------

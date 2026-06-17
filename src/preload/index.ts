@@ -236,6 +236,14 @@ const api = {
 
     // Config
     getConfig: () => ipcRenderer.invoke(IPC_CHANNELS.TODO_GET_CONFIG),
+
+    // 全文搜索（Phase 3）
+    search: (query, limit) => ipcRenderer.invoke(IPC_CHANNELS.TODO_SEARCH, query, limit),
+    listSearchHistory: (limit) =>
+      ipcRenderer.invoke(IPC_CHANNELS.TODO_LIST_SEARCH_HISTORY, limit),
+    deleteSearchHistory: (id) =>
+      ipcRenderer.invoke(IPC_CHANNELS.TODO_DELETE_SEARCH_HISTORY, id),
+    clearSearchHistory: () => ipcRenderer.invoke(IPC_CHANNELS.TODO_CLEAR_SEARCH_HISTORY),
   },
 
   // Generic IPC invoke (for channels not covered by namespaced APIs)

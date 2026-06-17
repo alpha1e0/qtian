@@ -26,6 +26,7 @@ export function registerTodoAppHandlers(todoAppService: TodoAppService): void {
   const item = todoAppService.getItemService();
   const label = todoAppService.getLabelService();
   const doc = todoAppService.getDocumentService();
+  const search = todoAppService.getSearchService();
 
   // ===== Category =====
   ipcMain.handle(IPC_CHANNELS.TODO_GET_CATEGORY_TREE, async () => {
@@ -173,6 +174,24 @@ export function registerTodoAppHandlers(todoAppService: TodoAppService): void {
   // ===== Config =====
   ipcMain.handle(IPC_CHANNELS.TODO_GET_CONFIG, async () => {
     return todoAppService.getConfig();
+  });
+
+  // ===== 全文搜索（Phase 3） =====
+  ipcMain.handle(IPC_CHANNELS.TODO_SEARCH, async (_e, query: string, limit?: number) => {
+    logger.info(`Search: query='${query}'`);
+    return search.search(query, limit);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.TODO_LIST_SEARCH_HISTORY, async (_e, limit?: number) => {
+    return search.listSearchHistory(limit);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.TODO_DELETE_SEARCH_HISTORY, async (_e, id: number) => {
+    search.deleteSearchHistory(id);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.TODO_CLEAR_SEARCH_HISTORY, async () => {
+    search.clearSearchHistory();
   });
 
   logger.info('Todo app IPC handlers registered');

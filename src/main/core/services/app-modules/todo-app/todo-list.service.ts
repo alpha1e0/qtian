@@ -1,6 +1,7 @@
 import { DBManager } from '@/core/database/db-manager';
 import { createLogger } from '@/core/utils/logger';
 import { TodoList } from './types';
+import { TodoSearchService } from './todo-search.service';
 
 const logger = createLogger('TodoListService');
 
@@ -13,12 +14,17 @@ const DEFAULT_DESCRIPTION = '';
  * 职责：
  * - list（按 categoryId 过滤，null 表示未分类）
  * - create / update / delete（级联 todo_item + document）/ restore
+ *
+ * FTS 集成（Phase 3）：searchService 为可选依赖（默认 null）。
+ * 可搜索字段：name（title） + description（body）。
  */
 export class TodoListService {
   private db: DBManager;
+  private searchService: TodoSearchService | null;
 
-  constructor(db: DBManager) {
+  constructor(db: DBManager, searchService: TodoSearchService | null = null) {
     this.db = db;
+    this.searchService = searchService;
   }
 
   /**
@@ -68,13 +74,18 @@ export class TodoListService {
       throw new Error('TodoList name cannot be empty');
     }
     const now = Date.now();
-    const result = this.db.insert(
-      `INSERT INTO todo_list (name, description, category_id, created_at, updated_at, deleted_at)
-       VALUES (?, ?, ?, ?, ?, NULL)`,
-      [name, data.description ?? DEFAULT_DESCRIPTION, data.category_id ?? null, now, now],
-    );
-    logger.info(`TodoList created: id=${result.lastRowid}, name='${name}'`);
-    return this.getById(result.lastRowid)!;
+    const description = data.description ?? DEFAULT_DESCRIPTION;
+    const newId = this.db.transaction(() => {
+      const result = this.db.insert(
+        `INSERT INTO todo_list (name, description, category_id, created_at, updated_at, deleted_at)
+         VALUES (?, ?, ?, ?, ?, NULL)`,
+        [name, description, data.category_id ?? null, now, now],
+      );
+      this.searchService?.syncFts('todo_list', result.lastRowid, { title: name, body: description });
+      return result.lastRowid;
+    });
+    logger.info(`TodoList created: id=${newId}, name='${name}'`);
+    return this.getById(newId)!;
   }
 
   /** 更新 todo_list（name / description / category_id） */
@@ -106,16 +117,29 @@ export class TodoListService {
     }
 
     params.push(id);
-    this.db.execute(
-      `UPDATE todo_list SET ${sets.join(', ')} WHERE id = ? AND deleted_at IS NULL`,
-      params,
-    );
+    this.db.transaction(() => {
+      this.db.execute(
+        `UPDATE todo_list SET ${sets.join(', ')} WHERE id = ? AND deleted_at IS NULL`,
+        params,
+      );
+      // 仅 name/description 变更时才同步 FTS（category_id 移动不影响可搜索内容）
+      if (patch.name !== undefined || patch.description !== undefined) {
+        const after = this.getById(id);
+        if (after) {
+          this.searchService?.syncFts('todo_list', id, {
+            title: after.name,
+            body: after.description,
+          });
+        }
+      }
+    });
 
     return this.getById(id)!;
   }
 
   /**
    * 软删除 todo_list：级联软删除其下的 todo_item + 关联 document。
+   * 同事务内清理 list + 子 item + 子 document 的 FTS 索引。
    */
   delete(id: number): void {
     const existing = this.getById(id);
@@ -123,35 +147,61 @@ export class TodoListService {
       return;
     }
     const now = Date.now();
-    this.db.execute(
-      `UPDATE todo_list SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`,
-      [now, now, id],
-    );
-    // 级联软删除 todo_item（递归子项在此一并标记，由 todo_item 自身的递归软删除处理；
-    // 这里仅删除该 list 下所有 item，子 item 同属一个 list 故一并标记）
-    this.db.execute(
-      `UPDATE todo_item SET deleted_at = ?, updated_at = ? WHERE todo_list_id = ? AND deleted_at IS NULL`,
-      [now, now, id],
-    );
-    // 软删除关联 document（item 维度的 document 也一并清理）
-    this.db.execute(
-      `UPDATE todo_document SET deleted_at = ?, updated_at = ?
-       WHERE todo_item_id IN (SELECT id FROM todo_item WHERE todo_list_id = ?) AND deleted_at IS NULL`,
-      [now, now, id],
-    );
+    // 删除前先收集关联实体 id（删除后无法再查）
+    const relatedItemIds = this.db.query<{ id: number }>(
+      `SELECT id FROM todo_item WHERE todo_list_id = ? AND deleted_at IS NULL`,
+      [id],
+    ).map((r) => r.id);
+    const relatedDocIds = this.db.query<{ id: number }>(
+      `SELECT id FROM todo_document WHERE todo_item_id IN (SELECT id FROM todo_item WHERE todo_list_id = ?) AND deleted_at IS NULL`,
+      [id],
+    ).map((r) => r.id);
+
+    this.db.transaction(() => {
+      this.db.execute(
+        `UPDATE todo_list SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`,
+        [now, now, id],
+      );
+      // 级联软删除 todo_item（递归子项在此一并标记，由 todo_item 自身的递归软删除处理；
+      // 这里仅删除该 list 下所有 item，子 item 同属一个 list 故一并标记）
+      this.db.execute(
+        `UPDATE todo_item SET deleted_at = ?, updated_at = ? WHERE todo_list_id = ? AND deleted_at IS NULL`,
+        [now, now, id],
+      );
+      // 软删除关联 document（item 维度的 document 也一并清理）
+      this.db.execute(
+        `UPDATE todo_document SET deleted_at = ?, updated_at = ?
+         WHERE todo_item_id IN (SELECT id FROM todo_item WHERE todo_list_id = ?) AND deleted_at IS NULL`,
+        [now, now, id],
+      );
+
+      // 级联清理 FTS
+      this.searchService?.syncFtsBatch('todo_list', [id]);
+      this.searchService?.syncFtsBatch('todo_item', relatedItemIds);
+      this.searchService?.syncFtsBatch('document', relatedDocIds);
+    });
     logger.info(`TodoList deleted: id=${id}`);
   }
 
   /** 恢复软删除的 todo_list（item/document 的恢复需独立调用对应 Service） */
   restore(id: number): TodoList | undefined {
     const now = Date.now();
-    const changes = this.db.execute(
-      `UPDATE todo_list SET deleted_at = NULL, updated_at = ? WHERE id = ? AND deleted_at IS NOT NULL`,
-      [now, id],
-    );
-    if (changes > 0) {
-      logger.info(`TodoList restored: id=${id}`);
-    }
+    this.db.transaction(() => {
+      const changes = this.db.execute(
+        `UPDATE todo_list SET deleted_at = NULL, updated_at = ? WHERE id = ? AND deleted_at IS NOT NULL`,
+        [now, id],
+      );
+      if (changes > 0) {
+        const restored = this.getById(id);
+        if (restored) {
+          this.searchService?.syncFts('todo_list', id, {
+            title: restored.name,
+            body: restored.description,
+          });
+        }
+      }
+    });
+    logger.info(`TodoList restored: id=${id}`);
     return this.getById(id);
   }
 

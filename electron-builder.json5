@@ -27,5 +27,10 @@
   files: [
     'dist-electron/**/*',
     'package.json'
+  ],
+  // napi 原生二进制（@node-rs/jieba 等）必须解包到 asar 外，否则无法加载 .node 文件
+  asarUnpack: [
+    '**/*.node',
+    '**/@node-rs/**'
   ]
 }

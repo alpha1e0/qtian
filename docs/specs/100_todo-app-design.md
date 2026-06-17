@@ -952,6 +952,53 @@ LIMIT ?;
 
 跳转通过 IPC 推送的 `navigate` 事件 + 路由参数实现，统一在 `TodoAppPage.vue` 处理。
 
+### 7.6 实施决策记录（Phase 3 落地说明）
+
+#### 分词器抽象：`TodoTokenizer`
+
+新建 `src/main/core/services/app-modules/todo-app/todo-tokenizer.ts` 封装 jieba：
+- `cut(text): string`：调用 `@node-rs/jieba.cut(text, true)`（HMM 模式），过滤空 token + `toLowerCase()` + 空格连接；分词失败时降级返回原始文本（不阻塞主流程）
+- 单独抽类的理由：可直接单元测试分词结果，无需启动 SQLite/FTS；未来切换实现（如追加拼音、改用 `simple` 扩展）只改此处
+
+#### 依赖方向：避免循环依赖
+
+`TodoSearchService` 仅依赖 `DBManager` + `TodoTokenizer`，**不依赖其他业务 Service**：
+- 其他 Service（category/list/item/document）通过**可选构造参数** `searchService: TodoSearchService | null = null` 注入；调用时 `?.syncFts(...)`，不传时为 noop
+- 现有 Service 测试无需修改（不传 searchService 时为 undefined）
+- `category_path` 解析在 `TodoSearchService` 内部 SQL 反查 `parent_id` 链（`resolveCategoryPath`），避免与 `TodoCategoryService` 循环依赖
+
+#### 事务策略：`DBManager.transaction<T>(fn)`
+
+扩展 `DBManager.transaction<T>(fn: () => T): T`，调用 `this.db.transaction(fn)()`（better-sqlite3 的 `db.transaction(fn)` 返回**新函数**，调用时进入事务）：
+- 所有 Service 写操作 + `syncFts` 在**同一事务内**执行，保证 FTS 与主表一致
+- 原 `beginTransaction()` 标 `@deprecated`：其实现 `this.db.transaction(() => {})` 的 fn 为空，返回的事务闭包不会包裹任何写操作（bug）
+- `todo-mock-db.ts` 新增 `transaction<T>(fn): () => fn()`（不模拟事务语义，仅兼容调用）
+
+#### `syncFtsBatch` 用于级联软删除
+
+`TodoSearchService.syncFtsBatch(type, ids[])` 批量删除 FTS 索引，**不带自有事务**：
+- 用途：category/list/item 软删除时，级联清理子树 + 关联实体的 FTS
+- 调用方在外层 `db.transaction()` 内调用，保证与主表软删除原子性
+- 删除前先收集关联实体 id（删除后无法再查）：如 category delete 收集 list/item/document id；list delete 收集 item/document id；item delete 收集子树 + document id
+
+#### FTS5 关键技术点
+
+- **bm25 权重**：`bm25(todo_fts, 10.0, 1.0)` 中 10.0 对应 title 列、1.0 对应 body 列（按非 UNINDEXED 列顺序）；bm25 越小越相关，`ORDER BY rank` 升序
+- **MATCH 转义**：jieba 分词后用双引号包裹每个 token 成 phrase（`buildFtsQuery`），所有 FTS5 操作符（`*`, `:`, `^`, `(`, `)`）失效；token 内字面双引号用 `""` 转义
+- **不支持 INSERT OR REPLACE**：`syncFts` 用 DELETE + INSERT 实现 UPSERT
+- **空文本不入库**：`syncFts` 在 title + body 全空时跳过 INSERT（避免空 token 干扰 MATCH）
+- **search 历史策略**：非空 trimmed 输入（含纯标点）记录历史（hit_count=0）；空串不记录（不算有效搜索动作）
+
+#### 打包注意事项
+
+- `@node-rs/jieba` 的 napi 二进制必须 `asarUnpack`（`electron-builder.json5` 增加 `**/*.node`、`**/@node-rs/**`），否则在 asar 内无法加载 `.node` 文件
+- jieba 词典预热：建议在 `TodoAppBootstrap` 中首次 `cut('预热', true)` 触发词典加载（~100ms），避免首次搜索延迟
+
+#### 测试策略
+
+- `TodoSearchService` / `TodoTokenizer` 测试**不 mock better-sqlite3**，用真实 `:memory:` 库 + 真实 jieba（vitest 模块级 mock 互不影响）
+- 其他 Service 测试保持现状（`todo-mock-db`），仅新增 `transaction(fn)` 兼容
+
 ## 8 Todo 驱动 AI 任务设计
 
 ### 8.1 总体原则
@@ -1176,12 +1223,20 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 - Markdown 编辑器集成
 - 文档关联 category / todo_item 的 UI
 
-### Phase 3: 全文搜索（jieba）
+### Phase 3: 全文搜索（jieba）— ✅ 已实现（2026-06-17）
 - 引入 `@node-rs/jieba`
 - `TodoSearchService.syncFts()` + 各 Service 集成（事务内调用）
 - `TodoSearchService.search()` + bm25 排序 + snippet 高亮
 - `todo_search_history` UPSERT
 - `TodoSearchBar.vue`（含历史下拉）+ 结果跳转 + 高亮
+
+> 实施说明（详见 §7.6）：
+> - 新增 `TodoTokenizer` 封装 jieba 分词（便于单测）
+> - `TodoSearchService` 仅依赖 `DBManager` + `TodoTokenizer`，不依赖其他业务 Service；通过可选构造参数注入到各 Service（默认 null，现有测试 noop）
+> - `DBManager.transaction<T>(fn)` 包装 better-sqlite3 事务；所有写操作 + `syncFts` 在同一事务内
+> - `syncFtsBatch(type, ids[])` 用于级联软删除时的批量 FTS 清理（不带自有事务）
+> - category_path 在 Service 内部 SQL 反查 parent_id 链，避免与 Category Service 循环依赖
+> - 测试策略：原计划 `TodoSearchService` / `TodoTokenizer` 不 mock better-sqlite3 用真实 `:memory:` + 真实 jieba，**实际运行时发现**：(a) vitest 全局 `vitest.setup.ts` 已 mock `better-sqlite3`；(b) 真实 better-sqlite3 napi 编译为 Electron Node ABI（与系统 Node ABI 不兼容，无法在 vitest 加载）。最终改为文件级 `vi.mock('better-sqlite3', ...)` 覆盖为 `todo-mock-db`，并扩展 mock 支持 `transaction` / FTS5 MATCH+snippet+bm25 近似 / ON CONFLICT UPSERT / 参数化 IN 列表。FTS5 排序为近似实现，仅验证 Service 编排逻辑。`TodoTokenizer` 单测独立，真实使用 jieba（不涉及 sqlite）
 
 ### Phase 4: 回收站
 - `list-trash` / `purge-trash` / `empty-trash` 统一 IPC

@@ -6,6 +6,7 @@
     </el-radio-group>
 
     <TodoCategoryTree
+      ref="categoryTree"
       v-if="view === 'category'"
       :tree-data="categoryTree"
       :selected-id="selectedCategoryId"
@@ -42,6 +43,28 @@ export default {
       view: 'category',
     };
   },
+  methods: {
+    /**
+     * 闪烁高亮分类节点（搜索跳转用，Phase 3）。
+     * 通过 DOM 临时附加 flash class，1.5s 后移除。
+     *
+     * 实际"选中"由父组件设置 selectedCategoryId 驱动（current-node-key）；
+     * 此方法仅做视觉强化提示。
+     */
+    highlightCategory(_categoryId) {
+      this.$nextTick(() => {
+        const root = this.$el;
+        if (!root) return;
+        // el-tree 当前选中节点会带 is-current class
+        const current = root.querySelector('.el-tree-node.is-current > .el-tree-node__content');
+        if (!current) return;
+        current.classList.add('cat-flash');
+        setTimeout(() => {
+          current.classList.remove('cat-flash');
+        }, 1500);
+      });
+    },
+  },
 };
 </script>
 
@@ -61,5 +84,16 @@ export default {
 
 .view-toggle :deep(.el-radio-button__inner) {
   width: 100%;
+}
+
+/* 搜索跳转闪烁高亮（Phase 3）：通过 DOM 操作附加到 el-tree 当前节点 */
+:deep(.cat-flash) {
+  animation: cat-flash-anim 1.5s ease-out;
+}
+
+@keyframes cat-flash-anim {
+  0% { background: rgba(64, 158, 255, 0.35); }
+  60% { background: rgba(64, 158, 255, 0.15); }
+  100% { background: transparent; }
 }
 </style>

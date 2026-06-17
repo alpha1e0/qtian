@@ -107,3 +107,35 @@ CREATE TABLE IF NOT EXISTS todo_document (
 );
 CREATE INDEX IF NOT EXISTS idx_doc_category ON todo_document(todo_category_id) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_doc_item     ON todo_document(todo_item_id)     WHERE deleted_at IS NULL;
+
+-- ============================================================
+-- 搜索历史（Phase 3）
+--
+-- 每次 search() 调用 UPSERT 一条记录（依赖 uq_search_history_query 唯一索引）。
+-- ============================================================
+CREATE TABLE IF NOT EXISTS todo_search_history (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  query        TEXT NOT NULL,
+  hit_count    INTEGER NOT NULL DEFAULT 0,
+  searched_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_search_history_time ON todo_search_history(searched_at);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_search_history_query ON todo_search_history(query);
+
+-- ============================================================
+-- 全文检索虚拟表（Phase 3）
+--
+-- 设计要点：
+-- - entity_type / entity_id 标记 UNINDEXED：不参与 MATCH，仅用于回查主表
+-- - title / body 为 jieba 预分词后空格分隔的 token 串（应用层切词）
+-- - tokenizer='unicode61'：仅按空白/标点切分已分好的 token；不负责中文分词
+-- - 不含 deleted_at：软删除时由 Service 层显式 DELETE FROM todo_fts，故 FTS 不保留历史
+-- - 不纳入 label：与 §7.1 entity_type 集合定义一致
+-- ============================================================
+CREATE VIRTUAL TABLE IF NOT EXISTS todo_fts USING fts5(
+  entity_type UNINDEXED,
+  entity_id   UNINDEXED,
+  title,
+  body,
+  tokenize='unicode61'
+);

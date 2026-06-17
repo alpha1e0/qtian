@@ -16,6 +16,8 @@ export * from './todo-category.service';
 export * from './todo-list.service';
 export * from './todo-item.service';
 export * from './todo-document.service';
+export * from './todo-search.service';
+export * from './todo-tokenizer';
 export * from './todo-app.service';
 
 // 启动引导

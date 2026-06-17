@@ -93,9 +93,33 @@ export class DBManager {
 
   /**
    * Begin a transaction
+   * @deprecated 不要使用：返回的事务闭包不会包裹任何写操作（fn 为空）。
+   *              请改用 `transaction<T>(fn)`，在回调内执行所有写操作。
    */
   beginTransaction(): Database.Transaction {
     return this.db.transaction(() => {});
+  }
+
+  /**
+   * 在事务中执行回调：自动 BEGIN / COMMIT / ROLLBACK。
+   *
+   * 用法：
+   *   ```ts
+   *   db.transaction(() => {
+   *     db.execute('INSERT ...');
+   *     searchService.syncFts(...);
+   *   });
+   *   ```
+   *
+   * 说明：better-sqlite3 的 `db.transaction(fn)` 返回一个**新函数**，
+   *      调用该函数时才会真正进入事务；此处直接立即调用 (`()`)，
+   *      让调用方按同步函数语义使用。
+   *
+   * @param fn - 事务内执行的回调（同步）
+   * @returns fn 的返回值
+   */
+  transaction<T>(fn: () => T): T {
+    return this.db.transaction(fn)();
   }
 
   /**

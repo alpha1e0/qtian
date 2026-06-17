@@ -1,6 +1,7 @@
 import { DBManager } from '@/core/database/db-manager';
 import { createLogger } from '@/core/utils/logger';
 import { TodoCategory, TodoCategoryNode, MAX_CATEGORY_DEPTH } from './types';
+import { TodoSearchService } from './todo-search.service';
 
 const logger = createLogger('TodoCategoryService');
 
@@ -13,13 +14,18 @@ const logger = createLogger('TodoCategoryService');
  * - getTree（内存构建树 + list_count 聚合）
  * - validateDepth（递归层级上限校验）
  *
+ * FTS 集成（Phase 3）：searchService 为可选依赖（默认 null）；
+ * 写操作在事务内调用 `searchService?.syncFts(...)`，无 searchService 时为 noop。
+ *
  * 递归软删除使用 db 事务保证一致性。
  */
 export class TodoCategoryService {
   private db: DBManager;
+  private searchService: TodoSearchService | null;
 
-  constructor(db: DBManager) {
+  constructor(db: DBManager, searchService: TodoSearchService | null = null) {
     this.db = db;
+    this.searchService = searchService;
   }
 
   /** 创建分类（parent_id=null 表示根分类） */
@@ -33,12 +39,18 @@ export class TodoCategoryService {
     this.validateDepth(data.parent_id, MAX_CATEGORY_DEPTH);
 
     const now = Date.now();
-    const result = this.db.insert(
-      `INSERT INTO todo_category (name, parent_id, created_at, updated_at, deleted_at) VALUES (?, ?, ?, ?, NULL)`,
-      [name, data.parent_id, now, now],
-    );
-    logger.info(`Category created: id=${result.lastRowid}, name='${name}'`);
-    return this.getById(result.lastRowid)!;
+    // 主表写入 + FTS 同步在同一事务内（设计文档 §4.3 / §7.2.3）
+    const newId = this.db.transaction(() => {
+      const result = this.db.insert(
+        `INSERT INTO todo_category (name, parent_id, created_at, updated_at, deleted_at) VALUES (?, ?, ?, ?, NULL)`,
+        [name, data.parent_id, now, now],
+      );
+      // category 仅 name 作为可搜索字段，body 为空
+      this.searchService?.syncFts('category', result.lastRowid, { title: name, body: '' });
+      return result.lastRowid;
+    });
+    logger.info(`Category created: id=${newId}, name='${name}'`);
+    return this.getById(newId)!;
   }
 
   /**
@@ -85,17 +97,23 @@ export class TodoCategoryService {
     }
 
     params.push(id);
-    this.db.execute(
-      `UPDATE todo_category SET ${sets.join(', ')} WHERE id = ? AND deleted_at IS NULL`,
-      params,
-    );
+    this.db.transaction(() => {
+      this.db.execute(
+        `UPDATE todo_category SET ${sets.join(', ')} WHERE id = ? AND deleted_at IS NULL`,
+        params,
+      );
+      // 仅 name 变更时才同步 FTS（parent_id 不影响可搜索内容）
+      if (patch.name !== undefined) {
+        this.searchService?.syncFts('category', id, { title: patch.name.trim(), body: '' });
+      }
+    });
 
     return this.getById(id)!;
   }
 
   /**
    * 软删除分类：递归软删除子 category + 关联 todo_list + todo_item + todo_document。
-   * 使用单事务包装保证一致性。
+   * 使用单事务包装保证一致性，同时级联清理子树 + 关联实体的 FTS 索引。
    */
   delete(id: number): void {
     const existing = this.getById(id);
@@ -108,27 +126,46 @@ export class TodoCategoryService {
     const subtreeIds = this.collectSubtreeIds(id);
     const idList = subtreeIds.join(',');
 
-    this.db.execute(
-      `UPDATE todo_category SET deleted_at = ?, updated_at = ? WHERE id IN (${idList}) AND deleted_at IS NULL`,
-      [now, now],
-    );
-    // 软删除关联 todo_list
-    this.db.execute(
-      `UPDATE todo_list SET deleted_at = ?, updated_at = ? WHERE category_id IN (${idList}) AND deleted_at IS NULL`,
-      [now, now],
-    );
-    // 软删除关联 todo_list 下的 todo_item
-    this.db.execute(
-      `UPDATE todo_item SET deleted_at = ?, updated_at = ?
-       WHERE todo_list_id IN (SELECT id FROM todo_list WHERE category_id IN (${idList}))
-       AND deleted_at IS NULL`,
-      [now, now],
-    );
-    // 软删除关联 document
-    this.db.execute(
-      `UPDATE todo_document SET deleted_at = ?, updated_at = ? WHERE todo_category_id IN (${idList}) AND deleted_at IS NULL`,
-      [now, now],
-    );
+    // 在删除前先收集所有需清理 FTS 的关联实体 id（删除后无法再查）
+    const relatedListIds = this.db.query<{ id: number }>(
+      `SELECT id FROM todo_list WHERE category_id IN (${idList}) AND deleted_at IS NULL`,
+    ).map((r) => r.id);
+    const relatedItemIds = this.db.query<{ id: number }>(
+      `SELECT id FROM todo_item WHERE todo_list_id IN (SELECT id FROM todo_list WHERE category_id IN (${idList})) AND deleted_at IS NULL`,
+    ).map((r) => r.id);
+    const relatedDocIds = this.db.query<{ id: number }>(
+      `SELECT id FROM todo_document WHERE todo_category_id IN (${idList}) AND deleted_at IS NULL`,
+    ).map((r) => r.id);
+
+    this.db.transaction(() => {
+      this.db.execute(
+        `UPDATE todo_category SET deleted_at = ?, updated_at = ? WHERE id IN (${idList}) AND deleted_at IS NULL`,
+        [now, now],
+      );
+      // 软删除关联 todo_list
+      this.db.execute(
+        `UPDATE todo_list SET deleted_at = ?, updated_at = ? WHERE category_id IN (${idList}) AND deleted_at IS NULL`,
+        [now, now],
+      );
+      // 软删除关联 todo_list 下的 todo_item
+      this.db.execute(
+        `UPDATE todo_item SET deleted_at = ?, updated_at = ?
+         WHERE todo_list_id IN (SELECT id FROM todo_list WHERE category_id IN (${idList}))
+         AND deleted_at IS NULL`,
+        [now, now],
+      );
+      // 软删除关联 document
+      this.db.execute(
+        `UPDATE todo_document SET deleted_at = ?, updated_at = ? WHERE todo_category_id IN (${idList}) AND deleted_at IS NULL`,
+        [now, now],
+      );
+
+      // 级联清理 FTS（FTS 不保留软删除）
+      this.searchService?.syncFtsBatch('category', subtreeIds);
+      this.searchService?.syncFtsBatch('todo_list', relatedListIds);
+      this.searchService?.syncFtsBatch('todo_item', relatedItemIds);
+      this.searchService?.syncFtsBatch('document', relatedDocIds);
+    });
 
     logger.info(`Category deleted: id=${id}, subtree=${subtreeIds.length} nodes`);
   }
@@ -161,17 +198,24 @@ export class TodoCategoryService {
     }
 
     const now = Date.now();
-    if (promoteToRoot) {
-      this.db.execute(
-        `UPDATE todo_category SET deleted_at = NULL, parent_id = NULL, updated_at = ? WHERE id = ?`,
-        [now, id],
-      );
-    } else {
-      this.db.execute(
-        `UPDATE todo_category SET deleted_at = NULL, updated_at = ? WHERE id = ?`,
-        [now, id],
-      );
-    }
+    this.db.transaction(() => {
+      if (promoteToRoot) {
+        this.db.execute(
+          `UPDATE todo_category SET deleted_at = NULL, parent_id = NULL, updated_at = ? WHERE id = ?`,
+          [now, id],
+        );
+      } else {
+        this.db.execute(
+          `UPDATE todo_category SET deleted_at = NULL, updated_at = ? WHERE id = ?`,
+          [now, id],
+        );
+      }
+      // 恢复后重建 FTS 索引
+      const restored = this.getById(id);
+      if (restored) {
+        this.searchService?.syncFts('category', id, { title: restored.name, body: '' });
+      }
+    });
     logger.info(`Category restored: id=${id}, promotedToRoot=${promoteToRoot}`);
     return this.getById(id);
   }

@@ -125,6 +125,12 @@ export const IPC_CHANNELS = {
 
   // Config
   TODO_GET_CONFIG: 'qtian:todo:get-config',
+
+  // 全文搜索（Phase 3）
+  TODO_SEARCH: 'qtian:todo:search',
+  TODO_LIST_SEARCH_HISTORY: 'qtian:todo:list-search-history',
+  TODO_DELETE_SEARCH_HISTORY: 'qtian:todo:delete-search-history',
+  TODO_CLEAR_SEARCH_HISTORY: 'qtian:todo:clear-search-history',
 } as const;
 
 /**

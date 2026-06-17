@@ -125,17 +125,46 @@ export default {
         console.error(err);
       }
     },
-    async loadItemTree() {
-      if (!this.currentListId) {
-        this.itemTree = [];
-        return;
+    /**
+     * 聚焦目标 list + 滚动到指定 item（搜索跳转用，Phase 3）。
+     *
+     * 由于 categoryId 由父组件传入并通过 watch 触发 loadLists，
+     * 此方法显式覆盖 currentListId 并等待 item tree 加载完成后滚动。
+     *
+     * @param listId - 目标 todo_list id
+     * @param itemId - 待滚动的 todo_item id（可选，不传则只切 list）
+     */
+    async focusTarget(listId, itemId) {
+      if (!listId) return;
+      // 确保 currentListId 正确
+      if (this.currentListId !== listId) {
+        this.currentListId = listId;
       }
-      try {
-        this.itemTree = await window.todoApp.getTodoItemTree(this.currentListId);
-      } catch (err) {
-        ElMessage.error('加载条目失败');
-        console.error(err);
+      // 等待 list 加载完成（watcher 异步触发）
+      await this.loadItemTree();
+      await this.$nextTick();
+      if (itemId) {
+        this.scrollToItem(itemId);
       }
+    },
+    /**
+     * 滚动到指定 item 并临时高亮（DOM 操作）。
+     * 通过 item id 在 DOM 中查找行并滚动到可视区，附加临时 flash class。
+     */
+    scrollToItem(itemId) {
+      // 多次 nextTick 保证 DOM 已渲染
+      this.$nextTick(() => {
+        const root = this.$el;
+        if (!root) return;
+        // 通过 data 属性定位 item 行（TodoItemRow 根节点标记 data-item-id）
+        const target = root.querySelector(`[data-item-id="${itemId}"]`);
+        if (!target) return;
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        target.classList.add('flash-highlight');
+        setTimeout(() => {
+          target.classList.remove('flash-highlight');
+        }, 1500);
+      });
     },
     async loadLabelItems() {
       try {

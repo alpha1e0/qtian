@@ -2,6 +2,85 @@
 
 ## [1.0.0] 2026-06-17
 
+**User**: todo-app Phase 3 全文搜索（jieba）一次性交付（后端 + IPC + 完整 UI）
+
+**Summary**:
+
+落地 todo-app **Phase 3 全文搜索**：基于 `@node-rs/jieba` 应用层预分词 + SQLite FTS5（`unicode61` tokenizer）+ BM25 排序 + snippet 高亮 + 搜索历史 + UI 跳转。设计文档 `docs/specs/100_todo-app-design.md` §10 Phase 3 标注"已实现"。
+
+### 新增
+
+- **依赖与基础设施**
+  - `package.json`：新增 `@node-rs/jieba@^1.10.3`（应用层中文分词，napi-rs 预编译二进制）
+  - `electron-builder.json5`：`asarUnpack` 增加 `**/*.node`、`**/@node-rs/**`，避免 napi 二进制在 asar 内无法加载
+  - `data/todo-app.sql`：末尾追加 `todo_search_history` 表（+ `idx_search_history_time` / `uq_search_history_query` 唯一索引）+ `todo_fts` FTS5 虚拟表（`entity_type/entity_id UNINDEXED + title/body + tokenize='unicode61'`）
+  - `src/main/core/database/db-manager.ts`：新增 `transaction<T>(fn)`（调用 `this.db.transaction(fn)()`）；旧 `beginTransaction()` 标 `@deprecated`（修正其 fn 为空导致事务不生效的 bug）
+
+- **分词与类型**
+  - `todo-tokenizer.ts`（新增）：`TodoTokenizer.cut(text)` 调用 `@node-rs/jieba.cut(text, true)`（HMM），过滤空 token + toLowerCase + 空格连接；异常时降级返回原始文本
+  - `todo-tokenizer.test.ts`（新增）：中/英/混合/空白/大小写/标点用例
+  - `types.ts`：新增 `TodoFtsEntityType`（不含 label）、`TodoSearchResult`、`TodoSearchHistory`
+
+- **搜索 Service**（`todo-search.service.ts` 新增）
+  - `syncFts(type, id, rawText|null)`：DELETE + INSERT 实现 UPSERT（FTS5 不支持 INSERT OR REPLACE）；空文本不入库
+  - `syncFtsBatch(type, ids[])`：批量删除，供级联软删除调用（不带自有事务）
+  - `search(query, limit=30)`：jieba 分词 → FTS5 MATCH → `bm25(todo_fts, 10.0, 1.0)` 排序（title 权重 10、body 权重 1）→ `snippet(...)` 高亮 → 二次查主表补全 title + category_path → UPSERT 历史
+  - `buildFtsQuery(query)`：jieba 分词后每个 token 双引号包裹成 phrase（FTS5 操作符失效，防注入）→ 空格连接（默认 AND 语义）
+  - `resolveCategoryPath(categoryId)`：递归反查 parent_id 链，返回根→父名称数组（含防环保护）
+  - 搜索历史：`upsertSearchHistory`（依赖唯一索引 ON CONFLICT） / `listSearchHistory` / `deleteSearchHistory` / `clearSearchHistory`
+  - 依赖关系：仅依赖 `DBManager` + `TodoTokenizer`，**不依赖其他业务 Service**（避免循环依赖）；其他 Service 通过可选构造参数注入（默认 null）
+  - `todo-search.service.test.ts`（新增）：真实 `:memory:` sqlite + 真实 jieba，覆盖 syncFts/syncFtsBatch/search（bm25 排序/snippet/AND 匹配）/buildFtsQuery/resolveCategoryPath/历史/软删除集成
+
+- **业务 Service 集成 syncFts**（事务内调用）
+  - 4 个 Service 构造增加 `searchService: TodoSearchService | null = null`；写操作用 `db.transaction()` 包装
+  - `todo-category.service.ts`：create/update/delete/restore 同步 FTS；delete 级联清理 category + 关联 list/item/document 的 FTS
+  - `todo-list.service.ts`：可搜索字段 `name + description`；delete 级联清理 list + 子 item + 子 document 的 FTS
+  - `todo-item.service.ts`：可搜索字段 `title + (description + task_prompt 合并)`；delete 级联清理子树 + 关联 document 的 FTS；updateStatus/进度变更不触发 FTS
+  - `todo-document.service.ts`：可搜索字段 `name + content`
+  - `todo-app.service.ts`：装配顺序调整 — 先创建 `TodoSearchService`（仅依赖 DBManager），再注入到其他 Service；新增 `getSearchService()` getter
+  - `index.ts`：导出 `TodoSearchService` / `TodoTokenizer` / 新类型
+  - `todo-mock-db.ts`：新增 `transaction<T>(fn): () => fn()`（不模拟事务语义，仅兼容调用）
+
+- **IPC + Preload**
+  - `src/shared/ipc-channels.ts`：新增 `TODO_SEARCH` / `TODO_LIST_SEARCH_HISTORY` / `TODO_DELETE_SEARCH_HISTORY` / `TODO_CLEAR_SEARCH_HISTORY`
+  - `src/main/core/ipc/handlers/todo-app.handler.ts`：注册 4 个 handler（委托 `todoAppService.getSearchService()`）
+  - `src/preload/index.ts`：`window.todoApp` 新增 `search` / `listSearchHistory` / `deleteSearchHistory` / `clearSearchHistory`
+
+- **UI**（`TodoSearchBar.vue` 新增）
+  - 顶部搜索栏：`<el-input>` + 搜索图标 + 300ms 防抖；`<el-popover>` 下拉
+  - 聚焦时显示历史（含单条删除 + 清空），输入时显示结果
+  - 结果行：类型图标 + 标题 + `<mark>` 高亮 snippet（v-html 渲染）+ 面包屑（category_path）
+  - 键盘上下选择 + 回车确认 + Esc 关闭
+  - emit `jump-to-result(result)`
+  - `TodoAppPage.vue`：顶部插入 `<TodoSearchBar>` 横跨三栏，新增 `handleJumpToResult`（category/todo_list/todo_item/document 四类跳转：反查 category_id 切换 + 滚动 + 闪烁高亮）
+  - `TodoListPanel.vue`：暴露 `focusTarget(listId, itemId)` + `scrollToItem(itemId)`（DOM 滚动 + 临时 flash-highlight class）
+  - `TodoItemRow.vue`：根节点加 `:data-item-id`；新增 `flash-highlight` 动画样式
+  - `TodoSidebar.vue`：暴露 `highlightCategory(id)`（el-tree 当前节点闪烁）
+
+### 设计决策（已写入设计文档 §7）
+
+- **Label 不纳入 FTS**：符合 §7.1 entity_type 集合定义
+- **事务策略**：扩展 `DBManager.transaction<T>(fn)`，所有 Service 写操作 + syncFts 在事务内执行（修正现有 `beginTransaction()` 的 bug）
+- **FTS5 权重**：`bm25(todo_fts, 10.0, 1.0)` 中 10.0 对应 title、1.0 对应 body（按非 UNINDEXED 列顺序）
+- **FTS5 MATCH 转义**：jieba 分词后双引号包裹每个 token 成 phrase，所有 FTS5 操作符（`*`, `:`, `^`, `(`, `)`）失效
+- **FTS5 不支持 INSERT OR REPLACE**：syncFts 用 DELETE + INSERT 实现 UPSERT
+- **分词器抽象**：新建 `TodoTokenizer` 封装 jieba，便于单测与未来扩展
+- **依赖方向**：`TodoSearchService` 仅依赖 `DBManager` + `TodoTokenizer`，不依赖其他业务 Service；category_path 在 Service 内部 SQL 反查 parent_id 链避免循环依赖
+
+### 回归
+
+- 现有 Service 测试不传 searchService（默认 null），调用 `?.syncFts(...)` 为 noop
+- **测试策略调整**：原计划使用真实 `:memory:` sqlite + 真实 jieba，但运行时发现 vitest 全局 `vitest.setup.ts` 已 mock `better-sqlite3`，且真实 better-sqlite3 napi 编译为 Electron Node ABI（与系统 Node ABI 不兼容，无法在 vitest 加载）。改为文件级 `vi.mock('better-sqlite3', ...)` 覆盖为 `todo-mock-db`，并扩展 mock 支持：
+  - `transaction<T>(fn): () => fn()`（不模拟事务语义，仅兼容链式调用）
+  - FTS5 `MATCH` + `snippet(...)` + `bm25(...)` 近似实现（token 集合 AND 匹配 + `<mark>` 高亮 + rank 近似）
+  - `INSERT ... ON CONFLICT(col) DO UPDATE SET` UPSERT 语义（搜索历史用）
+  - `WHERE col IN (?, ?, ?)` 参数化 IN 列表（`syncFtsBatch` 级联清理用）
+- FTS5 排序为近似实现，仅验证 Service 层编排逻辑（syncFts/search/history/category_path），不保证与真实 FTS5 bm25 完全一致
+- 新增 todo-tokenizer（6 用例）+ todo-search.service（27 用例）单测；现有 116 用例保持全绿；todo-app 模块合计 **149 用例全绿**
+- 全量 `vitest run`：875 用例中 873 绿；2 失败位于 `GlobalShortcutManager.test.ts`，与本变更无关（git stash 验证为 HEAD 既有问题）
+
+## [1.0.0] 2026-06-17
+
 **User**: Phase 2 恢复开发：对齐参考代码的文档编辑器 + 内嵌布局 + Category 文档 UI
 
 **Summary**:

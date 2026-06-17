@@ -27,6 +27,7 @@
   "main": "dist-electron/main/index.js",
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
+    "@node-rs/jieba": "^1.10.4",
     "@vue/shared": "^3.5.29",
     "better-sqlite3": "^11.7.0",
     "element-plus": "^2.9.4",

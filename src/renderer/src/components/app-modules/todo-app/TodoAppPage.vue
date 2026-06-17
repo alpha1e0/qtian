@@ -1,59 +1,69 @@
 <template>
   <div class="todo-app-page">
-    <!-- 左侧导航：分类树 / 标签云 -->
-    <TodoSidebar
-      class="todo-sidebar"
-      :category-tree="categoryTree"
-      :labels="labels"
-      :selected-category-id="selectedCategoryId"
-      :selected-label-id="selectedLabelId"
-      @select-category="handleSelectCategory"
-      @create-category="handleCreateCategory"
-      @rename-category="handleRenameCategory"
-      @delete-category="handleDeleteCategory"
-      @select-label="handleSelectLabel"
-    />
+    <!-- 顶部搜索栏（Phase 3）：横跨三栏上方 -->
+    <div class="search-bar-row">
+      <TodoSearchBar @jump-to-result="handleJumpToResult" />
+    </div>
 
-    <!-- 中间面板：todo_list + todo_item 树 -->
-    <TodoListPanel
-      class="todo-list-panel"
-      :category-id="selectedCategoryId"
-      :label-id="selectedLabelId"
-      :selected-item-id="selectedItemId"
-      @select-list="handleSelectList"
-      @select-item="handleSelectItem"
-      @toggle-status="handleToggleStatus"
-    />
+    <!-- 三栏布局：左导航 / 中列表 / 右详情 -->
+    <div class="columns-row">
+      <!-- 左侧导航：分类树 / 标签云 -->
+      <TodoSidebar
+        ref="sidebar"
+        class="todo-sidebar"
+        :category-tree="categoryTree"
+        :labels="labels"
+        :selected-category-id="selectedCategoryId"
+        :selected-label-id="selectedLabelId"
+        @select-category="handleSelectCategory"
+        @create-category="handleCreateCategory"
+        @rename-category="handleRenameCategory"
+        @delete-category="handleDeleteCategory"
+        @select-label="handleSelectLabel"
+      />
 
-    <!-- 右侧详情：状态机路由 -->
-    <TodoItemDetail
-      v-if="rightPanelView === 'item-detail'"
-      :key="`item-${selectedItemId}-${detailKey}`"
-      class="todo-item-detail"
-      :item-id="selectedItemId"
-      @updated="handleItemUpdated"
-      @open-doc="openDoc"
-    />
-    <TodoCategoryDetail
-      v-else-if="rightPanelView === 'category-detail'"
-      :key="`cat-${selectedCategoryId}-${detailKey}`"
-      class="todo-item-detail"
-      :category-id="selectedCategoryId"
-      :category-name="selectedCategoryName"
-      @open-doc="openDoc"
-    />
-    <TodoDocumentEditor
-      v-else-if="rightPanelView === 'document-editor'"
-      class="todo-item-detail todo-item-detail-wide"
-      :doc-id="activeDoc?.id ?? null"
-      :item-id="activeDoc?.itemId ?? null"
-      :category-id="activeDoc?.categoryId ?? null"
-      :title-path="activeDoc?.titlePath ?? ''"
-      @back="handleEditorBack"
-      @saved="handleDocSaved"
-    />
-    <div v-else class="todo-item-detail todo-item-detail-empty">
-      <el-empty description="选择一个待办条目或分类查看详情" />
+      <!-- 中间面板：todo_list + todo_item 树 -->
+      <TodoListPanel
+        ref="listPanel"
+        class="todo-list-panel"
+        :category-id="selectedCategoryId"
+        :label-id="selectedLabelId"
+        :selected-item-id="selectedItemId"
+        @select-list="handleSelectList"
+        @select-item="handleSelectItem"
+        @toggle-status="handleToggleStatus"
+      />
+
+      <!-- 右侧详情：状态机路由 -->
+      <TodoItemDetail
+        v-if="rightPanelView === 'item-detail'"
+        :key="`item-${selectedItemId}-${detailKey}`"
+        class="todo-item-detail"
+        :item-id="selectedItemId"
+        @updated="handleItemUpdated"
+        @open-doc="openDoc"
+      />
+      <TodoCategoryDetail
+        v-else-if="rightPanelView === 'category-detail'"
+        :key="`cat-${selectedCategoryId}-${detailKey}`"
+        class="todo-item-detail"
+        :category-id="selectedCategoryId"
+        :category-name="selectedCategoryName"
+        @open-doc="openDoc"
+      />
+      <TodoDocumentEditor
+        v-else-if="rightPanelView === 'document-editor'"
+        class="todo-item-detail todo-item-detail-wide"
+        :doc-id="activeDoc?.id ?? null"
+        :item-id="activeDoc?.itemId ?? null"
+        :category-id="activeDoc?.categoryId ?? null"
+        :title-path="activeDoc?.titlePath ?? ''"
+        @back="handleEditorBack"
+        @saved="handleDocSaved"
+      />
+      <div v-else class="todo-item-detail todo-item-detail-empty">
+        <el-empty description="选择一个待办条目或分类查看详情" />
+      </div>
     </div>
   </div>
 </template>
@@ -64,11 +74,12 @@ import TodoListPanel from './TodoListPanel.vue';
 import TodoItemDetail from './TodoItemDetail.vue';
 import TodoCategoryDetail from './TodoCategoryDetail.vue';
 import TodoDocumentEditor from './TodoDocumentEditor.vue';
+import TodoSearchBar from './TodoSearchBar.vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
 export default {
   name: 'TodoAppPage',
-  components: { TodoSidebar, TodoListPanel, TodoItemDetail, TodoCategoryDetail, TodoDocumentEditor },
+  components: { TodoSidebar, TodoListPanel, TodoItemDetail, TodoCategoryDetail, TodoDocumentEditor, TodoSearchBar },
   data() {
     return {
       categoryTree: [],
@@ -231,6 +242,69 @@ export default {
     handleDocSaved() {
       this.detailKey += 1;
     },
+    /**
+     * 搜索结果跳转（Phase 3）：根据命中类型切换视图 + 滚动 + 高亮。
+     *
+     * 设计文档 §7.5：
+     *   category   → 选中该 category + 中间显示其下 list + sidebar 闪烁高亮
+     *   todo_list  → 反查 list.category_id 后切换 category + 滚动到该 list
+     *   todo_item  → 反查 item.todo_list_id → list.category_id 后切换 + 滚动到 item
+     *   document   → 打开文档编辑器
+     */
+    async handleJumpToResult(result) {
+      if (!result) return;
+      try {
+        if (result.type === 'category') {
+          this.selectedLabelId = null;
+          this.selectedItemId = null;
+          this.activeDoc = null;
+          this.selectedCategoryId = result.id;
+          this.rightPanelView = 'category-detail';
+          await this.$nextTick();
+          this.$refs.sidebar?.highlightCategory(result.id);
+        } else if (result.type === 'todo_list') {
+          const list = await window.todoApp.getTodoList(result.id);
+          this.selectedLabelId = null;
+          this.selectedItemId = null;
+          this.activeDoc = null;
+          this.selectedCategoryId = list?.category_id ?? null;
+          await this.$nextTick();
+          // 等待 listPanel 加载新分类下的 list 后聚焦目标 list
+          await this.$refs.listPanel?.focusTarget(result.id, null);
+          this.rightPanelView = this.selectedCategoryId ? 'category-detail' : 'empty';
+        } else if (result.type === 'todo_item') {
+          const item = await window.todoApp.getTodoItem(result.id);
+          if (!item) {
+            ElMessage.warning('该条目不存在或已删除');
+            return;
+          }
+          const list = await window.todoApp.getTodoList(item.todo_list_id);
+          this.selectedLabelId = null;
+          this.activeDoc = null;
+          this.selectedCategoryId = list?.category_id ?? null;
+          this.selectedItemId = item.id;
+          this.rightPanelView = 'item-detail';
+          await this.$nextTick();
+          await this.$refs.listPanel?.focusTarget(item.todo_list_id, item.id);
+        } else if (result.type === 'document') {
+          const doc = await window.todoApp.getDocument(result.id);
+          if (!doc) {
+            ElMessage.warning('该文档不存在或已删除');
+            return;
+          }
+          this.activeDoc = {
+            id: doc.id,
+            itemId: doc.todo_item_id ?? null,
+            categoryId: doc.todo_category_id ?? null,
+            titlePath: result.category_path?.join(' / ') || doc.name,
+          };
+          this.rightPanelView = 'document-editor';
+        }
+      } catch (err) {
+        console.error('jump to result failed', err);
+        ElMessage.error('跳转失败');
+      }
+    },
   },
 };
 </script>
@@ -238,10 +312,27 @@ export default {
 <style scoped>
 .todo-app-page {
   display: flex;
+  flex-direction: column;
   height: 100%;
   overflow: hidden;
   background: var(--surface-dark, #1e1e1e);
   color: var(--text-on-dark, #e0e0e0);
+}
+
+/* 顶部搜索栏行（Phase 3）：横跨三栏 */
+.search-bar-row {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+}
+
+/* 三栏布局行 */
+.columns-row {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
 }
 
 .todo-sidebar {

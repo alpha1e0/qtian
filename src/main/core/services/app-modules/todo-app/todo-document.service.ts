@@ -5,6 +5,7 @@ import * as crypto from 'crypto';
 import { DBManager } from '@/core/database/db-manager';
 import { createLogger } from '@/core/utils/logger';
 import { TodoDocument } from './types';
+import { TodoSearchService } from './todo-search.service';
 
 const logger = createLogger('TodoDocumentService');
 
@@ -21,16 +22,21 @@ const DEFAULT_CONTENT = '';
  * - listByCategory / listByItem
  * - saveAttachment：sha256 前 16 位命名 + 前 2 位分桶 + 去重（已存在不重写）
  *
+ * FTS 集成（Phase 3）：searchService 为可选依赖（默认 null）。
+ * 可搜索字段：name（title） + content（body）。
+ *
  * create 约束：todo_category_id 和 todo_item_id 不可同时非 null。
  */
 export class TodoDocumentService {
   private db: DBManager;
   /** 附件根目录（workspace/app_modules/todo_app/attach） */
   private readonly attachDir: string;
+  private searchService: TodoSearchService | null;
 
-  constructor(db: DBManager, attachDir: string) {
+  constructor(db: DBManager, attachDir: string, searchService: TodoSearchService | null = null) {
     this.db = db;
     this.attachDir = attachDir;
+    this.searchService = searchService;
   }
 
   /**
@@ -55,13 +61,18 @@ export class TodoDocumentService {
     }
 
     const now = Date.now();
-    const result = this.db.insert(
-      `INSERT INTO todo_document (name, content, todo_category_id, todo_item_id, created_at, updated_at, deleted_at)
-       VALUES (?, ?, ?, ?, ?, ?, NULL)`,
-      [name, data.content ?? DEFAULT_CONTENT, categoryId, itemId, now, now],
-    );
-    logger.info(`Document created: id=${result.lastRowid}, name='${name}'`);
-    return this.getById(result.lastRowid)!;
+    const content = data.content ?? DEFAULT_CONTENT;
+    const newId = this.db.transaction(() => {
+      const result = this.db.insert(
+        `INSERT INTO todo_document (name, content, todo_category_id, todo_item_id, created_at, updated_at, deleted_at)
+         VALUES (?, ?, ?, ?, ?, ?, NULL)`,
+        [name, content, categoryId, itemId, now, now],
+      );
+      this.searchService?.syncFts('document', result.lastRowid, { title: name, body: content });
+      return result.lastRowid;
+    });
+    logger.info(`Document created: id=${newId}, name='${name}'`);
+    return this.getById(newId)!;
   }
 
   /** 更新文档（name / content） */
@@ -89,10 +100,19 @@ export class TodoDocumentService {
     }
 
     params.push(id);
-    this.db.execute(
-      `UPDATE todo_document SET ${sets.join(', ')} WHERE id = ? AND deleted_at IS NULL`,
-      params,
-    );
+    this.db.transaction(() => {
+      this.db.execute(
+        `UPDATE todo_document SET ${sets.join(', ')} WHERE id = ? AND deleted_at IS NULL`,
+        params,
+      );
+      // name/content 任一变更才同步 FTS
+      if (patch.name !== undefined || patch.content !== undefined) {
+        const after = this.getById(id);
+        if (after) {
+          this.searchService?.syncFts('document', id, { title: after.name, body: after.content });
+        }
+      }
+    });
 
     return this.getById(id)!;
   }
@@ -100,25 +120,37 @@ export class TodoDocumentService {
   /** 软删除文档 */
   delete(id: number): void {
     const now = Date.now();
-    const changes = this.db.execute(
-      `UPDATE todo_document SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`,
-      [now, now, id],
-    );
-    if (changes > 0) {
-      logger.info(`Document deleted: id=${id}`);
-    }
+    this.db.transaction(() => {
+      const changes = this.db.execute(
+        `UPDATE todo_document SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`,
+        [now, now, id],
+      );
+      if (changes > 0) {
+        this.searchService?.syncFts('document', id, null);
+        logger.info(`Document deleted: id=${id}`);
+      }
+    });
   }
 
   /** 恢复软删除文档 */
   restore(id: number): TodoDocument | undefined {
     const now = Date.now();
-    const changes = this.db.execute(
-      `UPDATE todo_document SET deleted_at = NULL, updated_at = ? WHERE id = ? AND deleted_at IS NOT NULL`,
-      [now, id],
-    );
-    if (changes > 0) {
-      logger.info(`Document restored: id=${id}`);
-    }
+    this.db.transaction(() => {
+      const changes = this.db.execute(
+        `UPDATE todo_document SET deleted_at = NULL, updated_at = ? WHERE id = ? AND deleted_at IS NOT NULL`,
+        [now, id],
+      );
+      if (changes > 0) {
+        const restored = this.getById(id);
+        if (restored) {
+          this.searchService?.syncFts('document', id, {
+            title: restored.name,
+            body: restored.content,
+          });
+        }
+        logger.info(`Document restored: id=${id}`);
+      }
+    });
     return this.getById(id);
   }
 

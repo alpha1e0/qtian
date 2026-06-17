@@ -9,6 +9,7 @@ import {
   VALID_STATUS_TRANSITIONS,
 } from './types';
 import { TodoLabelService } from './todo-label.service';
+import { TodoSearchService } from './todo-search.service';
 
 const logger = createLogger('TodoItemService');
 
@@ -26,6 +27,10 @@ const DEFAULT_STATUS: TodoItemStatus = 'init';
  * - recalcParentProgress（含防环检测）
  * - collectSubtree（Phase 5 任务拼装用，本期实现）
  *
+ * FTS 集成（Phase 3）：searchService 为可选依赖（默认 null）。
+ * 可搜索字段：title + description + task_prompt（body = description + task_prompt 合并分词）。
+ * updateStatus / 进度变更不触发 FTS（不影响可搜索内容）。
+ *
  * 进度联动规则：
  *   parent.progress = AVG(未删除、非 is_manual_progress 子项 progress)
  *   parent.is_manual_progress=true 时跳过（不自动覆盖）
@@ -35,10 +40,24 @@ const DEFAULT_STATUS: TodoItemStatus = 'init';
 export class TodoItemService {
   private db: DBManager;
   private labelService: TodoLabelService;
+  private searchService: TodoSearchService | null;
 
-  constructor(db: DBManager, labelService: TodoLabelService) {
+  constructor(
+    db: DBManager,
+    labelService: TodoLabelService,
+    searchService: TodoSearchService | null = null,
+  ) {
     this.db = db;
     this.labelService = labelService;
+    this.searchService = searchService;
+  }
+
+  /**
+   * 拼装 todo_item 的可搜索文本：title + (description + task_prompt 合并为 body)。
+   * 设计文档 §7.2.2：多字段合并后统一 jieba 分词，让所有 token 进入同一倒排索引。
+   */
+  private buildItemFtsBody(item: { description: string; task_prompt: string }): string {
+    return `${item.description}\n${item.task_prompt}`;
   }
 
   /**
@@ -69,37 +88,48 @@ export class TodoItemService {
 
     const now = Date.now();
     const progress = this.clampProgress(data.progress ?? 0);
-    const result = this.db.insert(
-      `INSERT INTO todo_item
-        (title, description, task_prompt, parent_id, status, progress, priority, due_at,
-         todo_list_id, agent_task_id, is_manual_progress, created_at, updated_at, deleted_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL)`,
-      [
-        title,
-        data.description ?? '',
-        data.task_prompt ?? '',
-        parentId,
-        data.status ?? DEFAULT_STATUS,
-        progress,
-        data.priority ?? DEFAULT_PRIORITY,
-        data.due_at ?? null,
-        data.todo_list_id,
-        data.is_manual_progress ? 1 : 0,
-        now,
-        now,
-      ],
-    );
-    const newId = result.lastRowid;
+    const description = data.description ?? '';
+    const taskPrompt = data.task_prompt ?? '';
+    const newId = this.db.transaction(() => {
+      const result = this.db.insert(
+        `INSERT INTO todo_item
+          (title, description, task_prompt, parent_id, status, progress, priority, due_at,
+           todo_list_id, agent_task_id, is_manual_progress, created_at, updated_at, deleted_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL)`,
+        [
+          title,
+          description,
+          taskPrompt,
+          parentId,
+          data.status ?? DEFAULT_STATUS,
+          progress,
+          data.priority ?? DEFAULT_PRIORITY,
+          data.due_at ?? null,
+          data.todo_list_id,
+          data.is_manual_progress ? 1 : 0,
+          now,
+          now,
+        ],
+      );
+      const insertedId = result.lastRowid;
 
-    // 设置标签关联
-    if (data.label_ids && data.label_ids.length > 0) {
-      this.labelService.setItemLabels(newId, data.label_ids);
-    }
+      // 设置标签关联
+      if (data.label_ids && data.label_ids.length > 0) {
+        this.labelService.setItemLabels(insertedId, data.label_ids);
+      }
+
+      // FTS 同步：title + (description + task_prompt 合并)
+      this.searchService?.syncFts('todo_item', insertedId, {
+        title,
+        body: this.buildItemFtsBody({ description, task_prompt: taskPrompt }),
+      });
+      return insertedId;
+    });
 
     logger.info(`TodoItem created: id=${newId}, title='${title}'`);
 
     const item = this.getById(newId)!;
-    // 进度联动（新增子项可能影响父进度）
+    // 进度联动（新增子项可能影响父进度）；放在事务外，避免与 FTS 写入耦合
     if (parentId !== null) {
       this.recalcParentProgress(parentId);
     }
@@ -192,15 +222,34 @@ export class TodoItemService {
     }
 
     params.push(id);
-    this.db.execute(
-      `UPDATE todo_item SET ${sets.join(', ')} WHERE id = ? AND deleted_at IS NULL`,
-      params,
-    );
+    // 是否需要同步 FTS：title/description/task_prompt 任一变更
+    const ftsDirty =
+      patch.title !== undefined ||
+      patch.description !== undefined ||
+      patch.task_prompt !== undefined;
 
-    // 标签关联
-    if (patch.label_ids !== undefined) {
-      this.labelService.setItemLabels(id, patch.label_ids);
-    }
+    this.db.transaction(() => {
+      this.db.execute(
+        `UPDATE todo_item SET ${sets.join(', ')} WHERE id = ? AND deleted_at IS NULL`,
+        params,
+      );
+
+      // 标签关联
+      if (patch.label_ids !== undefined) {
+        this.labelService.setItemLabels(id, patch.label_ids);
+      }
+
+      // FTS 同步（仅可搜索字段变更时）
+      if (ftsDirty) {
+        const after = this.getById(id);
+        if (after) {
+          this.searchService?.syncFts('todo_item', id, {
+            title: after.title,
+            body: this.buildItemFtsBody(after),
+          });
+        }
+      }
+    });
 
     const updated = this.getById(id)!;
 
@@ -222,7 +271,7 @@ export class TodoItemService {
 
   /**
    * 软删除：递归软删除子 todo_item + 关联 document。
-   * 删除后触发父进度重算。
+   * 删除后触发父进度重算；同事务内清理子树 + 关联 document 的 FTS 索引。
    */
   delete(id: number): void {
     const existing = this.getById(id);
@@ -233,18 +282,29 @@ export class TodoItemService {
     const subtreeIds = this.collectSubtreeIds(id);
     const idList = subtreeIds.join(',');
 
-    this.db.execute(
-      `UPDATE todo_item SET deleted_at = ?, updated_at = ? WHERE id IN (${idList}) AND deleted_at IS NULL`,
-      [now, now],
-    );
-    this.db.execute(
-      `UPDATE todo_document SET deleted_at = ?, updated_at = ? WHERE todo_item_id IN (${idList}) AND deleted_at IS NULL`,
-      [now, now],
-    );
-    // 清理标签关联
-    this.db.execute(
-      `DELETE FROM todo_item_label WHERE todo_item_id IN (${idList})`,
-    );
+    // 删除前收集关联 document id（删除后无法再查）
+    const relatedDocIds = this.db.query<{ id: number }>(
+      `SELECT id FROM todo_document WHERE todo_item_id IN (${idList}) AND deleted_at IS NULL`,
+    ).map((r) => r.id);
+
+    this.db.transaction(() => {
+      this.db.execute(
+        `UPDATE todo_item SET deleted_at = ?, updated_at = ? WHERE id IN (${idList}) AND deleted_at IS NULL`,
+        [now, now],
+      );
+      this.db.execute(
+        `UPDATE todo_document SET deleted_at = ?, updated_at = ? WHERE todo_item_id IN (${idList}) AND deleted_at IS NULL`,
+        [now, now],
+      );
+      // 清理标签关联
+      this.db.execute(
+        `DELETE FROM todo_item_label WHERE todo_item_id IN (${idList})`,
+      );
+
+      // 级联清理 FTS（子树 + 关联 document）
+      this.searchService?.syncFtsBatch('todo_item', subtreeIds);
+      this.searchService?.syncFtsBatch('document', relatedDocIds);
+    });
 
     logger.info(`TodoItem deleted: id=${id}, subtree=${subtreeIds.length} nodes`);
 
@@ -276,17 +336,27 @@ export class TodoItemService {
     }
 
     const now = Date.now();
-    if (promoteToRoot) {
-      this.db.execute(
-        `UPDATE todo_item SET deleted_at = NULL, parent_id = NULL, updated_at = ? WHERE id = ?`,
-        [now, id],
-      );
-    } else {
-      this.db.execute(
-        `UPDATE todo_item SET deleted_at = NULL, updated_at = ? WHERE id = ?`,
-        [now, id],
-      );
-    }
+    this.db.transaction(() => {
+      if (promoteToRoot) {
+        this.db.execute(
+          `UPDATE todo_item SET deleted_at = NULL, parent_id = NULL, updated_at = ? WHERE id = ?`,
+          [now, id],
+        );
+      } else {
+        this.db.execute(
+          `UPDATE todo_item SET deleted_at = NULL, updated_at = ? WHERE id = ?`,
+          [now, id],
+        );
+      }
+      // 恢复后重建 FTS
+      const restored = this.getById(id);
+      if (restored) {
+        this.searchService?.syncFts('todo_item', id, {
+          title: restored.title,
+          body: this.buildItemFtsBody(restored),
+        });
+      }
+    });
     logger.info(`TodoItem restored: id=${id}, promotedToRoot=${promoteToRoot}`);
     return this.getById(id);
   }

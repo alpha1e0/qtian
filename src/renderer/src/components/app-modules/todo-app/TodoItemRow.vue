@@ -1,5 +1,5 @@
 <template>
-  <div class="todo-item-row">
+  <div class="todo-item-row" :data-item-id="item.id">
     <div
       class="item-row-main"
       :style="{ paddingLeft: depth * 20 + 'px' }"
@@ -78,6 +78,17 @@ export default {
 </script>
 
 <style scoped>
+/* 搜索跳转临时高亮（Phase 3）：父组件 scrollToItem 通过 DOM 操作附加 */
+.todo-item-row.flash-highlight {
+  animation: todo-flash 1.5s ease-out;
+}
+
+@keyframes todo-flash {
+  0% { background: rgba(64, 158, 255, 0.35); }
+  60% { background: rgba(64, 158, 255, 0.15); }
+  100% { background: transparent; }
+}
+
 .todo-item-row {
   user-select: none;
 }
