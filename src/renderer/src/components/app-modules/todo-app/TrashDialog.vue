@@ -207,7 +207,7 @@ const TYPE_ICON_MAP = {
 /** 类型 → 中文标签 */
 const TYPE_LABEL_MAP = {
   category: '分类',
-  todo_list: '列表',
+  todo_list: '待办项目',
   todo_item: '待办',
   document: '文档',
   label: '标签',

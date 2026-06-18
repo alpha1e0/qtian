@@ -229,7 +229,7 @@ describe('TodoTaskService', () => {
       expect(arg.prompt).toContain('标题：任务A');
       expect(arg.prompt).toContain('描述：desc');
       expect(arg.prompt).toContain('任务说明：do something');
-      expect(arg.prompt).toContain('所属列表：L1');
+      expect(arg.prompt).toContain('所属待办项目：L1');
     });
 
     it('有子 todo 时含 [子任务列表] 且按深度缩进', () => {

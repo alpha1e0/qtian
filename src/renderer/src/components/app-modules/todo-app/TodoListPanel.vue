@@ -1,10 +1,10 @@
 <template>
   <div class="todo-list-panel-inner">
-    <!-- 顶部：列表选择 / 新建 -->
+    <!-- 顶部：待办项目选择 / 新建 -->
     <div class="panel-header">
       <el-select
         v-model="currentListId"
-        placeholder="选择列表"
+        placeholder="选择待办项目"
         size="small"
         class="list-select"
         @change="handleListChange"
@@ -17,7 +17,7 @@
         />
       </el-select>
       <el-button size="small" type="primary" plain @click="handleCreateList">
-        新建列表
+        新建待办项目
       </el-button>
     </div>
 
@@ -58,9 +58,9 @@
       />
     </div>
 
-    <!-- 未选中列表 -->
+    <!-- 未选中待办项目 -->
     <div v-else class="empty-state">
-      <el-empty description="请选择一个列表或分类" />
+      <el-empty description="请选择一个待办项目或分类" />
     </div>
   </div>
 </template>
@@ -121,7 +121,7 @@ export default {
           this.currentListId = this.todoLists[0].id;
         }
       } catch (err) {
-        ElMessage.error('加载列表失败');
+        ElMessage.error('加载待办项目失败');
         console.error(err);
       }
     },
@@ -197,7 +197,7 @@ export default {
     },
     async handleCreateList() {
       try {
-        const { value } = await ElMessageBox.prompt('请输入列表名称', '新建列表', {
+        const { value } = await ElMessageBox.prompt('请输入待办项目名称', '新建待办项目', {
           confirmButtonText: '创建',
           cancelButtonText: '取消',
         });
@@ -208,7 +208,7 @@ export default {
           });
           await this.loadLists();
           this.currentListId = created.id;
-          ElMessage.success('列表已创建');
+          ElMessage.success('待办项目已创建');
         }
       } catch (err) {
         if (err !== 'cancel') {

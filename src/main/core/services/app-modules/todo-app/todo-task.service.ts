@@ -169,7 +169,7 @@ export class TodoTaskService {
     lines.push(`描述：${item.description}`);
     lines.push(`任务说明：${item.task_prompt}`);
     lines.push(`所属分类：${categoryPath}`);
-    lines.push(`所属列表：${todoListName}`);
+    lines.push(`所属待办项目：${todoListName}`);
     lines.push('');
 
     // [子任务列表]

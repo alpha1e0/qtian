@@ -5,7 +5,7 @@
       <TodoSearchBar @jump-to-result="handleJumpToResult" />
     </div>
 
-    <!-- 三栏布局：左导航 / 中列表 / 右详情 -->
+    <!-- 三栏布局：左导航 / 中待办项目 / 右详情 -->
     <div class="columns-row">
       <!-- 左侧导航：分类树 / 标签云 -->
       <TodoSidebar
@@ -207,7 +207,7 @@ export default {
     },
     async handleDeleteCategory(id) {
       try {
-        await ElMessageBox.confirm('删除分类将级联删除其下所有列表和条目（软删除），确认？', '确认删除', {
+        await ElMessageBox.confirm('删除分类将级联删除其下所有待办项目和条目（软删除），确认？', '确认删除', {
           type: 'warning',
         });
         await window.todoApp.deleteCategory(id);
@@ -227,7 +227,7 @@ export default {
       this.selectedListId = listId;
       this.selectedItemId = null;
       this.activeDoc = null;
-      // 选中列表但未选条目时，根据是否有分类决定回退到分类详情或空
+      // 选中待办项目但未选条目时，根据是否有分类决定回退到分类详情或空
       if (this.selectedCategoryId) {
         this.rightPanelView = 'category-detail';
       } else {

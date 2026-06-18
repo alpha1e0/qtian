@@ -135,7 +135,10 @@ interface TodoCategoryNode extends TodoCategory {
 
 ```typescript
 /**
- * Todo 列表容器
+ * Todo 待办项目容器
+ *
+ * > UI 术语：`todo_list` 实体在界面上展示为"待办项目"（避免与"列表视图"等通用列表概念混淆）；
+ * > 数据库表名 / TS 类型 / IPC channel 等代码层标识保持 `todo_list` / `TodoList` 不变。
  */
 interface TodoList {
   id: number;
@@ -948,7 +951,7 @@ LIMIT ?;
 | 命中类型 | 跳转目标 | 高亮方式 |
 | :--- | :--- | :--- |
 | `category` | TodoAppPage 左侧栏选中该 category，中间展示其下 todo_list | 闪烁高亮 1.5s |
-| `todo_list` | 左侧栏选中其所属 category，中间展示该 list | 列表标题闪烁 |
+| `todo_list` | 左侧栏选中其所属 category，中间展示该待办项目 | 待办项目标题闪烁 |
 | `todo_item` | 左侧栏选中其所属 category + list，中间滚动到该 item 并展开 | item 行闪烁、自动展开 |
 | `document` | 打开文档编辑器（弹出或切换右侧详情为编辑模式） | 文档名闪烁 |
 
@@ -1064,7 +1067,7 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 描述：{todo_item.description}      ← 给人看的备注/背景
 任务说明：{todo_item.task_prompt}  ← 给 agent 的额外指令
 所属分类：{category_path}
-所属列表：{todo_list.name}
+所属待办项目：{todo_list.name}
 
 [子任务列表]
 （按 depth + created_at 排序）
@@ -1162,10 +1165,10 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  [🔍 搜索框]                                                   [+ 新建]   │
 ├──────────────────┬───────────────────────────────────┬───────────────────┤
-│ 左侧导航 (240px) │ 中间 Todo List                    │ 右侧摘要 (320px)   │
+│ 左侧导航 (240px) │ 中间 待办项目                    │ 右侧摘要 (320px)   │
 │                  │                                   │                   │
 │ 视图切换：        │ ┌──────────────────────────────┐ │ ┌───────────────┐ │
-│ ○ Category       │ │ 📋 我的列表                   │ │ │ 📝 Todo 详情   │ │
+│ ○ Category       │ │ 📋 我的待办项目                │ │ │ 📝 Todo 详情   │ │
 │ ○ Label          │ │ [新建 todo]                   │ │ │               │ │
 │                  │ ├──────────────────────────────┤ │ │ 标题：xxx     │ │
 │ 📁 工作           │ │ ☐ 父 todo                    │ │ │ 状态：进行中   │ │
@@ -1323,6 +1326,7 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 | Q-PHASE5-4 | TodoAppService 向后兼容 | 新增可选第 4 参数 taskManager?（未传时 taskService=null），现有 149+ 个测试不传 taskManager 全绿 | §10 Phase 5 |
 | Q-PHASE5-5 | bootstrap 降级 | getTaskManager() 抛错时 todo-app 仍可启动，仅任务功能禁用（日志告警）；IPC handler 仅在 getTaskService() !== null 时注册 | §10 Phase 5 |
 | Q-PHASE5-6 | 流式渲染策略 | TaskPanel 内部累积 text_delta/tool_start/tool_result（不复用 ChatMessage.vue），避免 markdown 渲染依赖；最终对话全文留在 chat_history 文件中可查 | §8.7 / §10 Phase 5 |
+| Q-MISC-6 | `todo_list` UI 显示术语 | 界面文案统一称"待办项目"（原"列表"与通用列表概念歧义）；仅影响 UI 文案、prompt 模板标签、搜索结果类型标签；DB 表名 `todo_list` / TS 类型 `TodoList` / IPC channel `*-todo-list` 等代码层标识不变 | §3.2 / §7.5 / §8.3 / §9.1 |
 
 ## 12 仍需协商的待办（依赖现有 AI 助手模块）
 
