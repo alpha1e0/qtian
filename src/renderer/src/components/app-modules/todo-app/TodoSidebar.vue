@@ -2,8 +2,8 @@
   <div class="todo-sidebar-inner">
     <div class="sidebar-top">
       <el-radio-group v-model="view" size="small" class="view-toggle">
-        <el-radio-button label="category">分类</el-radio-button>
-        <el-radio-button label="label">标签</el-radio-button>
+        <el-radio-button value="category">分类</el-radio-button>
+        <el-radio-button value="label">标签</el-radio-button>
       </el-radio-group>
 
       <TodoCategoryTree

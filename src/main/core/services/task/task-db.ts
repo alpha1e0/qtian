@@ -376,7 +376,14 @@ export class TaskDb {
     }
   }
 
-  /** 执行 SQL 建表脚本（按 ';' 拆分语句） */
+  /**
+   * 执行 SQL 建表脚本
+   *
+   * 委托 better-sqlite3 原生 `exec()`，正确处理多语句、注释、空白片段。
+   * 不再手工按 ';' 拆分——否则尾部纯注释片段会让 `prepare()` 抛出
+   * `The supplied SQL string contains no statements`。
+   * PRAGMA 与 CREATE 均为幂等（IF NOT EXISTS），重复执行安全。
+   */
   private runSqlScript(sqlFile: string): void {
     let script: string;
     try {
@@ -384,15 +391,7 @@ export class TaskDb {
     } catch (err) {
       throw new Error(`Cannot read task SQL file '${sqlFile}': ${err}`);
     }
-
-    // PRAGMA 与 CREATE 均为幂等（IF NOT EXISTS），重复执行安全
-    const statements = script.split(';');
-    for (const stmt of statements) {
-      const trimmed = stmt.trim();
-      if (trimmed.length > 0) {
-        this.db.execute(trimmed);
-      }
-    }
+    this.db.exec(script);
   }
 
   /** 将 task + task_agent JOIN 行映射为 TaskAgentView */

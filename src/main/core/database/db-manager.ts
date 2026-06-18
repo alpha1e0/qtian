@@ -58,6 +58,25 @@ export class DBManager {
   }
 
   /**
+   * 执行 SQL 脚本（可包含多条语句、注释、空行）
+   *
+   * better-sqlite3 的 `db.exec()` 专为初始化脚本设计，自动按 ';' 切分
+   * 并跳过纯注释/空白片段。相比手工 split + prepare，可避免尾部纯注释
+   * 片段触发 `RangeError: The supplied SQL string contains no statements`。
+   *
+   * 注意：exec 不支持参数绑定，仅用于 DDL/初始化脚本。
+   *
+   * @param sql - 完整 SQL 脚本
+   */
+  exec(sql: string): void {
+    try {
+      this.db.exec(sql);
+    } catch (err) {
+      throw new BaseDBError(`Error executing SQL script: ${err}`);
+    }
+  }
+
+  /**
    * Execute an insert statement and return last rowid and changes
    * @param sql - SQL insert statement
    * @param params - Insert parameters

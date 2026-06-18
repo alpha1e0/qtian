@@ -126,6 +126,24 @@ export default {
       }
     },
     /**
+     * 加载当前 todo_list 的 item 树（含 depth/children）。
+     *
+     * 由 currentListId watcher、focusTarget、promptCreateItem、handleToggleStatus 调用；
+     * 之前此方法缺失，导致 watcher 抛 TypeError: this.loadItemTree is not a function。
+     */
+    async loadItemTree() {
+      if (!this.currentListId) {
+        this.itemTree = [];
+        return;
+      }
+      try {
+        this.itemTree = await window.todoApp.getTodoItemTree(this.currentListId);
+      } catch (err) {
+        ElMessage.error('加载条目树失败');
+        console.error(err);
+      }
+    },
+    /**
      * 聚焦目标 list + 滚动到指定 item（搜索跳转用，Phase 3）。
      *
      * 由于 categoryId 由父组件传入并通过 watch 触发 loadLists，

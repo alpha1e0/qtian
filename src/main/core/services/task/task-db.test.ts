@@ -13,6 +13,17 @@ import * as fs from 'fs';
 // 文件级 mock：覆盖全局 better-sqlite3 mock，提供 task schema 内存执行器
 // ============================================================================
 
+/**
+ * 共享状态：记录所有传入 `exec()` 的 SQL 脚本
+ *
+ * 用于回归测试 runSqlScript 行为（必须以整段脚本调用 exec，
+ * 不能手工按 ';' 拆分后用 prepare 执行，否则尾部纯注释片段会让
+ * better-sqlite3 抛 "The supplied SQL string contains no statements"）。
+ *
+ * 使用 vi.hoisted 确保 mock 工厂（被 vitest 提升）能安全访问。
+ */
+const { execCallLog } = vi.hoisted(() => ({ execCallLog: [] as string[] }));
+
 vi.mock('better-sqlite3', () => {
   /**
    * 轻量内存 SQL 执行器
@@ -29,8 +40,9 @@ vi.mock('better-sqlite3', () => {
       // no-op
     }
 
-    exec(_sql: string): void {
-      // no-op (CREATE TABLE/INDEX 幂等)
+    exec(sql: string): void {
+      // 记录调用以便回归测试断言（CREATE TABLE/INDEX 在 mock 中幂等无副作用）
+      execCallLog.push(sql);
     }
 
     close(): void {
@@ -382,6 +394,8 @@ describe('TaskDb', () => {
   let db: TaskDb;
 
   beforeEach(() => {
+    // 重置 exec 调用日志
+    execCallLog.length = 0;
     // 使用唯一的临时文件路径（内存执行器忽略文件名，每个实例独立）
     db = new TaskDb(':memory:', TASK_SQL_PATH);
     db.initialize();
@@ -395,6 +409,48 @@ describe('TaskDb', () => {
     it('SQL 文件不存在时应抛出错误', () => {
       const bad = new TaskDb(':memory:', path.join(process.cwd(), 'data', 'not-exist.sql'));
       expect(() => bad.initialize()).toThrow(/Cannot read task SQL file/);
+    });
+
+    /**
+     * 回归测试：data/task.sql 末尾有一段"未来扩展表"的纯注释块（在最后一个 ';' 之后）。
+     * 旧实现按 ';' 手工拆分后用 db.execute() 执行每段，会把这段纯注释送进 prepare()，
+     * 触发 better-sqlite3 的 RangeError: The supplied SQL string contains no statements，
+     * 导致整个 task 系统引导失败、todo-app 任务功能禁用。
+     *
+     * 修复：runSqlScript 直接调用 db.exec(整段脚本)，由 better-sqlite3 原生处理。
+     */
+    it('SQL 文件含尾部纯注释时应正常初始化（不抛 no statements）', () => {
+      // 构造一个最小复现脚本：DDL 之后跟一段纯注释（在最后一个 ';' 之后）
+      const tmpSql = path.join(process.cwd(), 'tmp', 'task-regression.sql');
+      fs.mkdirSync(path.dirname(tmpSql), { recursive: true });
+      fs.writeFileSync(
+        tmpSql,
+        [
+          'PRAGMA foreign_keys = ON;',
+          'CREATE TABLE IF NOT EXISTS task (id INTEGER PRIMARY KEY);',
+          '-- ============================================================',
+          '-- 末尾纯注释块（在最后一个分号之后）',
+          '-- ============================================================',
+          '-- CREATE TABLE IF NOT EXISTS future_table (...)',
+        ].join('\n'),
+        'utf-8',
+      );
+
+      const regDb = new TaskDb(':memory:', tmpSql);
+      expect(() => regDb.initialize()).not.toThrow();
+
+      // 清理临时文件
+      fs.unlinkSync(tmpSql);
+    });
+
+    it('runSqlScript 应以整段脚本一次性调用 exec，不手工拆分', () => {
+      // initialize 在 beforeEach 已执行，应至少触发一次 exec 调用
+      expect(execCallLog.length).toBeGreaterThanOrEqual(1);
+      const firstScript = execCallLog[0];
+      // 整段脚本应同时包含 CREATE TABLE 与末尾的"未来扩展表"注释，
+      // 证明没有按 ';' 拆分（否则这两个片段会分别走不同调用）
+      expect(firstScript).toContain('CREATE TABLE IF NOT EXISTS task');
+      expect(firstScript).toContain('未来扩展表');
     });
   });
 
