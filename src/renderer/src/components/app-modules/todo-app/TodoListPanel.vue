@@ -255,13 +255,14 @@ export default {
 .todo-list-panel-inner {
   height: 100%;
   overflow-y: auto;
-  padding: 8px 12px;
+  padding: 18px 18px 24px;
 }
 
+/* 顶部：列表选择 + 新建按钮 */
 .panel-header {
   display: flex;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 18px;
   align-items: center;
 }
 
@@ -269,23 +270,60 @@ export default {
   flex: 1;
 }
 
-.section-title {
-  font-size: 13px;
+/* 列表选择器：编辑级排版 */
+.list-select :deep(.el-input__wrapper) {
+  background: rgba(99, 102, 241, 0.04);
+  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.10) inset;
+  border-radius: 8px;
+  transition: box-shadow 0.2s ease;
+}
+
+.list-select :deep(.el-input__wrapper:hover) {
+  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.24) inset;
+}
+
+.list-select :deep(.el-input__wrapper.is-focus) {
+  box-shadow: 0 0 0 1px var(--accent, #6366f1) inset,
+              0 0 0 4px rgba(99, 102, 241, 0.10);
+}
+
+.list-select :deep(.el-input__inner) {
+  color: var(--text-on-dark, #e4e4ed);
   font-weight: 500;
-  color: var(--text-on-dark, #e0e0e0);
+  letter-spacing: 0.01em;
+}
+
+/* 章节标题：editorial eyebrow */
+.section-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-on-dark-muted, #5c5b72);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
 }
 
 .tree-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
+  padding: 0 2px;
+}
+
+.tree-toolbar .section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-on-dark, #e4e4ed);
+  letter-spacing: 0.02em;
+  text-transform: none;
 }
 
 .empty-hint {
-  color: var(--text-on-dark-muted, #666);
+  color: var(--text-on-dark-muted, #5c5b72);
   font-size: 13px;
-  padding: 12px 0;
+  font-style: italic;
+  padding: 18px 4px;
+  letter-spacing: 0.02em;
 }
 
 .empty-state {
@@ -293,5 +331,22 @@ export default {
   align-items: center;
   justify-content: center;
   height: 100%;
+}
+
+.empty-state :deep(.el-empty__description) {
+  color: var(--text-on-dark-secondary, #8b8aa0);
+  letter-spacing: 0.02em;
+}
+
+/* 标签视图区域标题：保持与列表名一致的子标题权重 */
+.label-items .section-title {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-on-dark, #e4e4ed);
+  text-transform: none;
+  letter-spacing: 0.02em;
+  padding: 0 2px;
+  margin-bottom: 10px;
 }
 </style>

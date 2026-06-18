@@ -300,23 +300,66 @@ export default {
 
 <style scoped>
 .todo-item-detail-inner {
-  padding: 12px;
+  padding: 18px 18px 28px;
   height: 100%;
   overflow-y: auto;
 }
 
+/* 表单输入与深色 Aurora 基底对齐 */
+.todo-item-detail-inner :deep(.el-form-item__label) {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-on-dark-muted, #5c5b72);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  padding-bottom: 4px;
+  line-height: 1.6;
+}
+
+.todo-item-detail-inner :deep(.el-input__wrapper),
+.todo-item-detail-inner :deep(.el-textarea__inner),
+.todo-item-detail-inner :deep(.el-select__wrapper) {
+  background: rgba(99, 102, 241, 0.04);
+  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.10) inset;
+  border-radius: 8px;
+  transition: box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.todo-item-detail-inner :deep(.el-input__wrapper:hover),
+.todo-item-detail-inner :deep(.el-textarea__inner:hover),
+.todo-item-detail-inner :deep(.el-select__wrapper:hover) {
+  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.22) inset;
+}
+
+.todo-item-detail-inner :deep(.el-input__wrapper.is-focus),
+.todo-item-detail-inner :deep(.el-textarea__inner:focus),
+.todo-item-detail-inner :deep(.el-select__wrapper.is-focused) {
+  box-shadow:
+    0 0 0 1px var(--accent, #6366f1) inset,
+    0 0 0 4px rgba(99, 102, 241, 0.10);
+}
+
+.todo-item-detail-inner :deep(.el-input__inner),
+.todo-item-detail-inner :deep(.el-textarea__inner) {
+  color: var(--text-on-dark, #e4e4ed);
+  font-size: 13px;
+  letter-spacing: 0.01em;
+}
+
 .loading-hint,
 .empty-hint {
-  color: var(--text-on-dark-muted, #666);
+  color: var(--text-on-dark-muted, #5c5b72);
   font-size: 13px;
+  font-style: italic;
   text-align: center;
-  padding: 24px 0;
+  padding: 32px 0;
+  letter-spacing: 0.02em;
 }
 
 .progress-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
 }
 
@@ -324,11 +367,23 @@ export default {
   flex: 1;
 }
 
+/* slider 颜色与新主色对齐 */
+.progress-row :deep(.el-slider__bar) {
+  background: linear-gradient(90deg, #6366f1, #8b5cf6);
+}
+
+.progress-row :deep(.el-slider__button) {
+  border-color: var(--accent, #6366f1);
+}
+
 .progress-value {
-  font-size: 12px;
-  color: var(--text-on-dark-secondary, #aaa);
-  min-width: 32px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-on-dark-secondary, #8b8aa0);
+  font-feature-settings: 'tnum';
+  min-width: 36px;
   text-align: right;
+  letter-spacing: 0.04em;
 }
 
 .manual-progress-toggle {
@@ -337,62 +392,92 @@ export default {
   gap: 8px;
 }
 
-.toggle-label {
-  font-size: 12px;
-  color: var(--text-on-dark-secondary, #aaa);
+.manual-progress-toggle :deep(.el-switch.is-checked .el-switch__core) {
+  background-color: var(--accent, #6366f1);
+  border-color: var(--accent, #6366f1);
 }
 
-.docs-section {
-  margin-top: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  padding-top: 12px;
+.toggle-label {
+  font-size: 12px;
+  color: var(--text-on-dark-secondary, #8b8aa0);
+  letter-spacing: 0.01em;
+}
+
+/* 章节分隔：渐隐细线代替生硬的实色 border */
+.docs-section,
+.task-section {
+  margin-top: 22px;
+  padding-top: 14px;
+  position: relative;
+}
+
+.docs-section::before,
+.task-section::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    rgba(99, 102, 241, 0.20),
+    rgba(99, 102, 241, 0.02)
+  );
 }
 
 .docs-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-.task-section {
-  margin-top: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  padding-top: 12px;
+  margin-bottom: 10px;
 }
 
 .task-actions {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
+/* eyebrow 章节标题 */
 .section-title {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-on-dark-secondary, #aaa);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-on-dark-muted, #5c5b72);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.18em;
 }
 
+/* 文档卡片：浮起的档案条目 */
 .doc-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
-  border-radius: 4px;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
   cursor: pointer;
   font-size: 13px;
-  transition: background 0.1s;
+  background: rgba(99, 102, 241, 0.04);
+  border: 1px solid rgba(99, 102, 241, 0.08);
+  transition: all 0.18s ease;
+  margin-bottom: 6px;
+  color: var(--text-on-dark, #e4e4ed);
 }
 
 .doc-item:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(99, 102, 241, 0.10);
+  border-color: rgba(99, 102, 241, 0.20);
+  transform: translateY(-1px);
+}
+
+.doc-item :deep(.el-icon) {
+  color: #a5b4fc;
 }
 
 .doc-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  letter-spacing: 0.01em;
 }
 </style>

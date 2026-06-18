@@ -126,7 +126,7 @@ export default {
 
 <style scoped>
 .todo-category-detail-inner {
-  padding: 12px;
+  padding: 18px 18px 28px;
   height: 100%;
   overflow-y: auto;
 }
@@ -135,41 +135,61 @@ export default {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
-  gap: 8px;
+  margin-bottom: 18px;
+  gap: 10px;
 }
 
 .section-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-on-dark, #e0e0e0);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-on-dark, #e4e4ed);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
+  letter-spacing: -0.01em;
+  background: linear-gradient(135deg, #e4e4ed 0%, #c7d2fe 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .loading-hint,
 .empty-hint {
-  color: var(--text-on-dark-muted, #666);
+  color: var(--text-on-dark-muted, #5c5b72);
   font-size: 13px;
+  font-style: italic;
   text-align: center;
-  padding: 24px 0;
+  padding: 32px 0;
+  letter-spacing: 0.02em;
 }
 
+/* 文档卡片：浮起的档案条目（含更新时间） */
 .doc-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 10px;
-  border-radius: 4px;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
   cursor: pointer;
   font-size: 13px;
-  transition: background 0.1s;
+  background: rgba(99, 102, 241, 0.04);
+  border: 1px solid rgba(99, 102, 241, 0.08);
+  transition: all 0.18s ease;
+  margin-bottom: 8px;
+  color: var(--text-on-dark, #e4e4ed);
 }
 
 .doc-item:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(99, 102, 241, 0.10);
+  border-color: rgba(99, 102, 241, 0.20);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+
+.doc-item :deep(.el-icon) {
+  color: #a5b4fc;
+  flex-shrink: 0;
 }
 
 .doc-name {
@@ -177,11 +197,17 @@ export default {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  letter-spacing: 0.01em;
 }
 
 .doc-updated {
-  font-size: 11px;
-  color: var(--text-on-dark-muted, #666);
+  font-size: 10px;
+  color: var(--text-on-dark-muted, #5c5b72);
+  font-feature-settings: 'tnum';
   flex-shrink: 0;
+  letter-spacing: 0.08em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
 }
 </style>

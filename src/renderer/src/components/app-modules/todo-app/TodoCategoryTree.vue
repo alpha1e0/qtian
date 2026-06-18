@@ -113,15 +113,59 @@ export default {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 8px;
-  margin-bottom: 4px;
+  padding: 4px 8px 6px;
+  margin-bottom: 6px;
+  position: relative;
+}
+
+.tree-header::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    rgba(99, 102, 241, 0.24),
+    transparent
+  );
 }
 
 .header-title {
-  font-size: 12px;
-  color: var(--text-on-dark-secondary, #aaa);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-on-dark-muted, #5c5b72);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.18em;
+}
+
+/* Element Plus 树节点底层排版微调 */
+.todo-category-tree :deep(.el-tree) {
+  background: transparent;
+  --el-tree-node-hover-bg-color: transparent;
+  --el-tree-text-color: var(--text-on-dark, #e4e4ed);
+}
+
+.todo-category-tree :deep(.el-tree-node__content) {
+  height: 30px;
+  padding-right: 4px;
+  border-radius: 8px;
+  margin-bottom: 2px;
+  transition: background 0.18s ease;
+}
+
+.todo-category-tree :deep(.el-tree-node__content:hover) {
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.todo-category-tree :deep(.el-tree-node.is-current > .el-tree-node__content) {
+  background: linear-gradient(
+    90deg,
+    rgba(99, 102, 241, 0.22) 0%,
+    rgba(99, 102, 241, 0.06) 100%
+  );
+  box-shadow: inset 2px 0 0 var(--accent, #6366f1);
 }
 
 .tree-node {
@@ -129,16 +173,18 @@ export default {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-right: 4px;
+  padding-left: 6px;
 }
 
 .node-label {
   font-size: 13px;
+  color: var(--text-on-dark, #e4e4ed);
+  letter-spacing: 0.01em;
 }
 
 .node-label.active {
-  color: var(--el-color-primary, #409eff);
-  font-weight: 500;
+  color: #c7d2fe;
+  font-weight: 600;
 }
 
 .node-actions {
@@ -148,5 +194,10 @@ export default {
 
 :deep(.el-tree-node__content:hover) .node-actions {
   display: flex;
+}
+
+/* 树节点操作按钮：去除默认蓝色 hover */
+.node-actions :deep(.el-button:hover) {
+  color: #c7d2fe;
 }
 </style>

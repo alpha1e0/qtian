@@ -3,7 +3,7 @@
     <div
       class="item-row-main"
       :style="{ paddingLeft: depth * 20 + 'px' }"
-      :class="{ selected: item.id === selectedItemId }"
+      :class="[priorityRowClass, { selected: item.id === selectedItemId }]"
       @click="$emit('select', item.id)"
     >
       <el-checkbox
@@ -67,6 +67,10 @@ export default {
       const map = { urgent: 'dot-urgent', important: 'dot-important', normal: 'dot-normal', hint: 'dot-hint' };
       return map[this.item.priority] || 'dot-normal';
     },
+    /** 用于 item-row-main 左侧 2px 优先级强调条（选中态可见） */
+    priorityRowClass() {
+      return `${this.priorityClass}-row`;
+    },
   },
   methods: {
     handleToggleDone(checked) {
@@ -84,8 +88,8 @@ export default {
 }
 
 @keyframes todo-flash {
-  0% { background: rgba(64, 158, 255, 0.35); }
-  60% { background: rgba(64, 158, 255, 0.15); }
+  0% { background: rgba(99, 102, 241, 0.42); }
+  60% { background: rgba(99, 102, 241, 0.16); }
   100% { background: transparent; }
 }
 
@@ -94,34 +98,64 @@ export default {
 }
 
 .item-row-main {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 4px;
-  border-radius: 4px;
+  gap: 8px;
+  padding: 6px 10px 6px 12px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: background 0.1s;
+  transition: background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.item-row-main::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 50%;
+  width: 2px;
+  height: 14px;
+  border-radius: 2px;
+  background: transparent;
+  transform: translateY(-50%);
+  transition: background 0.18s ease, height 0.18s ease;
 }
 
 .item-row-main:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(99, 102, 241, 0.08);
 }
 
 .item-row-main.selected {
-  background: rgba(64, 158, 255, 0.12);
+  background: linear-gradient(
+    90deg,
+    rgba(99, 102, 241, 0.22) 0%,
+    rgba(99, 102, 241, 0.04) 100%
+  );
 }
+
+/* 选中 + 优先级条：用左侧 2px 强调当前行的优先级 */
+.item-row-main.selected::before,
+.item-row-main:hover::before {
+  height: 18px;
+}
+
+.item-row-main.selected.dot-urgent-row::before { background: var(--color-danger, #ef4444); }
+.item-row-main.selected.dot-important-row::before { background: var(--color-warning, #f59e0b); }
+.item-row-main.selected.dot-normal-row::before { background: var(--accent, #6366f1); }
+.item-row-main.selected.dot-hint-row::before { background: var(--text-on-dark-muted, #5c5b72); }
 
 .priority-dot {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   flex-shrink: 0;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.02);
 }
 
-.dot-urgent { background: #f56c6c; }
-.dot-important { background: #e6a23c; }
-.dot-normal { background: #409eff; }
-.dot-hint { background: #909399; }
+.dot-urgent { background: var(--color-danger, #ef4444); box-shadow: 0 0 8px rgba(239, 68, 68, 0.45); }
+.dot-important { background: var(--color-warning, #f59e0b); box-shadow: 0 0 8px rgba(245, 158, 11, 0.42); }
+.dot-normal { background: var(--accent, #6366f1); }
+.dot-hint { background: var(--text-on-dark-muted, #5c5b72); }
 
 .item-title {
   font-size: 13px;
@@ -129,29 +163,73 @@ export default {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  letter-spacing: 0.01em;
+  color: var(--text-on-dark, #e4e4ed);
 }
 
 .item-title.done {
   text-decoration: line-through;
-  opacity: 0.5;
+  text-decoration-color: rgba(139, 138, 160, 0.55);
+  opacity: 0.55;
 }
 
 .item-progress {
-  font-size: 11px;
-  color: var(--text-on-dark-muted, #888);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-on-dark-secondary, #8b8aa0);
+  font-feature-settings: 'tnum';
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.10);
   flex-shrink: 0;
+  letter-spacing: 0.04em;
 }
 
 .expand-btn {
   font-size: 11px;
-  color: var(--text-on-dark-muted, #888);
+  color: var(--text-on-dark-muted, #5c5b72);
+  font-feature-settings: 'tnum';
+}
+
+.expand-btn:hover {
+  color: var(--text-on-dark-secondary, #8b8aa0);
 }
 
 .add-child-btn {
   opacity: 0;
+  transition: opacity 0.18s ease;
 }
 
 .item-row-main:hover .add-child-btn {
   opacity: 1;
+}
+
+/* 子项缩进引导线 */
+.item-children {
+  position: relative;
+}
+
+.item-children::before {
+  content: '';
+  position: absolute;
+  left: 22px;
+  top: 0;
+  bottom: 6px;
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    rgba(99, 102, 241, 0.20),
+    rgba(99, 102, 241, 0.04)
+  );
+}
+
+/* checkbox 与新主色调对齐 */
+.item-row-main :deep(.el-checkbox__input.is-checked .el-checkbox__inner) {
+  background-color: var(--accent, #6366f1);
+  border-color: var(--accent, #6366f1);
+}
+
+.item-row-main :deep(.el-checkbox__inner) {
+  border-radius: 4px;
 }
 </style>

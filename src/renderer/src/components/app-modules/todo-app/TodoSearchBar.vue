@@ -306,67 +306,96 @@ export default {
   width: 100%;
 }
 
+/*
+ * 搜索输入：编辑级"档案室卡片"质感
+ * 用毛玻璃 + 微微的靛底描边替代默认深灰填充
+ */
 .search-input :deep(.el-input__wrapper) {
-  background: rgba(255, 255, 255, 0.04);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+  background: rgba(99, 102, 241, 0.04);
+  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.10) inset;
+  border-radius: 10px;
+  padding: 4px 12px;
+  transition: box-shadow 0.2s ease, background 0.2s ease;
 }
 
-.search-input :deep(.el-input__wrapper):hover {
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.16) inset;
+.search-input :deep(.el-input__wrapper:hover) {
+  background: rgba(99, 102, 241, 0.07);
+  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.22) inset;
 }
 
 .search-input :deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 0 0 1px var(--el-color-primary, #409eff) inset;
+  background: rgba(99, 102, 241, 0.06);
+  box-shadow:
+    0 0 0 1px var(--accent, #6366f1) inset,
+    0 0 0 4px rgba(99, 102, 241, 0.12);
 }
 
 .search-input :deep(.el-input__inner) {
-  color: var(--text-on-dark, #e0e0e0);
+  color: var(--text-on-dark, #e4e4ed);
+  font-size: 13px;
+  letter-spacing: 0.01em;
+  height: 32px;
 }
 
 .search-input :deep(.el-input__inner::placeholder) {
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--text-on-dark-muted, #5c5b72);
 }
 
 .search-icon {
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--text-on-dark-muted, #5c5b72);
+  transition: color 0.2s ease;
+}
+
+.search-input :deep(.el-input__wrapper.is-focus) .search-icon,
+.search-input :deep(.el-input__wrapper:hover) .search-icon {
+  color: var(--text-on-dark-secondary, #8b8aa0);
+}
+
+/* 清空按钮配色微调 */
+.search-input :deep(.el-input__clear:hover) {
+  color: var(--text-on-dark-secondary, #8b8aa0);
 }
 
 .empty-hint {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 16px 12px;
-  color: var(--text-muted, #999);
+  padding: 22px 12px;
+  color: var(--text-muted, #9ca3b0);
   font-size: 13px;
+  font-style: italic;
   justify-content: center;
+  letter-spacing: 0.02em;
 }
 
 .result-item,
 .history-item {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 4px;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
   cursor: pointer;
-  color: var(--text-on-light, #303030);
+  color: var(--text-on-dark, #e4e4ed);
+  transition: background 0.16s ease, transform 0.16s ease;
 }
 
 .result-item.active,
 .history-item.active {
-  background: var(--el-fill-color-light, #f5f7fa);
+  background: rgba(99, 102, 241, 0.14);
+  box-shadow: inset 2px 0 0 var(--accent, #6366f1);
 }
 
 .result-item:hover,
 .history-item:hover {
-  background: var(--el-fill-color, #f0f2f5);
+  background: rgba(99, 102, 241, 0.08);
 }
 
 .type-icon,
 .history-icon {
   flex-shrink: 0;
   margin-top: 2px;
-  color: var(--el-color-primary, #409eff);
+  color: #a5b4fc;
 }
 
 .result-main {
@@ -376,18 +405,19 @@ export default {
 
 .result-title {
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  letter-spacing: 0.01em;
 }
 
 .result-snippet {
-  margin-top: 2px;
+  margin-top: 3px;
   font-size: 12px;
-  color: var(--text-muted, #909399);
-  line-height: 1.4;
+  color: var(--text-on-dark-secondary, #8b8aa0);
+  line-height: 1.45;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -396,39 +426,53 @@ export default {
 
 /* snippet 内高亮 mark（来自 FTS5 snippet 函数） */
 .result-snippet :deep(mark) {
-  background: var(--el-color-warning-light-7, #fdf6ec);
-  color: var(--el-color-warning-dark-2, #b88230);
-  padding: 0 1px;
-  border-radius: 2px;
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+  padding: 0 3px;
+  border-radius: 3px;
   font-weight: 600;
 }
 
 .result-breadcrumb {
-  margin-top: 2px;
-  font-size: 11px;
-  color: var(--text-muted, #c0c4cc);
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--text-on-dark-muted, #5c5b72);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .type-tag {
   flex-shrink: 0;
   margin-top: 1px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  border-radius: 999px;
+  padding: 0 8px;
+  height: 20px;
+  line-height: 18px;
+  background: rgba(99, 102, 241, 0.12);
+  color: #c7d2fe;
+  border: 1px solid rgba(99, 102, 241, 0.22);
 }
 
 .history-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 10px;
-  border-bottom: 1px solid var(--el-border-color-lighter, #ebeef5);
+  padding: 6px 10px 8px;
+  border-bottom: 1px solid rgba(99, 102, 241, 0.10);
   margin-bottom: 4px;
 }
 
 .toolbar-title {
-  font-size: 12px;
-  color: var(--text-muted, #909399);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-on-dark-muted, #5c5b72);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
 }
 
 .history-query {
@@ -437,16 +481,51 @@ export default {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  letter-spacing: 0.01em;
 }
 
 .history-meta {
   flex-shrink: 0;
-  font-size: 11px;
-  color: var(--text-muted, #c0c4cc);
+  font-size: 10px;
+  color: var(--text-on-dark-muted, #5c5b72);
+  font-feature-settings: 'tnum';
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .history-delete {
   flex-shrink: 0;
   padding: 2px;
+  color: var(--text-on-dark-muted, #5c5b72);
+}
+
+.history-delete:hover {
+  color: var(--color-danger, #ef4444);
+}
+</style>
+
+<!--
+  popover 渲染在 body 末端，scoped 样式无法穿透：
+  这里通过全局样式（非 scoped）覆盖 el-popper 内部背景，
+  使其从默认白色档案室卡片变为深色 Aurora Library 卡片。
+-->
+<style>
+.todo-search-popover.el-popper {
+  background: rgba(28, 27, 46, 0.96);
+  border: 1px solid rgba(99, 102, 241, 0.18);
+  border-radius: 12px;
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(99, 102, 241, 0.06);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  padding: 6px;
+}
+
+.todo-search-popover.el-popper .el-popper__arrow::before {
+  background: rgba(28, 27, 46, 0.96);
+  border-color: rgba(99, 102, 241, 0.18);
 }
 </style>

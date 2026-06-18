@@ -90,7 +90,7 @@ export default {
   display: flex;
   flex-direction: column;
   min-height: 100%;
-  padding: 8px;
+  padding: 14px 12px 12px;
 }
 
 .sidebar-top {
@@ -99,17 +99,29 @@ export default {
 
 .sidebar-footer {
   margin-top: auto;
-  padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 12px;
+  border-top: 1px solid rgba(99, 102, 241, 0.10);
 }
 
 .trash-btn {
   width: 100%;
+  letter-spacing: 0.04em;
+  --el-button-bg-color: rgba(239, 68, 68, 0.06);
+  --el-button-hover-bg-color: rgba(239, 68, 68, 0.12);
+  --el-button-border-color: rgba(239, 68, 68, 0.18);
+  --el-button-hover-border-color: rgba(239, 68, 68, 0.32);
+  --el-button-text-color: var(--color-danger, #ef4444);
+  --el-button-hover-text-color: var(--color-danger, #ef4444);
 }
 
+/* 视图切换：编辑级 eyebrow toggle，告别 Element Plus 默认蓝色 */
 .view-toggle {
   width: 100%;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
+  --el-radio-button-checked-bg-color: rgba(99, 102, 241, 0.16);
+  --el-radio-button-checked-text-color: #c7d2fe;
+  --el-radio-button-checked-border-color: rgba(99, 102, 241, 0.32);
+  --el-radio-button-input-border-color: rgba(99, 102, 241, 0.10);
 }
 
 .view-toggle :deep(.el-radio-button) {
@@ -118,6 +130,19 @@ export default {
 
 .view-toggle :deep(.el-radio-button__inner) {
   width: 100%;
+  padding: 8px 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(99, 102, 241, 0.10);
+  color: var(--text-on-dark-secondary, #8b8aa0);
+  transition: all 0.2s ease;
+}
+
+.view-toggle :deep(.el-radio-button__inner:hover) {
+  color: var(--text-on-dark, #e4e4ed);
 }
 
 /* 搜索跳转闪烁高亮（Phase 3）：通过 DOM 操作附加到 el-tree 当前节点 */
@@ -126,8 +151,8 @@ export default {
 }
 
 @keyframes cat-flash-anim {
-  0% { background: rgba(64, 158, 255, 0.35); }
-  60% { background: rgba(64, 158, 255, 0.15); }
+  0% { background: rgba(99, 102, 241, 0.40); }
+  60% { background: rgba(99, 102, 241, 0.16); }
   100% { background: transparent; }
 }
 </style>

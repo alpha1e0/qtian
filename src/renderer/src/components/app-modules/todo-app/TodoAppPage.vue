@@ -427,22 +427,60 @@ export default {
 </script>
 
 <style scoped>
+/*
+ * Aurora Library 视觉基调
+ * --------------------------------------------------
+ * 在主进程的 --surface-dark（深靛蓝底）之上叠加柔和的极光氛围，
+ * 让整个 todo-app 三栏在视觉上形成"漂浮于夜空的工作台"质感。
+ * 不引入新的全局 token，所有变化都局限在 todo-app 作用域内。
+ */
 .todo-app-page {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  background: var(--surface-dark, #1e1e1e);
-  color: var(--text-on-dark, #e0e0e0);
+  background: var(--surface-dark, #13121c);
+  color: var(--text-on-dark, #e4e4ed);
+  isolation: isolate;
+}
+
+/* 氛围底层：双 radial-gradient 形成左上 / 右下两束极光
+ * 通过 ::before 实现，避免污染主层 z-index 与事件命中 */
+.todo-app-page::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(900px 540px at 8% -6%,
+      rgba(99, 102, 241, 0.18),
+      transparent 60%),
+    radial-gradient(720px 480px at 102% 108%,
+      rgba(139, 92, 246, 0.12),
+      transparent 62%),
+    radial-gradient(520px 360px at 50% 140%,
+      rgba(99, 102, 241, 0.05),
+      transparent 70%);
+  opacity: 0.9;
 }
 
 /* 顶部搜索栏行（Phase 3）：横跨三栏 */
 .search-bar-row {
   flex-shrink: 0;
-  padding: 8px 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 12px 16px;
   display: flex;
   align-items: center;
+  background: linear-gradient(
+    180deg,
+    rgba(28, 27, 46, 0.55) 0%,
+    rgba(28, 27, 46, 0.15) 100%
+  );
+  border-bottom: 1px solid rgba(99, 102, 241, 0.12);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: aurora-fade-down 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* 三栏布局行 */
@@ -453,22 +491,30 @@ export default {
 }
 
 .todo-sidebar {
-  width: 240px;
+  position: relative;
+  width: 248px;
   flex-shrink: 0;
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: 1px solid rgba(99, 102, 241, 0.10);
   overflow-y: auto;
+  background: rgba(19, 18, 28, 0.35);
+  animation: aurora-fade-up 0.5s 0.05s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .todo-list-panel {
+  position: relative;
   flex: 1;
   overflow: hidden;
+  animation: aurora-fade-up 0.5s 0.12s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .todo-item-detail {
-  width: 320px;
+  position: relative;
+  width: 340px;
   flex-shrink: 0;
-  border-left: 1px solid rgba(255, 255, 255, 0.06);
+  border-left: 1px solid rgba(99, 102, 241, 0.10);
   overflow-y: auto;
+  background: rgba(19, 18, 28, 0.35);
+  animation: aurora-fade-up 0.5s 0.18s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* 文档编辑器视图：右侧扩展到 600px 以获得更合理的编辑宽度 */
@@ -481,5 +527,44 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* 空状态文案做轻微提亮，避免与背景过于接近 */
+.todo-item-detail-empty :deep(.el-empty__description) {
+  color: var(--text-on-dark-secondary, #8b8aa0);
+  letter-spacing: 0.02em;
+}
+
+/* 入场动画关键帧 */
+@keyframes aurora-fade-down {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes aurora-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 尊重用户的动效偏好：减少动效时直接显示终态 */
+@media (prefers-reduced-motion: reduce) {
+  .search-bar-row,
+  .todo-sidebar,
+  .todo-list-panel,
+  .todo-item-detail {
+    animation: none;
+  }
 }
 </style>
