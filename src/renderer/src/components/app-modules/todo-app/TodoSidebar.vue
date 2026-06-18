@@ -1,37 +1,53 @@
 <template>
   <div class="todo-sidebar-inner">
-    <el-radio-group v-model="view" size="small" class="view-toggle">
-      <el-radio-button label="category">分类</el-radio-button>
-      <el-radio-button label="label">标签</el-radio-button>
-    </el-radio-group>
+    <div class="sidebar-top">
+      <el-radio-group v-model="view" size="small" class="view-toggle">
+        <el-radio-button label="category">分类</el-radio-button>
+        <el-radio-button label="label">标签</el-radio-button>
+      </el-radio-group>
 
-    <TodoCategoryTree
-      ref="categoryTree"
-      v-if="view === 'category'"
-      :tree-data="categoryTree"
-      :selected-id="selectedCategoryId"
-      @select="$emit('select-category', $event)"
-      @create="$emit('create-category', $event)"
-      @rename="$emit('rename-category', $event)"
-      @delete="$emit('delete-category', $event)"
-    />
+      <TodoCategoryTree
+        ref="categoryTree"
+        v-if="view === 'category'"
+        :tree-data="categoryTree"
+        :selected-id="selectedCategoryId"
+        @select="$emit('select-category', $event)"
+        @create="$emit('create-category', $event)"
+        @rename="$emit('rename-category', $event)"
+        @delete="$emit('delete-category', $event)"
+      />
 
-    <TodoLabelCloud
-      v-else
-      :labels="labels"
-      :selected-id="selectedLabelId"
-      @select-label="$emit('select-label', $event)"
-    />
+      <TodoLabelCloud
+        v-else
+        :labels="labels"
+        :selected-id="selectedLabelId"
+        @select-label="$emit('select-label', $event)"
+      />
+    </div>
+
+    <!-- 底部入口（设计文档 §9.3：回收站入口在左下角） -->
+    <div class="sidebar-footer">
+      <el-button
+        size="small"
+        plain
+        class="trash-btn"
+        @click="$emit('open-trash')"
+      >
+        <el-icon><Delete /></el-icon>
+        <span>回收站</span>
+      </el-button>
+    </div>
   </div>
 </template>
 
 <script>
 import TodoCategoryTree from './TodoCategoryTree.vue';
 import TodoLabelCloud from './TodoLabelCloud.vue';
+import { Delete } from '@element-plus/icons-vue';
 
 export default {
   name: 'TodoSidebar',
-  components: { TodoCategoryTree, TodoLabelCloud },
+  components: { TodoCategoryTree, TodoLabelCloud, Delete },
   props: {
     categoryTree: { type: Array, default: () => [] },
     labels: { type: Array, default: () => [] },
@@ -69,8 +85,26 @@ export default {
 </script>
 
 <style scoped>
+/* flex column 让 footer 推到底部（Phase 4 回收站入口） */
 .todo-sidebar-inner {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
   padding: 8px;
+}
+
+.sidebar-top {
+  flex: 1;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.trash-btn {
+  width: 100%;
 }
 
 .view-toggle {

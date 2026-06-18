@@ -1,5 +1,106 @@
 # Changelog
 
+## [Unreleased] 2026-06-18
+
+**User**: todo-app Phase 5 Todo 驱动 AI 任务（适配层 Service + IPC + 3 个新 UI 组件 + TodoItemDetail 集成 + 测试 + 文档）
+
+**Summary**:
+
+落地 todo-app **Phase 5 Todo 驱动 AI 任务**：基于公共任务系统（007 Phase 1 已交付的 `TaskManager` + `AgentTaskExecutor`）引入"由 todo_item 驱动 AI Agent 任务"的能力 —— 用户在 todo_item 详情页选择 Agent + LLM 配置后一键发起任务，任务完成后由 todo-app 注册的 source result handler 自动生成 markdown 总结文档关联到 todo_item；支持重跑（新建 task + 新对话历史 + 新总结，旧 task 保留为历史）。设计文档 `docs/specs/100_todo-app-design.md` §10 Phase 5 标注"已实现"。
+
+### 新增
+
+- **类型与 Service 扩展**
+  - `types.ts`：新增 `CreateTaskFromItemOptions`（agentName / llmConfigName / extraPrompt?）
+  - `todo-item.service.ts`：新增专用方法 `updateAgentTaskId(id, taskId)`（不污染 `update()` 公共 patch，仅 TodoTaskService 内部调用）
+
+- **TodoTaskService 适配层**（`todo-task.service.ts` 新增，~250 行）
+  - `createTaskFromItem(itemId, options)`：item 校验 → collectSubtree → buildPrompt（§8.3 模板，4 段落 + 子任务按 depth 缩进）→ category_path 解析 → TaskManager.createAgentTask → updateAgentTaskId → TaskManager.run（异步 fire-and-forget）
+  - `rerun(itemId, options)`：语义等价 createTaskFromItem（新建 task + 覆盖 agent_task_id，旧 task 历史保留）
+  - `listTasksByItem(itemId)`：委托 `taskManager.listBySource('todo-app', itemId)`
+  - `handleAgentTaskResult`（private，注册为 `'todo-app:agent'` source handler）：消费 `result.rawOutput` 对话 messages → generateSummary 生成 markdown → 创建 todo_document 关联到 source_ref_id → 返回 `{ summary_doc_id }`；catch 后返回 `{ handler_error }`（TaskManager 已保证 completed 状态不受影响）
+  - `generateSummary`（private）：复用任务自身的 `agent_name + llm_config_name`（Q-PHASE5-1），实例化 `AiAgentService`（无工具 / 无 skill / 无 memory，单轮）→ 消费 `sendMessage` 流（不保存事件）→ 取 `getMessages()` 最后一条 assistant content 作为总结
+
+- **TodoAppService 装配**（`todo-app.service.ts` 修改）
+  - 构造函数新增**可选**第 4 参数 `taskManager?: TaskManager`：注入后实例化 TodoTaskService（构造函数末尾自动注册 source handler）
+  - 未注入时 `taskService=null`，向后兼容现有 149 个 todo-app 测试（Q-PHASE5-4）
+  - 新增字段 `private taskService: TodoTaskService | null`、`getTaskService()` 访问入口
+
+- **Bootstrap 注入**（`todo-app-bootstrap.ts` 修改）
+  - 调用 `getTaskManager()`，若抛错（task 系统未引导）则降级（todo-app 其他功能不受影响，仅日志告警）
+  - 与现有 `bootstrapTaskSystem() → bootstrapTodoApp()` 顺序对齐（Q-PHASE5-5）
+
+- **IPC + Preload**
+  - `src/shared/ipc-channels.ts`：新增 `TODO_CREATE_TASK_FROM_ITEM` / `TODO_LIST_TASKS_BY_ITEM` 频道
+  - `src/main/core/ipc/handlers/todo-app.handler.ts`：注册 2 个 handler，**仅在 `getTaskService() !== null` 时注册**（与 bootstrap 降级策略一致）
+  - `src/preload/index.ts`：`window.todoApp` 新增 `createTaskFromItem` / `listTasksByItem`
+
+- **UI**（3 个新组件 + 2 个修改）
+  - `TaskRunDialog.vue`（~150 行）：480px `el-dialog`，表单含 Agent / LLM 配置 / 额外 prompt；默认值取 `window.electron.getConfig().aiAssistant.defaultAgent / defaultLlmConfig`；标题随 mode 切换「运行任务」/「重跑任务」
+  - `TaskPanel.vue`（~250 行）：独立右侧视图（`rightPanelView` 状态机新增 `'task-panel'` 分支，与 document-editor 平级）；订阅 `qtian:task:event`，按 taskId 过滤累积 text_delta（`<pre>` 直接渲染，Q-PHASE5-6 不复用 ChatMessage.vue）+ tool_start/tool_result 配对区块；终态显示总结文档链接（`result_meta.summary_doc_id`）+ handler_error 提示；可展开 TaskHistoryList；顶部 [返回] + [取消]（仅 running）
+  - `TaskHistoryList.vue`（~80 行）：某 todo_item 全部历史任务，按 `created_at DESC`，currentTaskId 高亮；行内 [查看总结] 直接打开 summary doc
+  - `TodoItemDetail.vue`：新增 "AI 任务" 区段 —— agent_task_id 为空时显示 [运行任务]；非空时显示 [查看任务面板] + [重跑]；formData 新增 `agent_task_id` 字段
+  - `TodoAppPage.vue`：集成 TaskPanel + TaskRunDialog；`rightPanelView` 状态机新增 `'task-panel'` 分支；新增 `taskDialogVisible` / `taskDialogMode` / `taskPanelTaskId` 状态；`handleTaskConfirm` 调用 `createTaskFromItem` 并切换到 task-panel 视图（含 `detailKey` 强制刷新）
+
+- **测试**（新增 16 用例，todo-app suite 由 183 → 199）
+  - `todo-task.service.test.ts`（12 用例）：
+    - buildPrompt：含 `[任务上下文]` / `[当前 todo]` / `[子任务列表]`（depth=1 无缩进，depth=2 两个空格）/ `[运行时补充]` 段落
+    - createTaskFromItem：item 不存在抛错 / 正常流程（createAgentTask + run + agent_task_id 更新）/ category_path 解析（多层 category 父链回溯）
+    - rerun：覆盖 agent_task_id，旧 task 历史保留
+    - listTasksByItem：委托 `listBySource('todo-app', itemId)`
+    - handleAgentTaskResult：LLM 成功创建 todo_document / source_ref_id 为 null 返回 handler_error / LLM 抛错返回 handler_error（不抛出）
+  - `todo-item.service.test.ts` 新增 `updateAgentTaskId` 4 用例：写入新值 / 覆盖 / 不存在 id 不抛错 / 已软删除不更新
+  - mock 策略：`better-sqlite3` 复用 `createTodoMemDbFactory`；`AiAgentService` mock `sendMessage` 单轮；`AiAgentMgrService` / `AiConfigService` mock；TaskManager 构造 fake（参考 `task-manager.service.test.ts` createFakeExecutor 模式）
+
+- **文档**
+  - `docs/specs/100_todo-app-design.md`：§10 Phase 5 标注 "✅ 已实现（2026-06-18）" + 详细实施说明；§11 表格新增 Q-PHASE5-1 ~ Q-PHASE5-6 决策记录（总结生成 LLM 配置 / TaskPanel 位置 / agent_task_id 更新方式 / TodoAppService 向后兼容 / bootstrap 降级 / 流式渲染策略）；§12 T-2 标注"已解决"
+
+## [Unreleased] 2026-06-18
+
+**User**: todo-app Phase 4 回收站跨表聚合（Service + 聚合层 + IPC + UI + 测试 + 文档）
+
+**Summary**:
+
+落地 todo-app **Phase 4 回收站**：基于 `deleted_at` 跨 5 张业务表（category / todo_list / todo_item / document / label）聚合，提供统一的 `list-trash` / `purge-trash` / `empty-trash` IPC、`TrashDialog.vue` 跨表展示 UI、单条恢复 / 单条彻底删除 / 清空回收站三种操作；补全 `TODO_RESTORE_DOCUMENT` / `TODO_RESTORE_LABEL` 频道（原设计遗漏）。设计文档 `docs/specs/100_todo-app-design.md` §10 Phase 4 标注"已实现"。
+
+### 新增
+
+- **类型与聚合层**
+  - `types.ts`：新增 `TodoTrashEntityType`（比 `TodoFtsEntityType` 多 `'label'`）、`TodoTrashItem`（含可选 `parent_id` / `category_id` / `todo_list_id`）、`TodoEmptyTrashResult`
+  - `todo-app.service.ts`：新增聚合层 3 个方法 —— `listTrash()` 跨 5 表聚合按 `deleted_at DESC` 排序、`purgeTrash(type, id)` 按 type 路由到对应 Service.purge、`emptyTrash()` 逐条 purge 不引入跨 Service 大事务
+
+- **业务 Service 集成**（5 个 Service 各新增 listTrash + purge）
+  - `todo-category.service.ts`：`purge(id)` 依赖关系逆序物理删除 item_label → document → item → list → category；新增私有方法 `collectSubtreeIdsAll`（不过滤 `deleted_at`，用于 purge 收集已软删除子节点），与现有 `collectSubtreeIds` 并存
+  - `todo-list.service.ts`：`purge(id)` 级联清理 item_label → document → item → list
+  - `todo-item.service.ts`：`purge(id)` 递归物理删除子树 + 关联 document + item_label；新增 `collectSubtreeIdsAll`；`listTrash()` 返回 `label_ids: []`（软删除时已清关联）
+  - `todo-document.service.ts`：`purge(id)` 无级联仅删自身
+  - `todo-label.service.ts`：`purge(id)` 防御性清理 `todo_item_label` + 自身
+  - **purge 幂等性**：所有 purge 方法开头校验 `deleted_at IS NOT NULL`，未删除实体 no-op（不抛错），防止误 purge 活跃数据
+  - **FTS 与 purge 解耦**：软删除时已 `syncFts(type, id, null)` 清理，物理删除时 FTS 已无数据，purge 不操作 FTS
+
+- **IPC + Preload**
+  - `src/shared/ipc-channels.ts`：新增 `TODO_LIST_TRASH` / `TODO_PURGE_TRASH` / `TODO_EMPTY_TRASH` + `TODO_RESTORE_DOCUMENT` / `TODO_RESTORE_LABEL`（补全原设计遗漏）
+  - `src/main/core/ipc/handlers/todo-app.handler.ts`：注册 5 个 handler，引入 `TodoTrashEntityType` 类型
+  - `src/preload/index.ts`：`window.todoApp` 新增 `listTrash` / `purgeTrash` / `emptyTrash` / `restoreDocument` / `restoreLabel`
+
+- **UI**（`TrashDialog.vue` 新增 + sidebar 入口）
+  - `TrashDialog.vue`：720px `el-dialog`；按 `deleted_at DESC` 列出每行 `[类型图标] [名称 + 类型 el-tag] [删除时间] [恢复] [彻底删除]`；空状态 `el-empty`；底部 `[清空回收站]`（红色 plain，仅 items.length > 0 时显示）+ `[关闭]`
+  - 类型图标：category→Folder / todo_list→Files / todo_item→Document / document→Memo / label→Collection
+  - 类型标签：分类 / 列表 / 待办 / 文档 / 标签；类型 el-tag type 区分色（success / primary / warning / info / danger）
+  - 二次确认：彻底删除 + 清空回收站均用 `ElMessageBox.confirm(..., { type: 'warning' })`
+  - 时间格式化：直接用 `Date` + 模板字符串（避免引入 dayjs）
+  - `TodoSidebar.vue`：底部新增 [回收站] 按钮（Delete 图标），`.todo-sidebar-inner` 改为 flex column + min-height:100%，footer 用 `margin-top: auto` 推到底部（设计文档 §9.3）
+  - `TodoAppPage.vue`：集成 TrashDialog，新增 `handleTrashRestored` / `handleTrashChanged` 回调，按 type 刷新 categoryTree / labels
+
+- **测试**（新增 34 用例，todo-app suite 由 149 → 183）
+  - 5 个 Service 各新增 `describe('listTrash')` + `describe('purge')`：
+    - listTrash：返回字段正确性、恢复后消失、未删除不出现、`deleted_at DESC` 排序
+    - purge：已软删除实体的物理删除（直接查表 `db.getDBManager().get(...)` 验证行消失）、级联子项物理删除、未删除实体 purge 为 no-op、不存在的 id 为 no-op
+    - 关键级联覆盖：category purge 同时清理 category 维度 + item 维度的 document；label purge 防御性清理残留关联
+
+- **文档**
+  - `docs/specs/100_todo-app-design.md`：§10 Phase 4 标注"✅ 已实现（2026-06-18）"+ 实施说明；§6.2 补充 `TODO_RESTORE_DOCUMENT` / `TODO_RESTORE_LABEL` 频道定义；§11 表格新增 Q-PHASE4-1 ~ Q-PHASE4-6 决策记录（purge 级联策略 / 聚合层位置 / TodoTrashItem 字段 / FTS 与 purge 关系 / emptyTrash 事务策略 / restore IPC 补全）
+
 ## [1.0.0] 2026-06-17
 
 **User**: todo-app Phase 3 全文搜索（jieba）一次性交付（后端 + IPC + 完整 UI）

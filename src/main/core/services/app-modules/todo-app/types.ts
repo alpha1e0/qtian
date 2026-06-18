@@ -225,3 +225,67 @@ export interface TodoSearchHistory {
   /** 最后一次搜索时间（Unix ms） */
   searched_at: number;
 }
+
+// ============================================================================
+// 回收站（Phase 4）
+// ============================================================================
+
+/**
+ * 回收站实体类型集合。
+ *
+ * 比 `TodoFtsEntityType` 多一个 `'label'`（label 不纳入 FTS 索引，但参与回收站）。
+ * 与 docs/specs/100_todo-app-design.md §10 Phase 4 / §6.2 一致。
+ */
+export type TodoTrashEntityType = 'category' | 'todo_list' | 'todo_item' | 'document' | 'label';
+
+/**
+ * 回收站统一展示项（跨表聚合）。
+ *
+ * 由 TodoAppService.listTrash() 聚合 5 张业务表的软删除行得到。
+ * 可选父级字段用于 UI 展示恢复提示（如"该实体父级已删除，恢复后将提升至根"）。
+ */
+export interface TodoTrashItem {
+  /** 实体类型 */
+  type: TodoTrashEntityType;
+  /** 实体 ID */
+  id: number;
+  /** 展示名称（category.name / todo_list.name / todo_item.title / document.name / label.name） */
+  name: string;
+  /** 软删除时间（Unix ms；listTrash 已确保仅返回已删除项，故非 null） */
+  deleted_at: number;
+  /** 父级 ID（仅 category / todo_item 适用；用于恢复提示） */
+  parent_id?: number | null;
+  /** 所属 category ID（仅 todo_list 适用） */
+  category_id?: number | null;
+  /** 所属 todo_list ID（仅 todo_item 适用） */
+  todo_list_id?: number | null;
+}
+
+/**
+ * 清空回收站返回结果。
+ *
+ * `removed` 为本次实际物理删除的条目数（等于清空前 listTrash().length）。
+ */
+export interface TodoEmptyTrashResult {
+  removed: number;
+}
+
+// ============================================================================
+// Todo 驱动 AI 任务（Phase 5）
+// ============================================================================
+
+/**
+ * createTaskFromItem 入参（运行任务 / 重跑共用）。
+ *
+ * 与 docs/specs/100_todo-app-design.md §8.2 对应：
+ *   agentName / llmConfigName 由用户在 TaskRunDialog 选择；
+ *   extraPrompt 为运行时补充段落（§8.3 的 [运行时补充] 模板字段）。
+ */
+export interface CreateTaskFromItemOptions {
+  /** Agent 名称（指向 AiAgentMgrService.getAgent 入参） */
+  agentName: string;
+  /** LLM 配置名（指向 AiConfigService.getConfig 入参） */
+  llmConfigName: string;
+  /** 运行时补充 prompt（可选） */
+  extraPrompt?: string;
+}

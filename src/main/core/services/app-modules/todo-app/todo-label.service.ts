@@ -135,6 +135,45 @@ export class TodoLabelService {
     return this.getById(id);
   }
 
+  /** 列出回收站中的标签 */
+  listTrash(): TodoLabel[] {
+    const rows = this.db.query<TodoLabelRow>(
+      `SELECT id, name, type, created_at, deleted_at
+       FROM todo_label WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`,
+    );
+    return rows.map((r) => this.mapRow(r));
+  }
+
+  /**
+   * 物理删除已软删除的标签（不可恢复）。
+   *
+   * 级联清理 todo_item_label 关联（防御性：label.delete 时已清，purge 再清一次）。
+   * 幂等性：先校验 `deleted_at IS NOT NULL`，未删除实体为 no-op。
+   *
+   * @param id - 待物理删除的 label ID（必须已软删除）
+   */
+  purge(id: number): void {
+    const row = this.db.get<{ deleted_at: number | null }>(
+      `SELECT deleted_at FROM todo_label WHERE id = ?`,
+      [id],
+    );
+    if (!row || row.deleted_at === null) {
+      return;
+    }
+    this.db.transaction(() => {
+      // 防御性清理关联（delete 时已清，但 purge 防止任何残留）
+      this.db.execute(
+        `DELETE FROM todo_item_label WHERE label_id = ?`,
+        [id],
+      );
+      this.db.execute(
+        `DELETE FROM todo_label WHERE id = ?`,
+        [id],
+      );
+    });
+    logger.info(`Label purged: id=${id}`);
+  }
+
   /** 按 id 获取未删除标签 */
   getById(id: number): TodoLabel | undefined {
     const row = this.db.get<TodoLabelRow>(

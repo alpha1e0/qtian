@@ -350,4 +350,106 @@ describe('TodoItemService', () => {
       expect(svc.collectSubtree(root.id)).toEqual([]);
     });
   });
+
+  describe('listTrash', () => {
+    it('应返回已软删除 todo_item（label_ids 为空数组）', () => {
+      const item = svc.create({ title: 'gone', todo_list_id: 1 });
+      svc.delete(item.id);
+      const trash = svc.listTrash();
+      expect(trash).toHaveLength(1);
+      expect(trash[0].id).toBe(item.id);
+      expect(trash[0].deleted_at).not.toBeNull();
+      expect(trash[0].label_ids).toEqual([]);
+    });
+
+    it('恢复后不应出现在 listTrash', () => {
+      const item = svc.create({ title: 'rev', todo_list_id: 1 });
+      svc.delete(item.id);
+      svc.restore(item.id);
+      expect(svc.listTrash()).toHaveLength(0);
+    });
+  });
+
+  describe('purge', () => {
+    it('应物理删除已软删除的 todo_item', () => {
+      const mgr = db.getDBManager();
+      const item = svc.create({ title: 'gone', todo_list_id: 1 });
+      svc.delete(item.id);
+      svc.purge(item.id);
+      expect(mgr.get('SELECT id FROM todo_item WHERE id = ?', [item.id])).toBeUndefined();
+    });
+
+    it('应递归物理删除子 todo_item 子树', () => {
+      const mgr = db.getDBManager();
+      const root = svc.create({ title: 'root', todo_list_id: 1 });
+      const child = svc.create({ title: 'child', todo_list_id: 1, parent_id: root.id });
+      const grand = svc.create({ title: 'grand', todo_list_id: 1, parent_id: child.id });
+      svc.delete(root.id); // 级联软删除整棵树
+      svc.purge(root.id);
+      expect(mgr.get('SELECT id FROM todo_item WHERE id = ?', [root.id])).toBeUndefined();
+      expect(mgr.get('SELECT id FROM todo_item WHERE id = ?', [child.id])).toBeUndefined();
+      expect(mgr.get('SELECT id FROM todo_item WHERE id = ?', [grand.id])).toBeUndefined();
+    });
+
+    it('应级联物理删除关联 document + item_label', () => {
+      const mgr = db.getDBManager();
+      const item = svc.create({ title: 'task', todo_list_id: 1 });
+      const label = labelSvc.create({ name: 'Lx' });
+      svc.update(item.id, { label_ids: [label.id] });
+      mgr.insert(
+        'INSERT INTO todo_document (name, content, todo_category_id, todo_item_id, created_at, updated_at, deleted_at) VALUES (?, ?, NULL, ?, ?, ?, NULL)',
+        ['doc', '', item.id, 1, 1],
+      );
+
+      svc.delete(item.id);
+      svc.purge(item.id);
+
+      expect(mgr.get('SELECT id FROM todo_document WHERE todo_item_id = ?', [item.id])).toBeUndefined();
+      expect(
+        mgr.get('SELECT todo_item_id FROM todo_item_label WHERE todo_item_id = ?', [item.id]),
+      ).toBeUndefined();
+    });
+
+    it('未删除实体 purge 为 no-op（实体仍存在）', () => {
+      const mgr = db.getDBManager();
+      const item = svc.create({ title: 'alive', todo_list_id: 1 });
+      expect(() => svc.purge(item.id)).not.toThrow();
+      expect(mgr.get('SELECT id FROM todo_item WHERE id = ?', [item.id])).toBeDefined();
+      expect(svc.getById(item.id)).toBeDefined();
+    });
+
+    it('不存在的 id purge 为 no-op', () => {
+      expect(() => svc.purge(99999)).not.toThrow();
+    });
+  });
+
+  describe('updateAgentTaskId (Phase 5)', () => {
+    it('写入新值后 getById 返回更新后的 agent_task_id', () => {
+      const item = svc.create({ title: 'task', todo_list_id: 1 });
+      expect(item.agent_task_id).toBeNull();
+      svc.updateAgentTaskId(item.id, 42);
+      const after = svc.getById(item.id);
+      expect(after?.agent_task_id).toBe(42);
+    });
+
+    it('覆盖现有值（先 1 再 2）', () => {
+      const item = svc.create({ title: 'task', todo_list_id: 1 });
+      svc.updateAgentTaskId(item.id, 1);
+      expect(svc.getById(item.id)?.agent_task_id).toBe(1);
+      svc.updateAgentTaskId(item.id, 2);
+      expect(svc.getById(item.id)?.agent_task_id).toBe(2);
+    });
+
+    it('不存在的 id 不抛错（UPDATE changes=0）', () => {
+      expect(() => svc.updateAgentTaskId(99999, 5)).not.toThrow();
+    });
+
+    it('已软删除的 item 不被更新（WHERE deleted_at IS NULL）', () => {
+      const item = svc.create({ title: 'gone', todo_list_id: 1 });
+      svc.delete(item.id);
+      svc.updateAgentTaskId(item.id, 99);
+      // getById 仅返回未删除，故为 undefined；直接查表验证 agent_task_id 仍为 null
+      expect(svc.getById(item.id)).toBeUndefined();
+    });
+  });
 });

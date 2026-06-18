@@ -119,6 +119,8 @@ export const IPC_CHANNELS = {
   TODO_GET_DOCUMENT: 'qtian:todo:get-document',
   TODO_SAVE_DOCUMENT: 'qtian:todo:save-document',
   TODO_DELETE_DOCUMENT: 'qtian:todo:delete-document',
+  // 恢复已软删除文档（Phase 4 回收站 UI 必需，补全原设计遗漏）
+  TODO_RESTORE_DOCUMENT: 'qtian:todo:restore-document',
   TODO_SAVE_ATTACHMENT: 'qtian:todo:save-attachment',
   // 基于文件路径的附件保存（避免大文件经 IPC 序列化整个 buffer）
   TODO_SAVE_ATTACHMENT_FROM_PATH: 'qtian:todo:save-attachment-from-path',
@@ -131,6 +133,18 @@ export const IPC_CHANNELS = {
   TODO_LIST_SEARCH_HISTORY: 'qtian:todo:list-search-history',
   TODO_DELETE_SEARCH_HISTORY: 'qtian:todo:delete-search-history',
   TODO_CLEAR_SEARCH_HISTORY: 'qtian:todo:clear-search-history',
+
+  // 回收站（Phase 4：跨表聚合 + 物理删除）
+  TODO_LIST_TRASH: 'qtian:todo:list-trash',
+  TODO_PURGE_TRASH: 'qtian:todo:purge-trash',
+  TODO_EMPTY_TRASH: 'qtian:todo:empty-trash',
+
+  // Label 恢复（Phase 4 回收站 UI 必需，补全原设计遗漏）
+  TODO_RESTORE_LABEL: 'qtian:todo:restore-label',
+
+  // Todo 驱动 AI 任务（Phase 5）
+  TODO_CREATE_TASK_FROM_ITEM: 'qtian:todo:create-task-from-item',
+  TODO_LIST_TASKS_BY_ITEM: 'qtian:todo:list-tasks-by-item',
 } as const;
 
 /**

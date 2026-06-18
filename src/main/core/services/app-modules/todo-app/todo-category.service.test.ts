@@ -234,5 +234,103 @@ describe('TodoCategoryService', () => {
       expect(trash).toHaveLength(1);
       expect(trash[0].id).toBe(c.id);
     });
+
+    it('恢复后不应出现在 listTrash', () => {
+      const c = svc.create({ name: 't2', parent_id: null });
+      svc.delete(c.id);
+      svc.restore(c.id);
+      expect(svc.listTrash()).toHaveLength(0);
+    });
+
+    it('按 deleted_at DESC 排序（最近删除在前）', async () => {
+      const a = svc.create({ name: 'a', parent_id: null });
+      const b = svc.create({ name: 'b', parent_id: null });
+      svc.delete(a.id);
+      // 让 b 的删除时间晚于 a
+      await new Promise((r) => setTimeout(r, 5));
+      svc.delete(b.id);
+      const trash = svc.listTrash();
+      expect(trash).toHaveLength(2);
+      expect(trash[0].id).toBe(b.id);
+      expect(trash[1].id).toBe(a.id);
+    });
+  });
+
+  describe('purge', () => {
+    it('应物理删除已软删除的分类（数据库行消失）', () => {
+      const mgr = db.getDBManager();
+      const c = svc.create({ name: 'gone', parent_id: null });
+      svc.delete(c.id);
+      svc.purge(c.id);
+      // 直接查表（不带 deleted_at 过滤）确认物理删除
+      const row = mgr.get('SELECT id FROM todo_category WHERE id = ?', [c.id]);
+      expect(row).toBeUndefined();
+    });
+
+    it('应级联物理删除子 category', () => {
+      const mgr = db.getDBManager();
+      const root = svc.create({ name: 'root', parent_id: null });
+      const child = svc.create({ name: 'child', parent_id: root.id });
+      svc.delete(root.id); // 级联软删除 child
+      svc.purge(root.id);
+      expect(mgr.get('SELECT id FROM todo_category WHERE id = ?', [root.id])).toBeUndefined();
+      expect(mgr.get('SELECT id FROM todo_category WHERE id = ?', [child.id])).toBeUndefined();
+    });
+
+    it('应级联物理删除关联 todo_list / todo_item / document / item_label', () => {
+      const mgr = db.getDBManager();
+      const root = svc.create({ name: 'root', parent_id: null });
+      // 在 root 下构造 list + item + document + item_label
+      const listId = mgr.insert(
+        'INSERT INTO todo_list (name, description, category_id, created_at, updated_at, deleted_at) VALUES (?, ?, ?, ?, ?, NULL)',
+        ['list1', '', root.id, 1, 1],
+      ).lastRowid;
+      const itemId = mgr.insert(
+        'INSERT INTO todo_item (title, description, task_prompt, parent_id, status, progress, priority, due_at, todo_list_id, agent_task_id, is_manual_progress, created_at, updated_at, deleted_at) VALUES (?, ?, ?, NULL, ?, ?, ?, NULL, ?, NULL, 0, ?, ?, NULL)',
+        ['task', '', '', 'init', 0, 'normal', listId, 1, 1],
+      ).lastRowid;
+      const labelId = mgr.insert(
+        'INSERT INTO todo_label (name, type, created_at, deleted_at) VALUES (?, ?, ?, NULL)',
+        ['lbl', 'default', 1],
+      ).lastRowid;
+      mgr.insert(
+        'INSERT INTO todo_item_label (todo_item_id, label_id) VALUES (?, ?)',
+        [itemId, labelId],
+      );
+      mgr.insert(
+        'INSERT INTO todo_document (name, content, todo_category_id, todo_item_id, created_at, updated_at, deleted_at) VALUES (?, ?, ?, NULL, ?, ?, NULL)',
+        ['doc-cat', '', root.id, 1, 1],
+      );
+      mgr.insert(
+        'INSERT INTO todo_document (name, content, todo_category_id, todo_item_id, created_at, updated_at, deleted_at) VALUES (?, ?, NULL, ?, ?, ?, NULL)',
+        ['doc-item', '', itemId, 1, 1],
+      );
+
+      svc.delete(root.id); // 级联软删除
+      svc.purge(root.id);
+
+      expect(mgr.get('SELECT id FROM todo_list WHERE id = ?', [listId])).toBeUndefined();
+      expect(mgr.get('SELECT id FROM todo_item WHERE id = ?', [itemId])).toBeUndefined();
+      expect(mgr.get('SELECT id FROM todo_document WHERE todo_category_id = ?', [root.id])).toBeUndefined();
+      expect(mgr.get('SELECT id FROM todo_document WHERE todo_item_id = ?', [itemId])).toBeUndefined();
+      expect(
+        mgr.get('SELECT todo_item_id FROM todo_item_label WHERE todo_item_id = ?', [itemId]),
+      ).toBeUndefined();
+      // label 自身不被 purge（仅清理关联）
+      expect(mgr.get('SELECT id FROM todo_label WHERE id = ?', [labelId])).toBeDefined();
+    });
+
+    it('未删除实体 purge 为 no-op（不抛错，实体仍存在）', () => {
+      const mgr = db.getDBManager();
+      const c = svc.create({ name: 'alive', parent_id: null });
+      expect(() => svc.purge(c.id)).not.toThrow();
+      // 实体仍存在
+      expect(mgr.get('SELECT id FROM todo_category WHERE id = ?', [c.id])).toBeDefined();
+      expect(svc.getById(c.id)).toBeDefined();
+    });
+
+    it('不存在的 id purge 为 no-op', () => {
+      expect(() => svc.purge(99999)).not.toThrow();
+    });
   });
 });

@@ -8,15 +8,19 @@ import { TodoAppService } from '@/core/services/app-modules/todo-app/todo-app.se
 import {
   TodoItemStatus,
   TodoItemPriority,
+  TodoTrashEntityType,
 } from '@/core/services/app-modules/todo-app/types';
 
 const logger = createLogger('IPC:TodoApp');
 
 /**
- * 注册 todo-app IPC handlers（Phase 1-2 范围）。
+ * 注册 todo-app IPC handlers（Phase 1-5 范围）。
  *
- * 覆盖：Category / TodoList / TodoItem / Label / Document / Config。
- * 未覆盖（后续 Phase）：全文搜索、回收站统一入口、Todo 驱动任务。
+ * 覆盖：Category / TodoList / TodoItem / Label / Document / Config（Phase 1-2），
+ *      全文搜索（Phase 3）、回收站统一入口（Phase 4）、Todo 驱动 AI 任务（Phase 5）。
+ *
+ * Phase 5 任务 handler 仅在 todoAppService.getTaskService() 非 null 时注册
+ * （TaskManager 未注入时跳过，保证 bootstrap 降级安全）。
  *
  * @param todoAppService - todo-app 服务单例
  */
@@ -194,8 +198,52 @@ export function registerTodoAppHandlers(todoAppService: TodoAppService): void {
     search.clearSearchHistory();
   });
 
+  // ===== 回收站（Phase 4：跨表聚合 + 物理删除） =====
+  ipcMain.handle(IPC_CHANNELS.TODO_LIST_TRASH, async () => {
+    return todoAppService.listTrash();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.TODO_PURGE_TRASH, async (_e, type: TodoTrashEntityType, id: number) => {
+    logger.info(`Purge trash: type=${type}, id=${id}`);
+    todoAppService.purgeTrash(type, id);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.TODO_EMPTY_TRASH, async () => {
+    logger.info('Empty trash');
+    return todoAppService.emptyTrash();
+  });
+
+  // ===== 回收站 UI 恢复补全（document / label） =====
+  ipcMain.handle(IPC_CHANNELS.TODO_RESTORE_DOCUMENT, async (_e, id: number) => {
+    logger.info(`Restore document: id=${id}`);
+    return doc.restore(id);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.TODO_RESTORE_LABEL, async (_e, id: number) => {
+    logger.info(`Restore label: id=${id}`);
+    return label.restore(id);
+  });
+
+  // ===== Todo 驱动 AI 任务（Phase 5） =====
+  // 仅在 TaskManager 已注入时注册；未注入时 IPC 调用会因 channel 未注册而失败
+  // （与 bootstrap 降级策略一致：todo-app 其他功能不受影响）
+  const task = todoAppService.getTaskService();
+  if (task) {
+    ipcMain.handle(
+      IPC_CHANNELS.TODO_CREATE_TASK_FROM_ITEM,
+      async (_e, itemId: number, options: { agentName: string; llmConfigName: string; extraPrompt?: string }) => {
+        logger.info(`Create task from item: itemId=${itemId}, agent=${options?.agentName}`);
+        return task.createTaskFromItem(itemId, options);
+      },
+    );
+
+    ipcMain.handle(IPC_CHANNELS.TODO_LIST_TASKS_BY_ITEM, async (_e, itemId: number) => {
+      return task.listTasksByItem(itemId);
+    });
+  }
+
   logger.info('Todo app IPC handlers registered');
 }
 
 // 导出类型供 handler 内部引用（避免 unused import 警告）
-export type { TodoItemStatus, TodoItemPriority };
+export type { TodoItemStatus, TodoItemPriority, TodoTrashEntityType };

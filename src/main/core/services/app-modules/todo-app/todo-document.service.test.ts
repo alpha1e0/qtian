@@ -133,6 +133,51 @@ describe('TodoDocumentService', () => {
     });
   });
 
+  describe('listTrash', () => {
+    it('应返回已软删除文档', () => {
+      const doc = svc.create({ name: 'gone', content: 'x' });
+      svc.delete(doc.id);
+      const trash = svc.listTrash();
+      expect(trash).toHaveLength(1);
+      expect(trash[0].id).toBe(doc.id);
+      expect(trash[0].deleted_at).not.toBeNull();
+    });
+
+    it('恢复后不应出现在 listTrash', () => {
+      const doc = svc.create({ name: 'rev2' });
+      svc.delete(doc.id);
+      svc.restore(doc.id);
+      expect(svc.listTrash()).toHaveLength(0);
+    });
+
+    it('未删除的文档不出现', () => {
+      svc.create({ name: 'alive' });
+      expect(svc.listTrash()).toHaveLength(0);
+    });
+  });
+
+  describe('purge', () => {
+    it('应物理删除已软删除的文档', () => {
+      const mgr = db.getDBManager();
+      const doc = svc.create({ name: 'gone', content: 'data' });
+      svc.delete(doc.id);
+      svc.purge(doc.id);
+      expect(mgr.get('SELECT id FROM todo_document WHERE id = ?', [doc.id])).toBeUndefined();
+    });
+
+    it('未删除实体 purge 为 no-op（实体仍存在）', () => {
+      const mgr = db.getDBManager();
+      const doc = svc.create({ name: 'alive' });
+      expect(() => svc.purge(doc.id)).not.toThrow();
+      expect(mgr.get('SELECT id FROM todo_document WHERE id = ?', [doc.id])).toBeDefined();
+      expect(svc.getById(doc.id)).toBeDefined();
+    });
+
+    it('不存在的 id purge 为 no-op', () => {
+      expect(() => svc.purge(99999)).not.toThrow();
+    });
+  });
+
   describe('saveAttachment', () => {
     it('应保存附件并返回 local-resource URL', () => {
       const buf = Buffer.from('fake-image-data');

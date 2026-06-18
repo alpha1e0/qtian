@@ -20,6 +20,7 @@
         @rename-category="handleRenameCategory"
         @delete-category="handleDeleteCategory"
         @select-label="handleSelectLabel"
+        @open-trash="trashDialogVisible = true"
       />
 
       <!-- 中间面板：todo_list + todo_item 树 -->
@@ -42,6 +43,9 @@
         :item-id="selectedItemId"
         @updated="handleItemUpdated"
         @open-doc="openDoc"
+        @run-task="openRunDialog('run')"
+        @view-task="openTaskPanel"
+        @rerun-task="openRunDialog('rerun')"
       />
       <TodoCategoryDetail
         v-else-if="rightPanelView === 'category-detail'"
@@ -61,10 +65,36 @@
         @back="handleEditorBack"
         @saved="handleDocSaved"
       />
+      <TaskPanel
+        v-else-if="rightPanelView === 'task-panel'"
+        :key="`task-${taskPanelTaskId}`"
+        class="todo-item-detail todo-item-detail-wide"
+        :item-id="selectedItemId"
+        :task-id="taskPanelTaskId"
+        @back="handleTaskPanelBack"
+        @open-doc="openDoc"
+        @select-task="handleSelectTask"
+      />
       <div v-else class="todo-item-detail todo-item-detail-empty">
         <el-empty description="选择一个待办条目或分类查看详情" />
       </div>
     </div>
+
+    <!-- 回收站对话框（Phase 4） -->
+    <TrashDialog
+      v-model:visible="trashDialogVisible"
+      @restored="handleTrashRestored"
+      @purged="handleTrashChanged"
+      @emptied="handleTrashChanged"
+    />
+
+    <!-- 任务运行对话框（Phase 5） -->
+    <TaskRunDialog
+      v-model:visible="taskDialogVisible"
+      :mode="taskDialogMode"
+      :item-id="selectedItemId"
+      @confirm="handleTaskConfirm"
+    />
   </div>
 </template>
 
@@ -75,11 +105,14 @@ import TodoItemDetail from './TodoItemDetail.vue';
 import TodoCategoryDetail from './TodoCategoryDetail.vue';
 import TodoDocumentEditor from './TodoDocumentEditor.vue';
 import TodoSearchBar from './TodoSearchBar.vue';
+import TrashDialog from './TrashDialog.vue';
+import TaskRunDialog from './TaskRunDialog.vue';
+import TaskPanel from './TaskPanel.vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
 export default {
   name: 'TodoAppPage',
-  components: { TodoSidebar, TodoListPanel, TodoItemDetail, TodoCategoryDetail, TodoDocumentEditor, TodoSearchBar },
+  components: { TodoSidebar, TodoListPanel, TodoItemDetail, TodoCategoryDetail, TodoDocumentEditor, TodoSearchBar, TrashDialog, TaskRunDialog, TaskPanel },
   data() {
     return {
       categoryTree: [],
@@ -88,12 +121,18 @@ export default {
       selectedLabelId: null,
       selectedListId: null,
       selectedItemId: null,
-      // 右侧视图状态机：'empty' | 'item-detail' | 'category-detail' | 'document-editor'
+      // 右侧视图状态机：'empty' | 'item-detail' | 'category-detail' | 'document-editor' | 'task-panel'
       rightPanelView: 'empty',
       // 当前打开的文档上下文（编辑器视图使用）
       activeDoc: null,
       // 强制右侧详情组件刷新（文档保存后刷新关联列表）
       detailKey: 0,
+      // 回收站对话框（Phase 4）
+      trashDialogVisible: false,
+      // 任务运行对话框（Phase 5）
+      taskDialogVisible: false,
+      taskDialogMode: 'run',
+      taskPanelTaskId: null,
     };
   },
   computed: {
@@ -304,6 +343,84 @@ export default {
         console.error('jump to result failed', err);
         ElMessage.error('跳转失败');
       }
+    },
+    /**
+     * 回收站单条恢复回调（Phase 4）：
+     * 按 type 刷新对应源（categoryTree / labels）。
+     * todo_item / todo_document 由所在面板组件自行 watch 刷新，
+     * 这里不强制全量刷新避免打断用户当前视图。
+     */
+    async handleTrashRestored(item) {
+      if (!item) return;
+      if (item.type === 'category' || item.type === 'todo_list') {
+        await this.loadCategoryTree();
+      }
+      if (item.type === 'label') {
+        await this.loadLabels();
+      }
+    },
+    /** 回收站 purge / empty 后刷新 categoryTree + labels（结构可能变化） */
+    async handleTrashChanged() {
+      await Promise.all([this.loadCategoryTree(), this.loadLabels()]);
+    },
+    // ====================================================================
+    // Phase 5：Todo 驱动 AI 任务
+    // ====================================================================
+
+    /** 打开运行 / 重跑任务对话框 */
+    openRunDialog(mode) {
+      this.taskDialogMode = mode;
+      this.taskDialogVisible = true;
+    },
+
+    /** 打开任务面板：从 todo_item 取最新 agent_task_id */
+    async openTaskPanel() {
+      if (!this.selectedItemId) return;
+      try {
+        const item = await window.todoApp.getTodoItem(this.selectedItemId);
+        if (!item || !item.agent_task_id) {
+          ElMessage.warning('该条目尚未运行任务');
+          return;
+        }
+        this.taskPanelTaskId = item.agent_task_id;
+        this.rightPanelView = 'task-panel';
+      } catch (err) {
+        ElMessage.error(err?.message || '打开任务面板失败');
+      }
+    },
+
+    /** 任务对话框确认：发起任务并切换到任务面板 */
+    async handleTaskConfirm({ agentName, llmConfigName, extraPrompt }) {
+      if (!this.selectedItemId) return;
+      try {
+        const view = await window.todoApp.createTaskFromItem(this.selectedItemId, {
+          agentName,
+          llmConfigName,
+          extraPrompt,
+        });
+        this.taskPanelTaskId = view.id;
+        this.rightPanelView = 'task-panel';
+        // 强制 TodoItemDetail 刷新以反映新的 agent_task_id
+        this.detailKey += 1;
+      } catch (err) {
+        ElMessage.error(err?.message || '任务创建失败');
+      }
+    },
+
+    /** 任务面板返回：回到 todo_item 详情 */
+    handleTaskPanelBack() {
+      if (this.selectedItemId) {
+        this.rightPanelView = 'item-detail';
+        // 刷新详情以反映最新的 agent_task_id（任务结束后可能更新）
+        this.detailKey += 1;
+      } else {
+        this.rightPanelView = 'empty';
+      }
+    },
+
+    /** 任务面板内切换历史任务（TaskHistoryList 选择） */
+    handleSelectTask(taskId) {
+      this.taskPanelTaskId = taskId;
     },
   },
 };

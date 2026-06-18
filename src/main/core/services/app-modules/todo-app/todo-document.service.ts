@@ -154,6 +154,41 @@ export class TodoDocumentService {
     return this.getById(id);
   }
 
+  /** 列出回收站中的文档 */
+  listTrash(): TodoDocument[] {
+    const rows = this.db.query<TodoDocumentRow>(
+      `SELECT id, name, content, todo_category_id, todo_item_id, created_at, updated_at, deleted_at
+       FROM todo_document WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`,
+    );
+    return rows.map((r) => this.mapRow(r));
+  }
+
+  /**
+   * 物理删除已软删除的文档（不可恢复）。
+   *
+   * 无级联（document 不被其他表引用），仅删自身。
+   * 幂等性：先校验 `deleted_at IS NOT NULL`，未删除实体为 no-op。
+   * FTS 无需操作：软删除时已清理。
+   *
+   * @param id - 待物理删除的 document ID（必须已软删除）
+   */
+  purge(id: number): void {
+    const row = this.db.get<{ deleted_at: number | null }>(
+      `SELECT deleted_at FROM todo_document WHERE id = ?`,
+      [id],
+    );
+    if (!row || row.deleted_at === null) {
+      return;
+    }
+    this.db.transaction(() => {
+      this.db.execute(
+        `DELETE FROM todo_document WHERE id = ?`,
+        [id],
+      );
+    });
+    logger.info(`Document purged: id=${id}`);
+  }
+
   /** 按 id 获取未删除文档 */
   getById(id: number): TodoDocument | undefined {
     const row = this.db.get<TodoDocumentRow>(

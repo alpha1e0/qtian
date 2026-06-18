@@ -361,6 +361,58 @@ export class TodoItemService {
     return this.getById(id);
   }
 
+  /**
+   * 物理删除已软删除的 todo_item（不可恢复）。
+   *
+   * 级联物理删除（依赖关系逆序）：
+   *   todo_document → todo_item_label → todo_item（子树）
+   *
+   * 幂等性：先校验 `deleted_at IS NOT NULL`，未删除实体为 no-op。
+   * FTS 无需操作：软删除时已清理。
+   *
+   * @param id - 待物理删除的 todo_item ID（必须已软删除）
+   */
+  purge(id: number): void {
+    const row = this.db.get<{ deleted_at: number | null }>(
+      `SELECT deleted_at FROM todo_item WHERE id = ?`,
+      [id],
+    );
+    if (!row || row.deleted_at === null) {
+      return;
+    }
+
+    // 收集子树所有 item id（含已软删除子节点，故用 collectSubtreeIdsAll）
+    const subtreeIds = this.collectSubtreeIdsAll(id);
+    const idList = subtreeIds.join(',');
+
+    this.db.transaction(() => {
+      // 1. 物理删除关联 document（item 维度）
+      this.db.execute(
+        `DELETE FROM todo_document WHERE todo_item_id IN (${idList})`,
+      );
+      // 2. 清理 todo_item_label 关联
+      this.db.execute(
+        `DELETE FROM todo_item_label WHERE todo_item_id IN (${idList})`,
+      );
+      // 3. 物理删除 todo_item（子树）
+      this.db.execute(
+        `DELETE FROM todo_item WHERE id IN (${idList})`,
+      );
+    });
+
+    logger.info(`TodoItem purged: id=${id}, subtree=${subtreeIds.length} nodes`);
+  }
+
+  /** 列出回收站中的 todo_item（label_ids 返回 []，因为软删除时已清关联） */
+  listTrash(): TodoItem[] {
+    const rows = this.db.query<TodoItemRow>(
+      `SELECT id, title, description, task_prompt, parent_id, status, progress, priority,
+              due_at, todo_list_id, agent_task_id, is_manual_progress, created_at, updated_at, deleted_at
+       FROM todo_item WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`,
+    );
+    return rows.map((r) => this.mapRow(r, []));
+  }
+
   /** 按 id 获取未删除 todo_item（含 label_ids） */
   getById(id: number): TodoItem | undefined {
     const row = this.db.get<TodoItemRow>(
@@ -459,6 +511,23 @@ export class TodoItemService {
     }
 
     return this.getById(id)!;
+  }
+
+  /**
+   * 更新 todo_item.agent_task_id 指向（每次任务运行后覆盖）。
+   *
+   * 仅由 TodoTaskService 内部调用，**不通过 IPC / update() 公共 patch 暴露**，
+   * 避免业务侧误改导致与 task 系统不一致（设计文档 §8.6）。
+   *
+   * @param id - todo_item ID
+   * @param taskId - 最新关联的 task.id
+   */
+  updateAgentTaskId(id: number, taskId: number): void {
+    const now = Date.now();
+    this.db.execute(
+      `UPDATE todo_item SET agent_task_id = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`,
+      [taskId, now, id],
+    );
   }
 
   /**
@@ -614,6 +683,28 @@ export class TodoItemService {
       result.push(current);
       const children = this.db.query<{ id: number }>(
         `SELECT id FROM todo_item WHERE parent_id = ? AND deleted_at IS NULL`,
+        [current],
+      );
+      for (const c of children) {
+        queue.push(c.id);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * 收集子树所有 item id（含自身），**不过滤 deleted_at**。
+   *
+   * 与 `collectSubtreeIds` 区别：用于 purge 时收集已被软删除的子节点。
+   */
+  private collectSubtreeIdsAll(rootId: number): number[] {
+    const result: number[] = [];
+    const queue: number[] = [rootId];
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      result.push(current);
+      const children = this.db.query<{ id: number }>(
+        `SELECT id FROM todo_item WHERE parent_id = ?`,
         [current],
       );
       for (const c of children) {

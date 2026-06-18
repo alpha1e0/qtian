@@ -167,4 +167,70 @@ describe('TodoLabelService', () => {
       expect(svc.getItemLabels(20)).toEqual([]);
     });
   });
+
+  describe('listTrash', () => {
+    it('应返回已软删除标签', () => {
+      const l = svc.create({ name: 'gone' });
+      svc.delete(l.id);
+      const trash = svc.listTrash();
+      expect(trash).toHaveLength(1);
+      expect(trash[0].id).toBe(l.id);
+      expect(trash[0].deleted_at).not.toBeNull();
+    });
+
+    it('恢复后不应出现在 listTrash', () => {
+      const l = svc.create({ name: 'rev' });
+      svc.delete(l.id);
+      svc.restore(l.id);
+      expect(svc.listTrash()).toHaveLength(0);
+    });
+
+    it('未删除的标签不出现', () => {
+      svc.create({ name: 'alive' });
+      expect(svc.listTrash()).toHaveLength(0);
+    });
+  });
+
+  describe('purge', () => {
+    it('应物理删除已软删除的 label', () => {
+      const mgr = db.getDBManager();
+      const l = svc.create({ name: 'gone' });
+      svc.delete(l.id);
+      svc.purge(l.id);
+      expect(mgr.get('SELECT id FROM todo_label WHERE id = ?', [l.id])).toBeUndefined();
+    });
+
+    it('应清理残留 todo_item_label 关联（防御性）', () => {
+      const mgr = db.getDBManager();
+      const l = svc.create({ name: 'purge-me' });
+      // 模拟关联残留（即使 delete 时已清，这里手动插入验证 purge 不抛错且清理掉）
+      mgr.insert(
+        'INSERT INTO todo_item_label (todo_item_id, label_id) VALUES (?, ?)',
+        [999, l.id],
+      );
+      svc.delete(l.id);
+      // 再次插入残留（delete 已清一次）
+      mgr.insert(
+        'INSERT INTO todo_item_label (todo_item_id, label_id) VALUES (?, ?)',
+        [998, l.id],
+      );
+      svc.purge(l.id);
+      expect(
+        mgr.get('SELECT label_id FROM todo_item_label WHERE label_id = ?', [l.id]),
+      ).toBeUndefined();
+      expect(mgr.get('SELECT id FROM todo_label WHERE id = ?', [l.id])).toBeUndefined();
+    });
+
+    it('未删除实体 purge 为 no-op（实体仍存在）', () => {
+      const mgr = db.getDBManager();
+      const l = svc.create({ name: 'alive' });
+      expect(() => svc.purge(l.id)).not.toThrow();
+      expect(mgr.get('SELECT id FROM todo_label WHERE id = ?', [l.id])).toBeDefined();
+      expect(svc.getById(l.id)).toBeDefined();
+    });
+
+    it('不存在的 id purge 为 no-op', () => {
+      expect(() => svc.purge(99999)).not.toThrow();
+    });
+  });
 });

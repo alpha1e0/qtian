@@ -309,6 +309,82 @@ export class TodoCategoryService {
   }
 
   /**
+   * 物理删除已软删除的分类（不可恢复）。
+   *
+   * 级联物理删除（依赖关系逆序）：
+   *   todo_item_label → todo_document → todo_item → todo_list → todo_category
+   *
+   * 幂等性：先校验 `deleted_at IS NOT NULL`，未删除实体为 no-op（不抛错），
+   * 避免误 purge 活跃数据。
+   *
+   * FTS 无需操作：软删除时已 syncFts(type, id, null) 清理，物理删除时 FTS 已无数据。
+   *
+   * @param id - 待物理删除的 category ID（必须已软删除）
+   */
+  purge(id: number): void {
+    // 幂等校验：仅处理已软删除的实体
+    const row = this.db.get<{ deleted_at: number | null }>(
+      `SELECT deleted_at FROM todo_category WHERE id = ?`,
+      [id],
+    );
+    if (!row || row.deleted_at === null) {
+      return;
+    }
+
+    // 收集子树所有 category id（含已软删除子节点，故用 collectSubtreeIdsAll）
+    const subtreeIds = this.collectSubtreeIdsAll(id);
+    const idList = subtreeIds.join(',');
+
+    // 收集级联涉及的 list / item id（用于清理 item_label 和 document）
+    const listIdsRows = this.db.query<{ id: number }>(
+      `SELECT id FROM todo_list WHERE category_id IN (${idList})`,
+    );
+    const listIds = listIdsRows.map((r) => r.id);
+    const listIdList = listIds.length > 0 ? listIds.join(',') : 'NULL';
+    const itemIdsRows = this.db.query<{ id: number }>(
+      `SELECT id FROM todo_item WHERE todo_list_id IN (${listIdList})`,
+    );
+    const itemIds = itemIdsRows.map((r) => r.id);
+
+    this.db.transaction(() => {
+      // 1. 清理 todo_item_label 关联（item 维度）
+      if (itemIds.length > 0) {
+        const itemIdList = itemIds.join(',');
+        this.db.execute(
+          `DELETE FROM todo_item_label WHERE todo_item_id IN (${itemIdList})`,
+        );
+      }
+      // 2. 物理删除关联 document（category 维度）
+      this.db.execute(
+        `DELETE FROM todo_document WHERE todo_category_id IN (${idList})`,
+      );
+      // 2b. 物理删除关联 document（item 维度，子树 list 下的 item 关联文档）
+      if (itemIds.length > 0) {
+        const itemIdList = itemIds.join(',');
+        this.db.execute(
+          `DELETE FROM todo_document WHERE todo_item_id IN (${itemIdList})`,
+        );
+      }
+      // 3. 物理删除 todo_item（子树 list 下）
+      if (listIds.length > 0) {
+        this.db.execute(
+          `DELETE FROM todo_item WHERE todo_list_id IN (${listIdList})`,
+        );
+      }
+      // 4. 物理删除 todo_list（子树 category 下）
+      this.db.execute(
+        `DELETE FROM todo_list WHERE category_id IN (${idList})`,
+      );
+      // 5. 物理删除 todo_category（子树）
+      this.db.execute(
+        `DELETE FROM todo_category WHERE id IN (${idList})`,
+      );
+    });
+
+    logger.info(`Category purged: id=${id}, subtree=${subtreeIds.length} nodes`);
+  }
+
+  /**
    * 校验在指定 parent 下新增/移动是否超过最大深度。
    * @param parentId - 新位置的父 id（null 表示根）
    * @param maxDepth - 最大允许深度
@@ -361,6 +437,29 @@ export class TodoCategoryService {
       result.push(current);
       const children = this.db.query<{ id: number }>(
         `SELECT id FROM todo_category WHERE parent_id = ? AND deleted_at IS NULL`,
+        [current],
+      );
+      for (const c of children) {
+        queue.push(c.id);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * 收集子树所有 category id（含自身），**不过滤 deleted_at**。
+   *
+   * 与 `collectSubtreeIds` 区别：用于 purge 时收集已被软删除的子节点
+   * （软删除级联时子节点 deleted_at 已被标记，但仍需 purge）。
+   */
+  private collectSubtreeIdsAll(rootId: number): number[] {
+    const result: number[] = [];
+    const queue: number[] = [rootId];
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      result.push(current);
+      const children = this.db.query<{ id: number }>(
+        `SELECT id FROM todo_category WHERE parent_id = ?`,
         [current],
       );
       for (const c of children) {

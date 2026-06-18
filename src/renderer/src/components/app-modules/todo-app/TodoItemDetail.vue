@@ -113,18 +113,41 @@
           <span class="doc-name">{{ doc.name }}</span>
         </div>
       </div>
+
+      <!-- AI 任务区段（Phase 5） -->
+      <div class="task-section">
+        <div class="docs-header">
+          <span class="section-title">AI 任务</span>
+        </div>
+        <el-button
+          v-if="!formData.agent_task_id"
+          type="primary"
+          size="small"
+          @click="$emit('run-task')"
+        >
+          <el-icon><VideoPlay /></el-icon> 运行任务
+        </el-button>
+        <div v-else class="task-actions">
+          <el-button size="small" @click="$emit('view-task')">
+            <el-icon><View /></el-icon> 查看任务面板
+          </el-button>
+          <el-button size="small" @click="$emit('rerun-task')">
+            <el-icon><Refresh /></el-icon> 重跑
+          </el-button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script>
-import { Plus, Document } from '@element-plus/icons-vue';
+import { Plus, Document, VideoPlay, View, Refresh } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
 export default {
   name: 'TodoItemDetail',
-  components: { Plus, Document },
-  emits: ['updated', 'open-doc'],
+  components: { Plus, Document, VideoPlay, View, Refresh },
+  emits: ['updated', 'open-doc', 'run-task', 'view-task', 'rerun-task'],
   props: {
     itemId: { type: Number, required: true },
   },
@@ -163,6 +186,7 @@ export default {
             dueAt: item.due_at ? String(item.due_at) : null,
             is_manual_progress: item.is_manual_progress,
             labelIds: [...(item.label_ids || [])],
+            agent_task_id: item.agent_task_id ?? null,
           };
           await this.loadDocuments();
         } else {
@@ -329,6 +353,18 @@ export default {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 8px;
+}
+
+.task-section {
+  margin-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 12px;
+}
+
+.task-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .section-title {

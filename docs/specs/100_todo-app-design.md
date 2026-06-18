@@ -794,12 +794,14 @@ class TodoTaskService {
 'qtian:todo:get-document'           // (id) → TodoDocument
 'qtian:todo:save-document'          // (data) → TodoDocument
 'qtian:todo:delete-document'        // (id) → void  软删除
+'qtian:todo:restore-document'       // (id) → TodoDocument  恢复（Phase 4 补全）
 'qtian:todo:save-attachment'        // (buffer, ext) → string  local-resource URL
 
 // ===== 回收站（统一入口，跨表） =====
-'qtian:todo:list-trash'             // () → Array<{ type, id, name, deleted_at }>
+'qtian:todo:list-trash'             // () → TodoTrashItem[]  跨 5 张表聚合
 'qtian:todo:purge-trash'            // (type, id) → void  物理删除（不可恢复）
 'qtian:todo:empty-trash'            // () → { removed: number }  清空回收站
+'qtian:todo:restore-label'          // (id) → TodoLabel  恢复（Phase 4 补全，回收站 UI 必需）
 
 // ===== 全文搜索 =====
 'qtian:todo:search'                 // (query, limit?) → TodoSearchResult[]  内部 UPSERT 搜索历史
@@ -1238,13 +1240,23 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 > - category_path 在 Service 内部 SQL 反查 parent_id 链，避免与 Category Service 循环依赖
 > - 测试策略：原计划 `TodoSearchService` / `TodoTokenizer` 不 mock better-sqlite3 用真实 `:memory:` + 真实 jieba，**实际运行时发现**：(a) vitest 全局 `vitest.setup.ts` 已 mock `better-sqlite3`；(b) 真实 better-sqlite3 napi 编译为 Electron Node ABI（与系统 Node ABI 不兼容，无法在 vitest 加载）。最终改为文件级 `vi.mock('better-sqlite3', ...)` 覆盖为 `todo-mock-db`，并扩展 mock 支持 `transaction` / FTS5 MATCH+snippet+bm25 近似 / ON CONFLICT UPSERT / 参数化 IN 列表。FTS5 排序为近似实现，仅验证 Service 编排逻辑。`TodoTokenizer` 单测独立，真实使用 jieba（不涉及 sqlite）
 
-### Phase 4: 回收站
+### Phase 4: 回收站 — ✅ 已实现（2026-06-18）
 - `list-trash` / `purge-trash` / `empty-trash` 统一 IPC
 - `TrashDialog.vue` 跨表展示
 - 各 Service 的 restore 方法
 - 软删除恢复时 FTS 重建
 
-### Phase 5: Todo 驱动 AI 任务（依赖 007 任务系统）
+> 实施说明：
+> - 5 个 Service 各新增 `listTrash()` + `purge(id)`；purge 级联策略与软删除一致（依赖关系逆序物理删除，避免孤儿数据）
+> - purge 幂等性：所有 purge 方法开头校验 `deleted_at IS NOT NULL`，未删除实体为 no-op（不抛错）
+> - FTS 与 purge 解耦：软删除时已 `syncFts(type, id, null)` 清理，purge 时 FTS 已无数据
+> - 聚合层 `TodoAppService.listTrash/purgeTrash/emptyTrash` 内置（不引入独立 Service）；`emptyTrash` 逐条 purge 不引入跨 Service 大事务
+> - `TodoCategoryService` / `TodoItemService` 新增 `collectSubtreeIdsAll`（不带 `deleted_at IS NULL` 过滤），与现有 `collectSubtreeIds` 并存
+> - 补全设计遗漏：新增 `TODO_RESTORE_DOCUMENT` / `TODO_RESTORE_LABEL` 频道（回收站 UI 恢复 document/label 必需）
+> - UI：`TodoSidebar` 底部 [回收站] 入口（§9.3，flex column + margin-top:auto）；`TrashDialog.vue` 二次确认 + 类型图标 + 时间格式化（不引入 dayjs）
+> - 测试：5 个 Service 新增 listTrash + purge 用例共 34 个，覆盖级联物理删除、幂等性、listTrash 排序/可见性
+
+### Phase 5: Todo 驱动 AI 任务（依赖 007 任务系统） — ✅ 已实现（2026-06-18）
 - 前置：完成 007 任务系统 Phase 1（`TaskManager` + `AgentTaskExecutor`）
 - `TodoTaskService.createTaskFromItem`（适配层）+ 子 todo 收集 + prompt 组装（§8.3）
 - 注册 todo-app source result handler（生成总结文档，§8.4）
@@ -1252,6 +1264,27 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 - 任务面板订阅 `qtian:task:event` 渲染 Agent 流
 - `TaskRunDialog.vue` + `TaskPanel.vue` + `TaskHistoryList.vue`
 - 重跑支持
+
+> 实施说明：
+> - 新增 `todo-task.service.ts`（~250 行）：`createTaskFromItem` / `rerun` / `listTasksByItem` + private `buildPrompt`（§8.3）+ `handleAgentTaskResult`（source result handler，§8.4）+ `generateSummary`（复用任务自身 agent_name + llm_config_name，调用 `AiAgentService.sendMessage` 单轮取最后一条 assistant content）
+> - `TodoItemService` 新增专用方法 `updateAgentTaskId(id, taskId)`（不污染 `update()` 公共 patch 接口；仅 TodoTaskService 内部调用）
+> - `TodoAppService` 构造函数新增**可选**第 4 参数 `taskManager?`：注入后实例化 TodoTaskService（构造函数末尾自动注册 `'todo-app'` source handler）；未注入时 `taskService=null`，向后兼容现有 183 个 todo-app 测试
+> - bootstrap 降级：`todo-app-bootstrap.ts` 调用 `getTaskManager()`，若抛错（task 系统未引导）则 todo-app 仍可启动，仅任务功能禁用（日志告警）；与现有 `bootstrapTaskSystem() → bootstrapTodoApp()` 顺序对齐
+> - prompt 严格按 §8.3 模板：4 个段落 `[任务上下文]` / `[当前 todo]` / `[子任务列表]` / `[运行时补充]`，子任务按 `(depth, created_at)` 升序、缩进按 depth 递增（depth=1 → `- `，depth=2 → `  - `）
+> - category_path 解析：item.todo_list_id → list.category_id → 沿 parent_id 回溯到根，路径用 `' / '` 连接；含环检测防御
+> - handler 失败容错：catch 后返回 `{ handler_error: msg }`，TaskManager 会合并写入 `result_meta`，task 已记录的 completed 状态不受影响（与 `task-manager.service.ts:302-333` 一致）
+> - 总结生成器 LLM 配置：**复用任务自身的 agent_name + llm_config_name**（Q-PHASE5-1），与 §12 T-2 "若不支持需新增 summarize() 接口"对应 —— 直接复用 `AiAgentService.sendMessage` 单轮（消费流但不保存事件，仅取 `getMessages()` 最后一条 assistant content）
+> - IPC：新增 `TODO_CREATE_TASK_FROM_ITEM` / `TODO_LIST_TASKS_BY_ITEM`；handler 仅在 `getTaskService() !== null` 时注册（与 bootstrap 降级策略一致）
+> - UI（3 个新组件 + 2 个修改）：
+>   - `TaskRunDialog.vue`：480px `el-dialog`，表单含 Agent / LLM 配置 / 额外 prompt，默认值取 `window.electron.getConfig().aiAssistant.defaultAgent / defaultLlmConfig`
+>   - `TaskPanel.vue`：独立右侧视图（`rightPanelView` 状态机新增 `'task-panel'` 分支，与 document-editor 平级）；订阅 `qtian:task:event`，按 taskId 过滤累积 text_delta（直接 `<pre>` 渲染，不引入 ChatMessage.vue）+ tool_start/tool_result 配对展示；终态显示总结文档链接（`result_meta.summary_doc_id`）+ 可展开 TaskHistoryList
+>   - `TaskHistoryList.vue`：列表每个 todo_item 的全部历史任务，按 `created_at DESC`，currentTaskId 高亮
+>   - `TodoItemDetail.vue`：新增 "AI 任务" 区段（agent_task_id 为空时显示 [运行任务]，否则显示 [查看任务面板] + [重跑]）
+>   - `TodoAppPage.vue`：集成 TaskPanel + TaskRunDialog，新增 `taskDialogVisible` / `taskDialogMode` / `taskPanelTaskId` 状态；`handleTaskConfirm` 调用 `createTaskFromItem` 并切换到 task-panel 视图
+> - 测试（新增 16 用例，todo-app suite 由 183 → 199）：
+>   - `todo-task.service.test.ts`（12 用例）：buildPrompt 段落 / 子任务缩进 / extraPrompt / category_path 解析 / createTaskFromItem 校验 / rerun 覆盖 / listTasksByItem 委托 / handleAgentTaskResult 成功 + 失败容错
+>   - `todo-item.service.test.ts` 新增 `updateAgentTaskId` 4 用例：写入新值 / 覆盖 / 不存在 id 不抛错 / 已软删除不更新
+>   - mock 策略：`better-sqlite3` 复用 `createTodoMemDbFactory`；`AiAgentService` mock `sendMessage` 单轮返回固定总结；`AiAgentMgrService` / `AiConfigService` mock；TaskManager 构造 fake（参考 `task-manager.service.test.ts:206-225` createFakeExecutor 模式）
 
 ### Phase 6: 增强与打磨
 - 拖拽排序、批量操作
@@ -1278,13 +1311,25 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 | Q-MISC-3 | 文档版本历史 | 暂不做 | — |
 | Q-MISC-4 | 附件 GC 时机 | 暂不实现，预留接口 | §5.2 / §10 Phase 6 |
 | Q-MISC-5 | 软删除回收站 | 启用，所有业务表加 `deleted_at`；新增统一回收站 IPC | §4.1 / §6.2 |
+| Q-PHASE4-1 | purge 级联策略 | 与软删除级联范围一致（方案 A），避免孤儿数据；复用 collectSubtreeIds 模式 | §10 Phase 4 |
+| Q-PHASE4-2 | 跨表聚合层位置 | TodoAppService 内置（非独立 Service），已是装配入口且聚合逻辑薄 | §10 Phase 4 |
+| Q-PHASE4-3 | TodoTrashItem 字段 | 扩展版（含 parent_id / category_id / todo_list_id 可选），便于 UI 辅助展示 | §10 Phase 4 |
+| Q-PHASE4-4 | FTS 与 purge 关系 | purge 不操作 FTS（软删除时已清理） | §10 Phase 4 |
+| Q-PHASE4-5 | emptyTrash 事务策略 | 逐条 purge，各 Service 内部事务保护一致性，避免长事务锁 | §10 Phase 4 |
+| Q-PHASE4-6 | restore IPC 补全 | 新增 restore-document / restore-label（回收站 UI 完整恢复能力，原设计遗漏） | §6.2 / §10 Phase 4 |
+| Q-PHASE5-1 | 总结生成 LLM 配置 | 复用任务自身的 agent_name + llm_config_name（避免新增配置项 / 不污染 task 表）；调用 AiAgentService.sendMessage 单轮取 getMessages() 最后一条 assistant content | §8.4 / §10 Phase 5 |
+| Q-PHASE5-2 | TaskPanel 位置 | 独立右侧视图（rightPanelView 状态机新增 'task-panel' 分支），与 document-editor 平级；视觉清晰，避免详情页臃肿；任务结束后可一键返回详情 | §8.7 / §10 Phase 5 |
+| Q-PHASE5-3 | agent_task_id 更新方式 | TodoItemService 新增专用方法 updateAgentTaskId(id, taskId)（不污染 update() 公共 patch，避免业务侧误改）；仅 TodoTaskService 内部调用 | §10 Phase 5 |
+| Q-PHASE5-4 | TodoAppService 向后兼容 | 新增可选第 4 参数 taskManager?（未传时 taskService=null），现有 149+ 个测试不传 taskManager 全绿 | §10 Phase 5 |
+| Q-PHASE5-5 | bootstrap 降级 | getTaskManager() 抛错时 todo-app 仍可启动，仅任务功能禁用（日志告警）；IPC handler 仅在 getTaskService() !== null 时注册 | §10 Phase 5 |
+| Q-PHASE5-6 | 流式渲染策略 | TaskPanel 内部累积 text_delta/tool_start/tool_result（不复用 ChatMessage.vue），避免 markdown 渲染依赖；最终对话全文留在 chat_history 文件中可查 | §8.7 / §10 Phase 5 |
 
 ## 12 仍需协商的待办（依赖现有 AI 助手模块）
 
 | 编号 | 待办 | 依赖方 | 备注 |
 | :--- | :--- | :--- | :--- |
 | T-1 | ~~AiChatHistory 是否可扩展 `meta` 字段~~ **已解决** | — | 采用 007 §6.4 方案：`agent_id = 'task:agent:<taskId>'` 隔离，无需 meta 字段 |
-| T-2 | AiAgentService 是否支持非流式独立调用（用于生成总结） | AI 助手模块 | 见 §8.4；若不支持，需新增 `summarize()` 接口 |
+| T-2 | ~~AiAgentService 是否支持非流式独立调用（用于生成总结）~~ **已解决** | — | 见 §8.4 / Q-PHASE5-1：复用 `AiAgentService.sendMessage` 单轮（消费流但不保存事件），取 `getMessages()` 最后一条 assistant content 即可，无需新增 `summarize()` 接口 |
 
 ---
 

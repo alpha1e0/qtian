@@ -205,6 +205,72 @@ export class TodoListService {
     return this.getById(id);
   }
 
+  /** 列出回收站中的 todo_list */
+  listTrash(): TodoList[] {
+    const rows = this.db.query<TodoListRow>(
+      `SELECT id, name, description, category_id, created_at, updated_at, deleted_at
+       FROM todo_list WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`,
+    );
+    return rows.map((r) => this.mapRow(r));
+  }
+
+  /**
+   * 物理删除已软删除的 todo_list（不可恢复）。
+   *
+   * 级联物理删除（依赖关系逆序）：
+   *   todo_item_label → todo_document → todo_item → todo_list
+   *
+   * 幂等性：先校验 `deleted_at IS NOT NULL`，未删除实体为 no-op。
+   * FTS 无需操作：软删除时已清理。
+   *
+   * @param id - 待物理删除的 todo_list ID（必须已软删除）
+   */
+  purge(id: number): void {
+    const row = this.db.get<{ deleted_at: number | null }>(
+      `SELECT deleted_at FROM todo_list WHERE id = ?`,
+      [id],
+    );
+    if (!row || row.deleted_at === null) {
+      return;
+    }
+
+    // 收集关联 item id（删除后无法再查）
+    const itemIdsRows = this.db.query<{ id: number }>(
+      `SELECT id FROM todo_item WHERE todo_list_id = ?`,
+      [id],
+    );
+    const itemIds = itemIdsRows.map((r) => r.id);
+
+    this.db.transaction(() => {
+      // 1. 清理 todo_item_label 关联
+      if (itemIds.length > 0) {
+        const itemIdList = itemIds.join(',');
+        this.db.execute(
+          `DELETE FROM todo_item_label WHERE todo_item_id IN (${itemIdList})`,
+        );
+      }
+      // 2. 物理删除关联 document（item 维度）
+      if (itemIds.length > 0) {
+        const itemIdList = itemIds.join(',');
+        this.db.execute(
+          `DELETE FROM todo_document WHERE todo_item_id IN (${itemIdList})`,
+        );
+      }
+      // 3. 物理删除 todo_item
+      this.db.execute(
+        `DELETE FROM todo_item WHERE todo_list_id = ?`,
+        [id],
+      );
+      // 4. 物理删除 todo_list
+      this.db.execute(
+        `DELETE FROM todo_list WHERE id = ?`,
+        [id],
+      );
+    });
+
+    logger.info(`TodoList purged: id=${id}, items=${itemIds.length}`);
+  }
+
   // =========================================================================
   // 内部工具
   // =========================================================================

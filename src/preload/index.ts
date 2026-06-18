@@ -229,6 +229,7 @@ const api = {
     getDocument: (id) => ipcRenderer.invoke(IPC_CHANNELS.TODO_GET_DOCUMENT, id),
     saveDocument: (data) => ipcRenderer.invoke(IPC_CHANNELS.TODO_SAVE_DOCUMENT, data),
     deleteDocument: (id) => ipcRenderer.invoke(IPC_CHANNELS.TODO_DELETE_DOCUMENT, id),
+    restoreDocument: (id) => ipcRenderer.invoke(IPC_CHANNELS.TODO_RESTORE_DOCUMENT, id),
     saveAttachment: (buffer, ext) =>
       ipcRenderer.invoke(IPC_CHANNELS.TODO_SAVE_ATTACHMENT, buffer, ext),
     saveAttachmentFromPath: (filePath) =>
@@ -244,6 +245,18 @@ const api = {
     deleteSearchHistory: (id) =>
       ipcRenderer.invoke(IPC_CHANNELS.TODO_DELETE_SEARCH_HISTORY, id),
     clearSearchHistory: () => ipcRenderer.invoke(IPC_CHANNELS.TODO_CLEAR_SEARCH_HISTORY),
+
+    // 回收站（Phase 4：跨表聚合 + 物理删除 + 恢复 label）
+    listTrash: () => ipcRenderer.invoke(IPC_CHANNELS.TODO_LIST_TRASH),
+    purgeTrash: (type, id) => ipcRenderer.invoke(IPC_CHANNELS.TODO_PURGE_TRASH, type, id),
+    emptyTrash: () => ipcRenderer.invoke(IPC_CHANNELS.TODO_EMPTY_TRASH),
+    restoreLabel: (id) => ipcRenderer.invoke(IPC_CHANNELS.TODO_RESTORE_LABEL, id),
+
+    // Todo 驱动 AI 任务（Phase 5）
+    createTaskFromItem: (itemId, options) =>
+      ipcRenderer.invoke(IPC_CHANNELS.TODO_CREATE_TASK_FROM_ITEM, itemId, options),
+    listTasksByItem: (itemId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.TODO_LIST_TASKS_BY_ITEM, itemId),
   },
 
   // Generic IPC invoke (for channels not covered by namespaced APIs)
