@@ -1,7 +1,7 @@
 <template>
   <div class="todo-item-detail-inner">
     <div v-if="loading" class="loading-hint">加载中...</div>
-    <div v-else-if="!formData" class="empty-hint">条目不存在</div>
+    <div v-else-if="!formData" class="empty-hint">待办条目不存在</div>
     <div v-else class="detail-content">
       <el-form label-position="top" size="small">
         <el-form-item label="标题">

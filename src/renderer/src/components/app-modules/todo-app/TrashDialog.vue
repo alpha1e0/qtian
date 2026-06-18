@@ -208,7 +208,7 @@ const TYPE_ICON_MAP = {
 const TYPE_LABEL_MAP = {
   category: '分类',
   todo_list: '待办项目',
-  todo_item: '待办',
+  todo_item: '待办条目',
   document: '文档',
   label: '标签',
 };

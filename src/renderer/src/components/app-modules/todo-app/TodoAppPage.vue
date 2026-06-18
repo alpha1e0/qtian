@@ -207,7 +207,7 @@ export default {
     },
     async handleDeleteCategory(id) {
       try {
-        await ElMessageBox.confirm('删除分类将级联删除其下所有待办项目和条目（软删除），确认？', '确认删除', {
+        await ElMessageBox.confirm('删除分类将级联删除其下所有待办项目和待办条目（软删除），确认？', '确认删除', {
           type: 'warning',
         });
         await window.todoApp.deleteCategory(id);
@@ -227,7 +227,7 @@ export default {
       this.selectedListId = listId;
       this.selectedItemId = null;
       this.activeDoc = null;
-      // 选中待办项目但未选条目时，根据是否有分类决定回退到分类详情或空
+      // 选中待办项目但未选待办条目时，根据是否有分类决定回退到分类详情或空
       if (this.selectedCategoryId) {
         this.rightPanelView = 'category-detail';
       } else {
@@ -314,7 +314,7 @@ export default {
         } else if (result.type === 'todo_item') {
           const item = await window.todoApp.getTodoItem(result.id);
           if (!item) {
-            ElMessage.warning('该条目不存在或已删除');
+            ElMessage.warning('该待办条目不存在或已删除');
             return;
           }
           const list = await window.todoApp.getTodoList(item.todo_list_id);
@@ -379,7 +379,7 @@ export default {
       try {
         const item = await window.todoApp.getTodoItem(this.selectedItemId);
         if (!item || !item.agent_task_id) {
-          ElMessage.warning('该条目尚未运行任务');
+          ElMessage.warning('该待办条目尚未运行任务');
           return;
         }
         this.taskPanelTaskId = item.agent_task_id;

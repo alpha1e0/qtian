@@ -15,7 +15,7 @@
           v-model="keyword"
           class="search-input"
           size="small"
-          placeholder="搜索分类 / 待办项目 / 条目 / 文档"
+          placeholder="搜索分类 / 待办项目 / 待办条目 / 文档"
           clearable
           @focus="handleFocus"
           @blur="handleBlur"
@@ -290,7 +290,7 @@ export default {
         case 'todo_list':
           return '待办项目';
         case 'todo_item':
-          return '条目';
+          return '待办条目';
         case 'document':
           return '文档';
         default:

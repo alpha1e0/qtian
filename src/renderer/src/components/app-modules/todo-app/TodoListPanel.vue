@@ -23,8 +23,8 @@
 
     <!-- 标签视图模式：显示标签关联的 item 列表 -->
     <div v-if="labelId" class="label-items">
-      <div class="section-title">标签关联条目</div>
-      <div v-if="labelItems.length === 0" class="empty-hint">该标签暂无关联条目</div>
+      <div class="section-title">标签关联待办条目</div>
+      <div v-if="labelItems.length === 0" class="empty-hint">该标签暂无关联待办条目</div>
       <TodoItemRow
         v-for="item in labelItems"
         :key="item.id"
@@ -41,10 +41,10 @@
       <div class="tree-toolbar">
         <span class="section-title">{{ currentListName }}</span>
         <el-button size="small" text @click="handleCreateRootItem">
-          <el-icon><Plus /></el-icon> 新建条目
+          <el-icon><Plus /></el-icon> 新建待办条目
         </el-button>
       </div>
-      <div v-if="itemTree.length === 0" class="empty-hint">暂无条目，点击"新建条目"开始</div>
+      <div v-if="itemTree.length === 0" class="empty-hint">暂无待办条目，点击"新建待办条目"开始</div>
       <TodoItemRow
         v-for="node in itemTree"
         :key="node.id"
@@ -139,7 +139,7 @@ export default {
       try {
         this.itemTree = await window.todoApp.getTodoItemTree(this.currentListId);
       } catch (err) {
-        ElMessage.error('加载条目树失败');
+        ElMessage.error('加载待办条目树失败');
         console.error(err);
       }
     },
@@ -188,7 +188,7 @@ export default {
       try {
         this.labelItems = await window.todoApp.listTodoItemsByLabel(this.labelId);
       } catch (err) {
-        ElMessage.error('加载标签条目失败');
+        ElMessage.error('加载标签待办条目失败');
         console.error(err);
       }
     },
@@ -224,7 +224,7 @@ export default {
     },
     async promptCreateItem(parentId) {
       try {
-        const { value } = await ElMessageBox.prompt('请输入条目标题', '新建条目', {
+        const { value } = await ElMessageBox.prompt('请输入待办条目标题', '新建待办条目', {
           confirmButtonText: '创建',
           cancelButtonText: '取消',
         });
@@ -235,7 +235,7 @@ export default {
             parent_id: parentId,
           });
           await this.loadItemTree();
-          ElMessage.success('条目已创建');
+          ElMessage.success('待办条目已创建');
         }
       } catch (err) {
         if (err !== 'cancel') {

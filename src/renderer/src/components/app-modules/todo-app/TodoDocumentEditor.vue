@@ -114,7 +114,7 @@ export default {
     docId: { type: Number, default: null },
     itemId: { type: Number, default: null },
     categoryId: { type: Number, default: null },
-    /** 顶部展示的标题路径（例如 "条目标题 / 文档名"），由父组件拼装 */
+    /** 顶部展示的标题路径（例如 "待办条目标题 / 文档名"），由父组件拼装 */
     titlePath: { type: String, default: '' },
   },
   emits: ['saved', 'back'],

@@ -169,7 +169,10 @@ type TodoItemStatus = 'init' | 'in_progress' | 'done' | 'abandoned';
 type TodoItemPriority = 'urgent' | 'important' | 'normal' | 'hint';
 
 /**
- * Todo 条目（递归结构，限制 4 层）
+ * Todo 待办条目（递归结构，限制 4 层）
+ *
+ * > UI 术语：`todo_item` 实体在界面上展示为"待办条目"（避免与通用"条目/列表条目"歧义）；
+ * > 代码层标识（DB 表名 `todo_item` / TS 类型 `TodoItem` / IPC channel `*-todo-item`）不变。
  */
 interface TodoItem {
   id: number;
@@ -1174,8 +1177,8 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 │ 📁 工作           │ │ ☐ 父 todo                    │ │ │ 状态：进行中   │ │
 │  ├ 📁 项目A       │ │   ☐ 子 todo 1                │ │ │ 进度：50%      │ │
 │  │  📋 需求整理    │ │   ☐ 子 todo 2                │ │ │ 标签：[前端]   │ │
-│  │  📋 开发计划    │ │ ☐ 普通条目                   │ │ │               │ │
-│  └ 📁 项目B       │ │ ☑ 已完成条目 (划线)            │ │ │ [▶ 运行任务]   │ │
+│  │  📋 开发计划    │ │ ☐ 普通待办条目                 │ │ │               │ │
+│  └ 📁 项目B       │ │ ☑ 已完成待办条目 (划线)         │ │ │ [▶ 运行任务]   │ │
 │ 📁 个人           │ │                              │ │ │ [📄 关联文档]   │ │
 │  📃 学习计划       │ └──────────────────────────────┘ │ └───────────────┘ │
 │                  │                                   │                   │
@@ -1327,6 +1330,7 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 | Q-PHASE5-5 | bootstrap 降级 | getTaskManager() 抛错时 todo-app 仍可启动，仅任务功能禁用（日志告警）；IPC handler 仅在 getTaskService() !== null 时注册 | §10 Phase 5 |
 | Q-PHASE5-6 | 流式渲染策略 | TaskPanel 内部累积 text_delta/tool_start/tool_result（不复用 ChatMessage.vue），避免 markdown 渲染依赖；最终对话全文留在 chat_history 文件中可查 | §8.7 / §10 Phase 5 |
 | Q-MISC-6 | `todo_list` UI 显示术语 | 界面文案统一称"待办项目"（原"列表"与通用列表概念歧义）；仅影响 UI 文案、prompt 模板标签、搜索结果类型标签；DB 表名 `todo_list` / TS 类型 `TodoList` / IPC channel `*-todo-list` 等代码层标识不变 | §3.2 / §7.5 / §8.3 / §9.1 |
+| Q-MISC-7 | `todo_item` UI 显示术语 | 界面文案统一称"待办条目"（原"条目"在搜索/回收站/标签上下文中存在歧义）；仅影响 UI 文案、搜索结果类型标签、回收站类型标签；DB 表名 `todo_item` / TS 类型 `TodoItem` / IPC channel `*-todo-item` 等代码层标识不变 | §3.3 / §7.5 / §9.1 |
 
 ## 12 仍需协商的待办（依赖现有 AI 助手模块）
 
