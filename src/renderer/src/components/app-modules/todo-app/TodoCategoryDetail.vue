@@ -142,13 +142,13 @@ export default {
 .section-title {
   font-size: 18px;
   font-weight: 700;
-  color: var(--text-on-dark, #e4e4ed);
+  color: var(--text-on-dark);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
   letter-spacing: -0.01em;
-  background: linear-gradient(135deg, #e4e4ed 0%, #c7d2fe 100%);
+  background: linear-gradient(135deg, #1f1e2e 0%, #4f46e5 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -182,13 +182,13 @@ export default {
 
 .doc-item:hover {
   background: rgba(99, 102, 241, 0.10);
-  border-color: rgba(99, 102, 241, 0.20);
+  border-color: rgba(99, 102, 241, 0.22);
   transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.10);
 }
 
 .doc-item :deep(.el-icon) {
-  color: #a5b4fc;
+  color: var(--accent);
   flex-shrink: 0;
 }
 
@@ -202,12 +202,12 @@ export default {
 
 .doc-updated {
   font-size: 10px;
-  color: var(--text-on-dark-muted, #5c5b72);
+  color: var(--text-on-dark-muted);
   font-feature-settings: 'tnum';
   flex-shrink: 0;
   letter-spacing: 0.08em;
   padding: 2px 7px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(99, 102, 241, 0.06);
 }
 </style>

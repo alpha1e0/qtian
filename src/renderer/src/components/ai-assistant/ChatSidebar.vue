@@ -119,7 +119,7 @@ export default {
 .chat-sidebar {
   width: 240px;
   background: var(--surface-dark-secondary);
-  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  border-right: 1px solid var(--border-light);
   display: flex;
   flex-direction: column;
   height: 100%;

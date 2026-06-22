@@ -476,9 +476,10 @@ export default {
 .vditor-container {
   flex: 1;
   min-height: 320px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border-medium);
   border-radius: 4px;
   overflow: hidden;
+  background: var(--surface-card);
 }
 
 .custom-dialog-header {

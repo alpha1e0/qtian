@@ -382,20 +382,20 @@ export default {
 
 .result-item.active,
 .history-item.active {
-  background: rgba(99, 102, 241, 0.14);
-  box-shadow: inset 2px 0 0 var(--accent, #6366f1);
+  background: rgba(99, 102, 241, 0.12);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .result-item:hover,
 .history-item:hover {
-  background: rgba(99, 102, 241, 0.08);
+  background: rgba(99, 102, 241, 0.06);
 }
 
 .type-icon,
 .history-icon {
   flex-shrink: 0;
   margin-top: 2px;
-  color: #a5b4fc;
+  color: var(--accent);
 }
 
 .result-main {
@@ -426,8 +426,8 @@ export default {
 
 /* snippet 内高亮 mark（来自 FTS5 snippet 函数） */
 .result-snippet :deep(mark) {
-  background: rgba(245, 158, 11, 0.18);
-  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.22);
+  color: #b45309;
   padding: 0 3px;
   border-radius: 3px;
   font-weight: 600;
@@ -454,8 +454,8 @@ export default {
   height: 20px;
   line-height: 18px;
   background: rgba(99, 102, 241, 0.12);
-  color: #c7d2fe;
-  border: 1px solid rgba(99, 102, 241, 0.22);
+  color: var(--accent-text);
+  border: 1px solid rgba(99, 102, 241, 0.24);
 }
 
 .history-toolbar {
@@ -487,12 +487,12 @@ export default {
 .history-meta {
   flex-shrink: 0;
   font-size: 10px;
-  color: var(--text-on-dark-muted, #5c5b72);
+  color: var(--text-on-dark-muted);
   font-feature-settings: 'tnum';
   letter-spacing: 0.04em;
   padding: 1px 6px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(99, 102, 241, 0.06);
 }
 
 .history-delete {
@@ -509,15 +509,15 @@ export default {
 <!--
   popover 渲染在 body 末端，scoped 样式无法穿透：
   这里通过全局样式（非 scoped）覆盖 el-popper 内部背景，
-  使其从默认白色档案室卡片变为深色 Aurora Library 卡片。
+  统一为浅色 Aurora Library 卡片质感。
 -->
 <style>
 .todo-search-popover.el-popper {
-  background: rgba(28, 27, 46, 0.96);
+  background: rgba(255, 255, 255, 0.96);
   border: 1px solid rgba(99, 102, 241, 0.18);
   border-radius: 12px;
   box-shadow:
-    0 12px 40px rgba(0, 0, 0, 0.45),
+    0 12px 40px rgba(99, 102, 241, 0.16),
     0 0 0 1px rgba(99, 102, 241, 0.06);
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
@@ -525,7 +525,7 @@ export default {
 }
 
 .todo-search-popover.el-popper .el-popper__arrow::before {
-  background: rgba(28, 27, 46, 0.96);
+  background: rgba(255, 255, 255, 0.96);
   border-color: rgba(99, 102, 241, 0.18);
 }
 </style>

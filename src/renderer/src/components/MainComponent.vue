@@ -177,7 +177,7 @@ export default {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
-  background: var(--surface-dark);
+  background: var(--surface-base);
 }
 
 .main-content {

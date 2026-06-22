@@ -368,6 +368,10 @@ export default {
 }
 
 /* slider 颜色与新主色对齐 */
+.progress-row :deep(.el-slider__runway) {
+  background-color: rgba(99, 102, 241, 0.12);
+}
+
 .progress-row :deep(.el-slider__bar) {
   background: linear-gradient(90deg, #6366f1, #8b5cf6);
 }
@@ -466,12 +470,13 @@ export default {
 
 .doc-item:hover {
   background: rgba(99, 102, 241, 0.10);
-  border-color: rgba(99, 102, 241, 0.20);
+  border-color: rgba(99, 102, 241, 0.22);
   transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.10);
 }
 
 .doc-item :deep(.el-icon) {
-  color: #a5b4fc;
+  color: var(--accent);
 }
 
 .doc-name {

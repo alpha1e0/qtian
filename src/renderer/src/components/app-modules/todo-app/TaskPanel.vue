@@ -332,7 +332,7 @@ function safeParse(str) {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--border-light);
 }
 
 .title-wrap {
@@ -354,13 +354,13 @@ function safeParse(str) {
 .panel-meta {
   padding: 6px 12px;
   font-size: 12px;
-  color: var(--text-on-dark-secondary, #aaa);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--text-on-dark-secondary);
+  border-bottom: 1px solid var(--border-light);
 }
 
 .meta-sep {
   margin: 0 6px;
-  color: var(--text-on-dark-muted, #666);
+  color: var(--text-on-dark-muted);
 }
 
 .panel-body {
@@ -377,7 +377,7 @@ function safeParse(str) {
 .block-title {
   font-size: 11px;
   font-weight: 500;
-  color: var(--text-on-dark-muted, #666);
+  color: var(--text-on-dark-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 4px;
@@ -386,8 +386,10 @@ function safeParse(str) {
 .stream-output {
   margin: 0;
   padding: 8px;
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(99, 102, 241, 0.04);
+  border: 1px solid var(--border-light);
   border-radius: 4px;
+  color: var(--text-on-dark);
   font-family: 'Menlo', 'Consolas', monospace;
   font-size: 12px;
   line-height: 1.5;
@@ -399,7 +401,8 @@ function safeParse(str) {
 
 .tool-item {
   padding: 6px 8px;
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(99, 102, 241, 0.03);
+  border: 1px solid var(--border-light);
   border-radius: 4px;
   margin-bottom: 4px;
 }
@@ -420,8 +423,8 @@ function safeParse(str) {
   padding: 4px 6px;
   font-family: 'Menlo', 'Consolas', monospace;
   font-size: 11px;
-  color: var(--text-on-dark-secondary, #aaa);
-  background: rgba(0, 0, 0, 0.15);
+  color: var(--text-on-dark-secondary);
+  background: rgba(99, 102, 241, 0.06);
   border-radius: 3px;
   max-height: 120px;
   overflow-y: auto;
@@ -437,7 +440,7 @@ function safeParse(str) {
 }
 
 .panel-footer {
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid var(--border-light);
   padding: 8px 12px;
 }
 
@@ -448,12 +451,12 @@ function safeParse(str) {
   padding: 6px 8px;
   border-radius: 4px;
   cursor: pointer;
-  color: var(--el-color-primary, #409eff);
+  color: var(--accent);
   font-size: 13px;
 }
 
 .summary-link:hover {
-  background: rgba(64, 158, 255, 0.08);
+  background: var(--accent-soft);
 }
 
 .summary-error {
@@ -462,7 +465,7 @@ function safeParse(str) {
   gap: 6px;
   padding: 6px 8px;
   font-size: 12px;
-  color: var(--el-color-danger, #f56c6c);
+  color: var(--color-danger);
 }
 
 .history-section {

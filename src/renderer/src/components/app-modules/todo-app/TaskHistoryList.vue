@@ -139,7 +139,7 @@ function safeParse(str) {
 }
 
 .empty-hint {
-  color: var(--text-on-dark-muted, #666);
+  color: var(--text-on-dark-muted);
   font-size: 12px;
   text-align: center;
   padding: 16px 0;
@@ -157,11 +157,11 @@ function safeParse(str) {
 }
 
 .history-row:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(99, 102, 241, 0.06);
 }
 
 .history-row.active {
-  background: var(--el-color-primary-light-9, rgba(64, 158, 255, 0.1));
+  background: rgba(99, 102, 241, 0.12);
 }
 
 .row-title {
@@ -174,6 +174,6 @@ function safeParse(str) {
 
 .row-time {
   flex-shrink: 0;
-  color: var(--text-on-dark-muted, #666);
+  color: var(--text-on-dark-muted);
 }
 </style>

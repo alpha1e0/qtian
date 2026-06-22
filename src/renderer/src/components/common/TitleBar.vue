@@ -154,8 +154,8 @@ export default {
   display: flex;
   align-items: center;
   height: 32px;
-  background: var(--surface-dark);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: var(--surface-dark-secondary);
+  border-bottom: 1px solid var(--border-light);
   -webkit-app-region: drag;
   user-select: none;
   flex-shrink: 0;
@@ -240,7 +240,7 @@ export default {
 
 .menu-separator {
   height: 1px;
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--border-light);
   margin: 4px 0;
 }
 </style>

@@ -156,16 +156,16 @@ export default {
 }
 
 .todo-category-tree :deep(.el-tree-node__content:hover) {
-  background: rgba(99, 102, 241, 0.08);
+  background: rgba(99, 102, 241, 0.06);
 }
 
 .todo-category-tree :deep(.el-tree-node.is-current > .el-tree-node__content) {
   background: linear-gradient(
     90deg,
-    rgba(99, 102, 241, 0.22) 0%,
-    rgba(99, 102, 241, 0.06) 100%
+    rgba(99, 102, 241, 0.14) 0%,
+    rgba(99, 102, 241, 0.04) 100%
   );
-  box-shadow: inset 2px 0 0 var(--accent, #6366f1);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .tree-node {
@@ -183,7 +183,7 @@ export default {
 }
 
 .node-label.active {
-  color: #c7d2fe;
+  color: var(--accent-text);
   font-weight: 600;
 }
 
@@ -198,6 +198,6 @@ export default {
 
 /* 树节点操作按钮：去除默认蓝色 hover */
 .node-actions :deep(.el-button:hover) {
-  color: #c7d2fe;
+  color: var(--accent-text);
 }
 </style>

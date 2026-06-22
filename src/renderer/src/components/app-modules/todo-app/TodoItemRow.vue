@@ -122,14 +122,14 @@ export default {
 }
 
 .item-row-main:hover {
-  background: rgba(99, 102, 241, 0.08);
+  background: rgba(99, 102, 241, 0.06);
 }
 
 .item-row-main.selected {
   background: linear-gradient(
     90deg,
-    rgba(99, 102, 241, 0.22) 0%,
-    rgba(99, 102, 241, 0.04) 100%
+    rgba(99, 102, 241, 0.14) 0%,
+    rgba(99, 102, 241, 0.03) 100%
   );
 }
 
@@ -149,7 +149,7 @@ export default {
   height: 7px;
   border-radius: 50%;
   flex-shrink: 0;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.02);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.6);
 }
 
 .dot-urgent { background: var(--color-danger, #ef4444); box-shadow: 0 0 8px rgba(239, 68, 68, 0.45); }
@@ -169,18 +169,18 @@ export default {
 
 .item-title.done {
   text-decoration: line-through;
-  text-decoration-color: rgba(139, 138, 160, 0.55);
+  text-decoration-color: rgba(31, 30, 46, 0.45);
   opacity: 0.55;
 }
 
 .item-progress {
   font-size: 10px;
   font-weight: 600;
-  color: var(--text-on-dark-secondary, #8b8aa0);
+  color: var(--text-on-dark-secondary);
   font-feature-settings: 'tnum';
   padding: 2px 6px;
   border-radius: 999px;
-  background: rgba(99, 102, 241, 0.10);
+  background: rgba(99, 102, 241, 0.12);
   flex-shrink: 0;
   letter-spacing: 0.04em;
 }
@@ -218,8 +218,8 @@ export default {
   width: 1px;
   background: linear-gradient(
     180deg,
-    rgba(99, 102, 241, 0.20),
-    rgba(99, 102, 241, 0.04)
+    rgba(99, 102, 241, 0.22),
+    rgba(99, 102, 241, 0.06)
   );
 }
 

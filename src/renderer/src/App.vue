@@ -14,28 +14,39 @@ export default {
 </script>
 
 <style>
+/*
+ * 统一浅色主题设计令牌
+ * --------------------------------------------------
+ * 历史：原项目区分深色（todo-app / titlebar / sidebar）与浅色（chat / quick-mode）两套表面，
+ * 通过保留 --surface-dark* / --text-on-dark* 命名但重映射为浅色值的方式，
+ * 让所有现有 var(--surface-dark) 引用自动迁移，无需逐个文件替换。
+ *
+ * 配色基调：温润纸张色 + 靛蓝品牌色，营造编辑级「Aurora Library」质感。
+ */
 :root {
-  /* === Surfaces === */
-  --surface-dark: #13121c;
-  --surface-dark-secondary: #1c1b2e;
-  --surface-dark-hover: #252440;
-  --surface-dark-active: #2e2d4a;
-  --surface-base: #f6f5f2;
-  --surface-card: #ffffff;
+  /* === Surfaces（统一浅色：保留 *-dark 命名以减少迁移面） === */
+  --surface-dark: #faf9f6;            /* 页面底层：温润米白（历史主进程底色，现为浅） */
+  --surface-dark-secondary: #f3f1ec;  /* 侧栏 / 面板层：略深一档的暖灰白 */
+  --surface-dark-hover: #ece9e0;      /* 悬停态：再深一档 */
+  --surface-dark-active: #e2ded2;     /* 选中态：最深一档 */
+  --surface-base: #faf9f6;            /* 主区域底色 */
+  --surface-card: #ffffff;            /* 卡片 / 浮起表面 */
 
   /* === Text === */
-  --text-on-dark: #e4e4ed;
-  --text-on-dark-secondary: #8b8aa0;
-  --text-on-dark-muted: #5c5b72;
-  --text-primary: #1a1a2e;
-  --text-secondary: #5f6577;
-  --text-muted: #9ca3b0;
+  --text-on-dark: #1f1e2e;            /* 主文字（深墨色，在浅底上保持高对比） */
+  --text-on-dark-secondary: #5f5e6f;  /* 次级文字 */
+  --text-on-dark-muted: #908e9f;      /* 弱化文字 / 元信息 */
+  --text-primary: #1f1e2e;
+  --text-secondary: #5f5e6f;
+  --text-muted: #908e9f;
 
-  /* === Accent === */
+  /* === Accent（保留靛蓝品牌色） === */
   --accent: #6366f1;
   --accent-hover: #7577f5;
   --accent-soft: rgba(99, 102, 241, 0.1);
   --accent-gradient: linear-gradient(135deg, #6366f1, #8b5cf6);
+  /* 浅色主题下用作强调色文字（替代历史 #c7d2fe，后者在浅底上不可读） */
+  --accent-text: #4f46e5;
 
   /* === Semantic === */
   --color-success: #10b981;
@@ -83,7 +94,7 @@ html,
 body {
   height: 100%;
   margin: 0;
-  background: var(--surface-dark);
+  background: var(--surface-base);
 }
 
 #app {

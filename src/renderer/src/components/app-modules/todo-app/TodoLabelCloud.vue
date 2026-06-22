@@ -90,14 +90,14 @@ export default {
 /* 未选中标签：极淡的靛底描边 */
 .label-tag:not(.is-active) {
   background: rgba(99, 102, 241, 0.06);
-  color: var(--text-on-dark-secondary, #8b8aa0);
-  border: 1px solid rgba(99, 102, 241, 0.16);
+  color: var(--text-on-dark-secondary);
+  border: 1px solid rgba(99, 102, 241, 0.20);
 }
 
 .label-tag:not(.is-active):hover {
   background: rgba(99, 102, 241, 0.12);
-  color: var(--text-on-dark, #e4e4ed);
-  border-color: rgba(99, 102, 241, 0.32);
+  color: var(--text-on-dark);
+  border-color: rgba(99, 102, 241, 0.36);
   transform: translateY(-1px);
 }
 
@@ -108,6 +108,6 @@ export default {
   border: 1px solid transparent;
   box-shadow:
     0 0 0 1px rgba(99, 102, 241, 0.3),
-    0 4px 14px rgba(99, 102, 241, 0.32);
+    0 4px 14px rgba(99, 102, 241, 0.24);
 }
 </style>

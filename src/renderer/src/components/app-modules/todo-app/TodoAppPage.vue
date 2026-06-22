@@ -428,11 +428,11 @@ export default {
 
 <style scoped>
 /*
- * Aurora Library 视觉基调
+ * Aurora Library 视觉基调（浅色版）
  * --------------------------------------------------
- * 在主进程的 --surface-dark（深靛蓝底）之上叠加柔和的极光氛围，
- * 让整个 todo-app 三栏在视觉上形成"漂浮于夜空的工作台"质感。
- * 不引入新的全局 token，所有变化都局限在 todo-app 作用域内。
+ * 在统一的浅色纸张底（--surface-base / --surface-dark）之上叠加柔和极光氛围，
+ * 让整个 todo-app 三栏呈现"漂浮于晨光纸面"的编辑级质感。
+ * 渐变透明度较深色版降低，避免在浅底上喧宾夺主。
  */
 .todo-app-page {
   position: relative;
@@ -440,8 +440,8 @@ export default {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  background: var(--surface-dark, #13121c);
-  color: var(--text-on-dark, #e4e4ed);
+  background: var(--surface-dark);
+  color: var(--text-on-dark);
   isolation: isolate;
 }
 
@@ -455,13 +455,13 @@ export default {
   pointer-events: none;
   background:
     radial-gradient(900px 540px at 8% -6%,
-      rgba(99, 102, 241, 0.18),
+      rgba(99, 102, 241, 0.10),
       transparent 60%),
     radial-gradient(720px 480px at 102% 108%,
-      rgba(139, 92, 246, 0.12),
+      rgba(139, 92, 246, 0.07),
       transparent 62%),
     radial-gradient(520px 360px at 50% 140%,
-      rgba(99, 102, 241, 0.05),
+      rgba(99, 102, 241, 0.04),
       transparent 70%);
   opacity: 0.9;
 }
@@ -474,10 +474,10 @@ export default {
   align-items: center;
   background: linear-gradient(
     180deg,
-    rgba(28, 27, 46, 0.55) 0%,
-    rgba(28, 27, 46, 0.15) 100%
+    rgba(255, 255, 255, 0.55) 0%,
+    rgba(255, 255, 255, 0.15) 100%
   );
-  border-bottom: 1px solid rgba(99, 102, 241, 0.12);
+  border-bottom: 1px solid rgba(99, 102, 241, 0.14);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   animation: aurora-fade-down 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -490,36 +490,47 @@ export default {
   overflow: hidden;
 }
 
+/*
+ * 三栏布局：按 24 份分配，左:中:右 = 5:10:9
+ * 用 flex 比例而不是固定 px，窗口缩放时三栏按权重等比伸缩。
+ * min-width:0 让 flex 子项在内容（长文本）超出时仍可收缩，避免溢出。
+ */
 .todo-sidebar {
   position: relative;
-  width: 248px;
-  flex-shrink: 0;
-  border-right: 1px solid rgba(99, 102, 241, 0.10);
-  overflow-y: auto;
-  background: rgba(19, 18, 28, 0.35);
+  flex: 5;
+  min-width: 0;
+  border-right: 1px solid rgba(99, 102, 241, 0.12);
+  /* 外层自身作为 flex column 容器，让 .todo-sidebar-inner 用 flex:1 填充；
+   * 避免 height:100% 在 padding/border 上溢出导致 footer 被切 */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: rgba(243, 241, 236, 0.55);
   animation: aurora-fade-up 0.5s 0.05s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .todo-list-panel {
   position: relative;
-  flex: 1;
+  flex: 10;
+  min-width: 0;
   overflow: hidden;
   animation: aurora-fade-up 0.5s 0.12s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .todo-item-detail {
   position: relative;
-  width: 340px;
-  flex-shrink: 0;
-  border-left: 1px solid rgba(99, 102, 241, 0.10);
+  flex: 9;
+  min-width: 0;
+  border-left: 1px solid rgba(99, 102, 241, 0.12);
   overflow-y: auto;
-  background: rgba(19, 18, 28, 0.35);
+  background: rgba(243, 241, 236, 0.55);
   animation: aurora-fade-up 0.5s 0.18s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* 文档编辑器视图：右侧扩展到 600px 以获得更合理的编辑宽度 */
+/* 文档编辑器视图：覆盖比例布局，固定 600px 以获得合理的编辑宽度 */
 .todo-item-detail-wide {
-  width: 600px;
+  flex: 0 0 600px;
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -531,7 +542,7 @@ export default {
 
 /* 空状态文案做轻微提亮，避免与背景过于接近 */
 .todo-item-detail-empty :deep(.el-empty__description) {
-  color: var(--text-on-dark-secondary, #8b8aa0);
+  color: var(--text-on-dark-secondary);
   letter-spacing: 0.02em;
 }
 
