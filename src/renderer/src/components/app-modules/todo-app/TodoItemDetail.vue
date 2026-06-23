@@ -9,6 +9,26 @@
       当表单字段较多时总高度超出，"运行任务"按钮被挤出可视区，滚到底也只看到 1/5。
     -->
     <div class="item-detail-scroll">
+      <!--
+        保存状态指示条（VSCode/Notion 风格自动保存反馈）：
+        字段失焦/值变化触发 IPC 时显示"保存中"，IPC 完成后切到"已保存"或"保存失败"，
+        2.5s 后淡出回 idle。sticky top 让滚动时也可见。
+      -->
+      <div
+        v-if="!loading && formData"
+        class="save-status-bar"
+        :class="`is-${saveStatus}`"
+        aria-live="polite"
+      >
+        <span class="status-text">
+          <el-icon v-if="saveStatus === 'saving'" class="is-loading"><Loading /></el-icon>
+          <el-icon v-else-if="saveStatus === 'saved'"><Check /></el-icon>
+          <el-icon v-else-if="saveStatus === 'error'"><Close /></el-icon>
+          <template v-if="saveStatus === 'saving'">保存中…</template>
+          <template v-else-if="saveStatus === 'saved'">已保存</template>
+          <template v-else-if="saveStatus === 'error'">保存失败</template>
+        </span>
+      </div>
       <div v-if="loading" class="loading-hint">加载中...</div>
       <div v-else-if="!formData" class="empty-hint">待办条目不存在</div>
       <div v-else class="detail-content">
@@ -151,12 +171,12 @@
 </template>
 
 <script>
-import { Plus, Document, VideoPlay, View, Refresh } from '@element-plus/icons-vue';
+import { Plus, Document, VideoPlay, View, Refresh, Loading, Check, Close } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
 export default {
   name: 'TodoItemDetail',
-  components: { Plus, Document, VideoPlay, View, Refresh },
+  components: { Plus, Document, VideoPlay, View, Refresh, Loading, Check, Close },
   emits: ['updated', 'open-doc', 'run-task', 'view-task', 'rerun-task'],
   props: {
     itemId: { type: Number, required: true },
@@ -169,6 +189,10 @@ export default {
       documents: [],
       hasChildren: false,
       saveTimer: null,
+      // 顶部状态条：'idle' | 'saving' | 'saved' | 'error'
+      // idle 时不渲染文字；saved/error 2.5s 后回 idle 避免长时间残留
+      saveStatus: 'idle',
+      saveStatusTimer: null,
     };
   },
   watch: {
@@ -180,7 +204,48 @@ export default {
     await this.loadDetail();
     await this.loadLabels();
   },
+  beforeUnmount() {
+    // 清理状态条定时器，避免组件卸载后回调触发 setState on unmounted
+    if (this.saveStatusTimer) clearTimeout(this.saveStatusTimer);
+  },
   methods: {
+    /**
+     * 包装异步保存操作，统一驱动顶部状态条：
+     *   saving → (await fn) → saved/error → 2.5s 后回 idle
+     * 用法：const ok = await this.runSave(() => window.todoApp.updateTodoItem(...))
+     * @param {() => Promise<unknown>} fn - 实际调用 IPC 的异步函数
+     * @returns {Promise<boolean>} true=成功，false=失败（已弹 ElMessage.error）
+     */
+    async runSave(fn) {
+      this.setSaveStatus('saving');
+      try {
+        await fn();
+        this.setSaveStatus('saved');
+        return true;
+      } catch (err) {
+        this.setSaveStatus('error');
+        ElMessage.error(err?.message || '保存失败');
+        return false;
+      }
+    },
+    /**
+     * 设置状态条状态并管理自动淡出定时器。
+     * saved/error 2.5s 后回 idle（让用户看到反馈但不长期占用视觉空间）；
+     * saving 不自动重置，由 runSave 在 IPC 返回后显式切换。
+     */
+    setSaveStatus(status) {
+      this.saveStatus = status;
+      if (this.saveStatusTimer) {
+        clearTimeout(this.saveStatusTimer);
+        this.saveStatusTimer = null;
+      }
+      if (status === 'saved' || status === 'error') {
+        this.saveStatusTimer = setTimeout(() => {
+          this.saveStatus = 'idle';
+          this.saveStatusTimer = null;
+        }, 2500);
+      }
+    },
     async loadDetail() {
       this.loading = true;
       try {
@@ -225,48 +290,31 @@ export default {
     },
     async handleSave() {
       if (!this.formData) return;
-      try {
-        await window.todoApp.updateTodoItem(this.itemId, {
-          title: this.formData.title,
-          description: this.formData.description,
-          task_prompt: this.formData.task_prompt,
-          priority: this.formData.priority,
-          due_at: this.formData.dueAt ? parseInt(this.formData.dueAt, 10) : null,
-        });
-        this.$emit('updated');
-      } catch (err) {
-        ElMessage.error(err.message || '保存失败');
-      }
+      const ok = await this.runSave(() => window.todoApp.updateTodoItem(this.itemId, {
+        title: this.formData.title,
+        description: this.formData.description,
+        task_prompt: this.formData.task_prompt,
+        priority: this.formData.priority,
+        due_at: this.formData.dueAt ? parseInt(this.formData.dueAt, 10) : null,
+      }));
+      if (ok) this.$emit('updated');
     },
     async handleStatusChange(status) {
-      try {
-        await window.todoApp.updateTodoItemStatus(this.itemId, status);
-        await this.loadDetail();
-        this.$emit('updated');
-      } catch (err) {
-        ElMessage.error(err.message || '状态更新失败');
-        await this.loadDetail();
-      }
+      const ok = await this.runSave(() => window.todoApp.updateTodoItemStatus(this.itemId, status));
+      await this.loadDetail();
+      if (ok) this.$emit('updated');
     },
     async handleManualToggle(val) {
-      try {
-        await window.todoApp.updateTodoItem(this.itemId, {
-          is_manual_progress: val,
-          progress: this.formData.progress,
-        });
-        await this.loadDetail();
-        this.$emit('updated');
-      } catch (err) {
-        ElMessage.error(err.message || '保存失败');
-      }
+      const ok = await this.runSave(() => window.todoApp.updateTodoItem(this.itemId, {
+        is_manual_progress: val,
+        progress: this.formData.progress,
+      }));
+      await this.loadDetail();
+      if (ok) this.$emit('updated');
     },
     async handleLabelChange(labelIds) {
-      try {
-        await window.todoApp.updateTodoItem(this.itemId, { label_ids: labelIds });
-        this.$emit('updated');
-      } catch (err) {
-        ElMessage.error(err.message || '标签更新失败');
-      }
+      const ok = await this.runSave(() => window.todoApp.updateTodoItem(this.itemId, { label_ids: labelIds }));
+      if (ok) this.$emit('updated');
     },
     /**
      * 新建文档：先弹框收集名称，落库后通知父组件切换到编辑器视图。
@@ -330,6 +378,68 @@ export default {
   min-height: 0;
   overflow-y: auto;
   padding: 18px 18px 28px;
+}
+
+/*
+ * 保存状态指示条（VSCode/Notion 风格自动保存反馈）：
+ * sticky top 让滚动时也可见；idle 时透明且不占视觉空间（高度由内容撑开为 0）；
+ * saving/saved/error 切换配色，2.5s 后由 JS 回 idle 触发淡出。
+ */
+.save-status-bar {
+  position: sticky;
+  top: -18px; /* 抵消 .item-detail-scroll 的 padding-top，让条贴住滚动区顶部 */
+  z-index: 2;
+  display: flex;
+  justify-content: center; /* 居中显示在详情面板顶部 */
+  margin: -18px -18px 12px;
+  pointer-events: none;
+}
+
+.save-status-bar .status-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.08);
+  color: var(--text-on-dark-secondary);
+  letter-spacing: 0.04em;
+  font-weight: 500;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.save-status-bar.is-saving .status-text,
+.save-status-bar.is-saved .status-text,
+.save-status-bar.is-error .status-text {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.save-status-bar.is-saving .status-text {
+  background: rgba(99, 102, 241, 0.10);
+  color: var(--accent-text);
+}
+
+.save-status-bar.is-saved .status-text {
+  background: rgba(34, 197, 94, 0.10);
+  color: #16a34a;
+}
+
+.save-status-bar.is-error .status-text {
+  background: rgba(239, 68, 68, 0.10);
+  color: var(--color-danger, #ef4444);
+}
+
+.save-status-bar .is-loading {
+  animation: save-status-spin 1s linear infinite;
+}
+
+@keyframes save-status-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* 表单输入与深色 Aurora 基底对齐 */

@@ -252,7 +252,11 @@ export default {
       }
     },
     handleItemUpdated() {
-      // TodoListPanel 自行 watch categoryId/currentListId 刷新；这里仅作为事件出口
+      // 表单字段（标题/状态等）变化后，强制中间面板刷新 itemTree，
+      // 让列表项标题/状态等立即同步（否则用户改了标题，列表里还是旧值）。
+      // TodoListPanel 只 watch categoryId（切分类时刷新），selectedItemId 不变时
+      // 不会自动 reload，所以这里显式调用 loadItemTree。
+      this.$refs.listPanel?.loadItemTree?.();
     },
     /**
      * 子组件请求打开文档：切换到编辑器视图。
