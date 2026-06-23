@@ -1,139 +1,149 @@
 <template>
   <div class="todo-item-detail-inner">
-    <div v-if="loading" class="loading-hint">加载中...</div>
-    <div v-else-if="!formData" class="empty-hint">待办条目不存在</div>
-    <div v-else class="detail-content">
-      <el-form label-position="top" size="small">
-        <el-form-item label="标题">
-          <el-input v-model="formData.title" @blur="handleSave" />
-        </el-form-item>
+    <!--
+      内部滚动容器：根元素 .todo-item-detail-inner 因 Vue attribute inheritance
+      会与父组件传入的 .todo-item-detail 合并到同一 DOM 元素，无法既当外层 wrapper
+      （需要 flex:9 横向占位）又当滚动容器（需要 overflow-y:auto）。
+      这里再分一层 .item-detail-scroll 专门承担滚动，与 .todo-sidebar / .todo-list-panel 同款。
+      之前的 bug：表单 + 关联文档 + AI 任务按钮全部塞在根元素里，
+      当表单字段较多时总高度超出，"运行任务"按钮被挤出可视区，滚到底也只看到 1/5。
+    -->
+    <div class="item-detail-scroll">
+      <div v-if="loading" class="loading-hint">加载中...</div>
+      <div v-else-if="!formData" class="empty-hint">待办条目不存在</div>
+      <div v-else class="detail-content">
+        <el-form label-position="top" size="small">
+          <el-form-item label="标题">
+            <el-input v-model="formData.title" @blur="handleSave" />
+          </el-form-item>
 
-        <el-form-item label="状态">
-          <el-select v-model="formData.status" @change="handleStatusChange">
-            <el-option label="初始" value="init" />
-            <el-option label="进行中" value="in_progress" />
-            <el-option label="已完成" value="done" />
-            <el-option label="已放弃" value="abandoned" />
-          </el-select>
-        </el-form-item>
+          <el-form-item label="状态">
+            <el-select v-model="formData.status" @change="handleStatusChange">
+              <el-option label="初始" value="init" />
+              <el-option label="进行中" value="in_progress" />
+              <el-option label="已完成" value="done" />
+              <el-option label="已放弃" value="abandoned" />
+            </el-select>
+          </el-form-item>
 
-        <el-form-item label="优先级">
-          <el-select v-model="formData.priority" @change="handleSave">
-            <el-option label="紧急" value="urgent" />
-            <el-option label="重要" value="important" />
-            <el-option label="普通" value="normal" />
-            <el-option label="提示" value="hint" />
-          </el-select>
-        </el-form-item>
+          <el-form-item label="优先级">
+            <el-select v-model="formData.priority" @change="handleSave">
+              <el-option label="紧急" value="urgent" />
+              <el-option label="重要" value="important" />
+              <el-option label="普通" value="normal" />
+              <el-option label="提示" value="hint" />
+            </el-select>
+          </el-form-item>
 
-        <el-form-item label="截止时间">
-          <el-date-picker
-            v-model="formData.dueAt"
-            type="datetime"
-            placeholder="选择截止时间"
-            format="YYYY-MM-DD HH:mm"
-            value-format="x"
-            @change="handleSave"
-          />
-        </el-form-item>
-
-        <el-form-item label="描述">
-          <el-input
-            v-model="formData.description"
-            type="textarea"
-            :rows="3"
-            @blur="handleSave"
-          />
-        </el-form-item>
-
-        <el-form-item label="任务提示词（task_prompt）">
-          <el-input
-            v-model="formData.task_prompt"
-            type="textarea"
-            :rows="3"
-            placeholder="驱动 AI 任务时的上下文提示词"
-            @blur="handleSave"
-          />
-        </el-form-item>
-
-        <el-form-item label="进度">
-          <div class="progress-row">
-            <el-slider
-              v-model="formData.progress"
-              :disabled="formData.is_manual_progress === false && hasChildren"
+          <el-form-item label="截止时间">
+            <el-date-picker
+              v-model="formData.dueAt"
+              type="datetime"
+              placeholder="选择截止时间"
+              format="YYYY-MM-DD HH:mm"
+              value-format="x"
               @change="handleSave"
             />
-            <span class="progress-value">{{ formData.progress }}%</span>
-          </div>
-        </el-form-item>
+          </el-form-item>
 
-        <el-form-item>
-          <div class="manual-progress-toggle">
-            <el-switch v-model="formData.is_manual_progress" @change="handleManualToggle" />
-            <span class="toggle-label">手动设置进度（关闭则由子项平均）</span>
-          </div>
-        </el-form-item>
-
-        <el-form-item label="标签">
-          <el-select
-            v-model="formData.labelIds"
-            multiple
-            filterable
-            allow-create
-            default-first-option
-            placeholder="选择或创建标签"
-            @change="handleLabelChange"
-          >
-            <el-option
-              v-for="label in allLabels"
-              :key="label.id"
-              :label="label.name"
-              :value="label.id"
+          <el-form-item label="描述">
+            <el-input
+              v-model="formData.description"
+              type="textarea"
+              :rows="3"
+              @blur="handleSave"
             />
-          </el-select>
-        </el-form-item>
-      </el-form>
+          </el-form-item>
 
-      <!-- 文档区域 -->
-      <div class="docs-section">
-        <div class="docs-header">
-          <span class="section-title">关联文档</span>
-          <el-button size="small" text @click="handleCreateDoc">
-            <el-icon><Plus /></el-icon> 新建
-          </el-button>
-        </div>
-        <div v-if="documents.length === 0" class="empty-hint">暂无文档</div>
-        <div
-          v-for="doc in documents"
-          :key="doc.id"
-          class="doc-item"
-          @click="handleOpenDoc(doc)"
-        >
-          <el-icon><Document /></el-icon>
-          <span class="doc-name">{{ doc.name }}</span>
-        </div>
-      </div>
+          <el-form-item label="任务提示词（task_prompt）">
+            <el-input
+              v-model="formData.task_prompt"
+              type="textarea"
+              :rows="3"
+              placeholder="驱动 AI 任务时的上下文提示词"
+              @blur="handleSave"
+            />
+          </el-form-item>
 
-      <!-- AI 任务区段（Phase 5） -->
-      <div class="task-section">
-        <div class="docs-header">
-          <span class="section-title">AI 任务</span>
+          <el-form-item label="进度">
+            <div class="progress-row">
+              <el-slider
+                v-model="formData.progress"
+                :disabled="formData.is_manual_progress === false && hasChildren"
+                @change="handleSave"
+              />
+              <span class="progress-value">{{ formData.progress }}%</span>
+            </div>
+          </el-form-item>
+
+          <el-form-item>
+            <div class="manual-progress-toggle">
+              <el-switch v-model="formData.is_manual_progress" @change="handleManualToggle" />
+              <span class="toggle-label">手动设置进度（关闭则由子项平均）</span>
+            </div>
+          </el-form-item>
+
+          <el-form-item label="标签">
+            <el-select
+              v-model="formData.labelIds"
+              multiple
+              filterable
+              allow-create
+              default-first-option
+              placeholder="选择或创建标签"
+              @change="handleLabelChange"
+            >
+              <el-option
+                v-for="label in allLabels"
+                :key="label.id"
+                :label="label.name"
+                :value="label.id"
+              />
+            </el-select>
+          </el-form-item>
+        </el-form>
+
+        <!-- 文档区域 -->
+        <div class="docs-section">
+          <div class="docs-header">
+            <span class="section-title">关联文档</span>
+            <el-button size="small" text @click="handleCreateDoc">
+              <el-icon><Plus /></el-icon> 新建
+            </el-button>
+          </div>
+          <div v-if="documents.length === 0" class="empty-hint">暂无文档</div>
+          <div
+            v-for="doc in documents"
+            :key="doc.id"
+            class="doc-item"
+            @click="handleOpenDoc(doc)"
+          >
+            <el-icon><Document /></el-icon>
+            <span class="doc-name">{{ doc.name }}</span>
+          </div>
         </div>
-        <el-button
-          v-if="!formData.agent_task_id"
-          type="primary"
-          size="small"
-          @click="$emit('run-task')"
-        >
-          <el-icon><VideoPlay /></el-icon> 运行任务
-        </el-button>
-        <div v-else class="task-actions">
-          <el-button size="small" @click="$emit('view-task')">
-            <el-icon><View /></el-icon> 查看任务面板
+
+        <!-- AI 任务区段（Phase 5） -->
+        <div class="task-section">
+          <div class="docs-header">
+            <span class="section-title">AI 任务</span>
+          </div>
+          <el-button
+            v-if="!formData.agent_task_id"
+            type="primary"
+            size="small"
+            @click="$emit('run-task')"
+          >
+            <el-icon><VideoPlay /></el-icon> 运行任务
           </el-button>
-          <el-button size="small" @click="$emit('rerun-task')">
-            <el-icon><Refresh /></el-icon> 重跑
-          </el-button>
+          <div v-else class="task-actions">
+            <el-button size="small" @click="$emit('view-task')">
+              <el-icon><View /></el-icon> 查看任务面板
+            </el-button>
+            <el-button size="small" @click="$emit('rerun-task')">
+              <el-icon><Refresh /></el-icon> 重跑
+            </el-button>
+          </div>
         </div>
       </div>
     </div>
@@ -299,10 +309,27 @@ export default {
 </script>
 
 <style scoped>
+/*
+ * 三段式布局（与 .todo-sidebar / .todo-list-panel 同款）：
+ *   .todo-item-detail (来自父组件 TodoAppPage；flex:9, overflow-y:auto)
+ *     └─ .todo-item-detail-inner (与 .todo-item-detail 合并到同一 DOM 元素：Vue attribute inheritance)
+ *          └─ .item-detail-scroll (flex:1, min-height:0, overflow-y:auto) ← 真正的滚动容器
+ *
+ * 之前的 bug：根元素既当外层 wrapper 又当滚动容器，导致 padding+height:100% 在 attribute
+ * inheritance 下高度链不收敛，"运行任务"按钮被挤出可视区。
+ */
 .todo-item-detail-inner {
-  padding: 18px 18px 28px;
-  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* 真正的滚动容器：承担所有可滚动内容（表单 + 关联文档 + AI 任务） */
+.item-detail-scroll {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  padding: 18px 18px 28px;
 }
 
 /* 表单输入与深色 Aurora 基底对齐 */

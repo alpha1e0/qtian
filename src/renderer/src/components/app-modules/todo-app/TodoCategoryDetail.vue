@@ -1,29 +1,37 @@
 <template>
   <div class="todo-category-detail-inner">
-    <!-- 头部：分类名 + 新建文档 -->
-    <div class="category-header">
-      <span class="section-title" :title="categoryName">{{ categoryName || '分类' }}</span>
-      <el-button size="small" type="primary" plain @click="handleCreateDoc">
-        <el-icon><Plus /></el-icon>
-        <span>新建文档</span>
-      </el-button>
-    </div>
-
-    <div v-if="loading" class="loading-hint">加载中...</div>
-    <template v-else>
-      <div v-if="documents.length === 0" class="empty-hint">暂无文档，点击"新建文档"开始</div>
-      <div
-        v-for="doc in documents"
-        :key="doc.id"
-        class="doc-item"
-        :title="doc.name"
-        @click="handleOpenDoc(doc)"
-      >
-        <el-icon><Document /></el-icon>
-        <span class="doc-name">{{ doc.name }}</span>
-        <span class="doc-updated">{{ formatTime(doc.updated_at) }}</span>
+    <!--
+      内部滚动容器：与 .todo-sidebar / .todo-list-panel / .todo-item-detail 同款。
+      根元素 .todo-category-detail-inner 因 Vue attribute inheritance 与父组件传入的
+      .todo-item-detail 合并到同一 DOM 元素，无法既当外层 wrapper 又当滚动容器。
+      分一层 .category-detail-scroll 专门承担滚动，文档多时不会被外层裁切。
+    -->
+    <div class="category-detail-scroll">
+      <!-- 头部：分类名 + 新建文档 -->
+      <div class="category-header">
+        <span class="section-title" :title="categoryName">{{ categoryName || '分类' }}</span>
+        <el-button size="small" type="primary" plain @click="handleCreateDoc">
+          <el-icon><Plus /></el-icon>
+          <span>新建文档</span>
+        </el-button>
       </div>
-    </template>
+
+      <div v-if="loading" class="loading-hint">加载中...</div>
+      <template v-else>
+        <div v-if="documents.length === 0" class="empty-hint">暂无文档，点击"新建文档"开始</div>
+        <div
+          v-for="doc in documents"
+          :key="doc.id"
+          class="doc-item"
+          :title="doc.name"
+          @click="handleOpenDoc(doc)"
+        >
+          <el-icon><Document /></el-icon>
+          <span class="doc-name">{{ doc.name }}</span>
+          <span class="doc-updated">{{ formatTime(doc.updated_at) }}</span>
+        </div>
+      </template>
+    </div>
   </div>
 </template>
 
@@ -125,10 +133,23 @@ export default {
 </script>
 
 <style scoped>
+/*
+ * 三段式布局（与 .todo-sidebar / .todo-list-panel / .todo-item-detail 同款）：
+ *   .todo-item-detail (来自父组件；flex:9, overflow-y:auto)
+ *     └─ .todo-category-detail-inner (与 .todo-item-detail 合并：Vue attribute inheritance)
+ *          └─ .category-detail-scroll (flex:1, min-height:0, overflow-y:auto) ← 真正的滚动容器
+ */
 .todo-category-detail-inner {
-  padding: 18px 18px 28px;
-  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.category-detail-scroll {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  padding: 18px 18px 28px;
 }
 
 .category-header {
