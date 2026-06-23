@@ -514,6 +514,12 @@ export default {
   flex: 10;
   min-width: 0;
   overflow: hidden;
+  /* 与 .todo-sidebar 同款：作为 flex column 容器，让内部的 .list-panel-scroll
+   * 用 flex:1 + min-height:0 锁定可滚动高度。
+   * 注：TodoListPanel 组件根元素 .todo-list-panel-inner 因 Vue attribute inheritance
+   * 与本 class 合并到同一 DOM 元素，真正的滚动容器是它内部的 .list-panel-scroll。 */
+  display: flex;
+  flex-direction: column;
   animation: aurora-fade-up 0.5s 0.12s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 

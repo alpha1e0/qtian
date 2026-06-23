@@ -1,66 +1,74 @@
 <template>
   <div class="todo-list-panel-inner">
-    <!-- 顶部：待办项目选择 / 新建 -->
-    <div class="panel-header">
-      <el-select
-        v-model="currentListId"
-        placeholder="选择待办项目"
-        size="small"
-        class="list-select"
-        @change="handleListChange"
-      >
-        <el-option
-          v-for="l in todoLists"
-          :key="l.id"
-          :label="l.name"
-          :value="l.id"
-        />
-      </el-select>
-      <el-button size="small" type="primary" plain @click="handleCreateList">
-        新建待办项目
-      </el-button>
-    </div>
-
-    <!-- 标签视图模式：显示标签关联的 item 列表 -->
-    <div v-if="labelId" class="label-items">
-      <div class="section-title">标签关联待办条目</div>
-      <div v-if="labelItems.length === 0" class="empty-hint">该标签暂无关联待办条目</div>
-      <TodoItemRow
-        v-for="item in labelItems"
-        :key="item.id"
-        :item="item"
-        :depth="0"
-        :selected-item-id="selectedItemId"
-        @toggle-status="handleToggleStatus"
-        @select="$emit('select-item', $event)"
-      />
-    </div>
-
-    <!-- 正常模式：选中 list 后展示 items 树 -->
-    <div v-else-if="currentListId" class="item-tree-container">
-      <div class="tree-toolbar">
-        <span class="section-title">{{ currentListName }}</span>
-        <el-button size="small" text @click="handleCreateRootItem">
-          <el-icon><Plus /></el-icon> 新建待办条目
+    <!--
+      内部滚动容器：根元素 .todo-list-panel-inner 因 Vue attribute inheritance
+      会与父组件传入的 .todo-list-panel 合并到同一 DOM 元素，无法既当外层 wrapper
+      （需要 overflow:hidden 裁切动画）又当滚动容器（需要 overflow-y:auto）。
+      这里再分一层 .list-panel-scroll 专门承担滚动，与 TodoSidebar 的 .sidebar-scroll 同款。
+    -->
+    <div class="list-panel-scroll">
+      <!-- 顶部：待办项目选择 / 新建 -->
+      <div class="panel-header">
+        <el-select
+          v-model="currentListId"
+          placeholder="选择待办项目"
+          size="small"
+          class="list-select"
+          @change="handleListChange"
+        >
+          <el-option
+            v-for="l in todoLists"
+            :key="l.id"
+            :label="l.name"
+            :value="l.id"
+          />
+        </el-select>
+        <el-button size="small" type="primary" plain @click="handleCreateList">
+          新建待办项目
         </el-button>
       </div>
-      <div v-if="itemTree.length === 0" class="empty-hint">暂无待办条目，点击"新建待办条目"开始</div>
-      <TodoItemRow
-        v-for="node in itemTree"
-        :key="node.id"
-        :item="node"
-        :depth="node.depth"
-        :children="node.children"
-        :selected-item-id="selectedItemId"
-        @toggle-status="handleToggleStatus"
-        @select="$emit('select-item', $event)"
-        @create-child="handleCreateChildItem"
-      />
-    </div>
 
-    <!-- 未选中待办项目 -->
-    <div v-else class="empty-state">
-      <el-empty description="请选择一个待办项目或分类" />
+      <!-- 标签视图模式：显示标签关联的 item 列表 -->
+      <div v-if="labelId" class="label-items">
+        <div class="section-title">标签关联待办条目</div>
+        <div v-if="labelItems.length === 0" class="empty-hint">该标签暂无关联待办条目</div>
+        <TodoItemRow
+          v-for="item in labelItems"
+          :key="item.id"
+          :item="item"
+          :depth="0"
+          :selected-item-id="selectedItemId"
+          @toggle-status="handleToggleStatus"
+          @select="$emit('select-item', $event)"
+        />
+      </div>
+
+      <!-- 正常模式：选中 list 后展示 items 树 -->
+      <div v-else-if="currentListId" class="item-tree-container">
+        <div class="tree-toolbar">
+          <span class="section-title">{{ currentListName }}</span>
+          <el-button size="small" text @click="handleCreateRootItem">
+            <el-icon><Plus /></el-icon> 新建待办条目
+          </el-button>
+        </div>
+        <div v-if="itemTree.length === 0" class="empty-hint">暂无待办条目，点击"新建待办条目"开始</div>
+        <TodoItemRow
+          v-for="node in itemTree"
+          :key="node.id"
+          :item="node"
+          :depth="node.depth"
+          :children="node.children"
+          :selected-item-id="selectedItemId"
+          @toggle-status="handleToggleStatus"
+          @select="$emit('select-item', $event)"
+          @create-child="handleCreateChildItem"
+        />
+      </div>
+
+      <!-- 未选中待办项目 -->
+      <div v-else class="empty-state">
+        <el-empty description="请选择一个待办项目或分类" />
+      </div>
     </div>
   </div>
 </template>
@@ -252,8 +260,25 @@ export default {
 </script>
 
 <style scoped>
+/*
+ * 三段式布局（与 TodoSidebar 的 sidebar-top/sidebar-scroll 同款）：
+ *   .todo-list-panel (来自父组件 TodoAppPage；flex:10, display:flex column, overflow:hidden)
+ *     └─ .todo-list-panel-inner (与 .todo-list-panel 合并到同一 DOM 元素：Vue attribute inheritance)
+ *          └─ .list-panel-scroll (flex:1, min-height:0, overflow-y:auto) ← 真正的滚动容器
+ *
+ * 之前的 bug：根元素既当外层 wrapper 又当滚动容器，导致 overflow:hidden 与 overflow-y:auto
+ * 落到同一元素互相覆盖，条目多时滚动条不触发，新建项被裁切。
+ */
 .todo-list-panel-inner {
-  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* 真正的滚动容器：承担所有可滚动内容（panel-header + items） */
+.list-panel-scroll {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 18px 18px 24px;
 }
