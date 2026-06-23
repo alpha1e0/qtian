@@ -144,6 +144,11 @@ export default {
   },
   async mounted() {
     await Promise.all([this.loadCategoryTree(), this.loadLabels()]);
+    // 首次进入自动选中首个顶层分类，让右侧立即展示 TodoCategoryDetail，
+    // 避免初始空状态（设计意图见 spec §配置 default_category_id）。
+    if (Array.isArray(this.categoryTree) && this.categoryTree.length > 0) {
+      this.handleSelectCategory(this.categoryTree[0].id);
+    }
   },
   methods: {
     async loadCategoryTree() {
