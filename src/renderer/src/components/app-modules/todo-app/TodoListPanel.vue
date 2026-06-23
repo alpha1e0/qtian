@@ -204,6 +204,13 @@ export default {
       this.$emit('select-list', listId);
     },
     async handleCreateList() {
+      // 强制归属分类：未分类（category_id=null）的 todo_list 只能通过搜索命中，
+      // 从分类树无法触达，会变成"孤儿"。UI 层要求先选分类再创建。
+      // 注：数据 schema 允许 null（spec §TodoList.category_id），这里仅是产品规则。
+      if (!this.categoryId) {
+        ElMessage.warning('请先在左侧选择分类后再创建待办项目');
+        return;
+      }
       try {
         const { value } = await ElMessageBox.prompt('请输入待办项目名称', '新建待办项目', {
           confirmButtonText: '创建',
@@ -212,7 +219,7 @@ export default {
         if (value && value.trim()) {
           const created = await window.todoApp.createTodoList({
             name: value.trim(),
-            category_id: this.categoryId ?? null,
+            category_id: this.categoryId,
           });
           await this.loadLists();
           this.currentListId = created.id;
