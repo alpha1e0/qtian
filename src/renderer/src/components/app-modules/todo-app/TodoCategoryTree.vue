@@ -9,21 +9,54 @@
 
     <el-tree
       :data="treeData"
-      node-key="id"
+      node-key="nodeKey"
       :props="treeProps"
       :expand-on-click-node="false"
       default-expand-all
       :highlight-current="true"
-      :current-node-key="selectedId"
+      :current-node-key="selectedNodeKey"
       @node-click="handleNodeClick"
     >
       <template #default="{ node, data }">
-        <div class="tree-node">
-          <span class="node-label" :class="{ active: data.id === selectedId }">{{ node.label }}</span>
+        <div class="tree-node" :class="{ 'is-list': data.__type === 'list' }">
+          <!-- 空分类占位箭头（D3）：el-tree 默认对无 children 的节点不渲染展开图标，
+               category 节点即使无子项也应显示占位，保持"目录"语义一致性。
+               用透明三角图标占位，避免点击时切换不可见的展开态。 -->
+          <span
+            v-if="data.__type === 'category' && isEmptyCategory(data)"
+            class="cat-leaf-arrow"
+            aria-hidden="true"
+          ></span>
+
+          <span
+            class="node-label"
+            :class="{ active: data.nodeKey === selectedNodeKey }"
+            :title="node.label"
+          >
+            <el-icon v-if="data.__type === 'category'" class="node-icon"><Folder /></el-icon>
+            <el-icon v-else class="node-icon"><Document /></el-icon>
+            {{ node.label }}
+          </span>
+
           <span class="node-actions">
-            <el-button size="small" text @click.stop="handleCreateChild(data)">
-              <el-icon><Plus /></el-icon>
-            </el-button>
+            <!-- category 节点：＋拆成下拉菜单（新建子分类 / 新建待办项目） -->
+            <el-dropdown
+              v-if="data.__type === 'category'"
+              trigger="click"
+              @command="onCreateCommand($event, data)"
+              @click.stop
+            >
+              <el-button size="small" text @click.stop>
+                <el-icon><Plus /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="sub-category">新建子分类</el-dropdown-item>
+                  <el-dropdown-item command="list">新建待办项目</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+
             <el-button size="small" text @click.stop="handleRename(data)">
               <el-icon><Edit /></el-icon>
             </el-button>
@@ -38,15 +71,17 @@
 </template>
 
 <script>
-import { Plus, Edit, Delete } from '@element-plus/icons-vue';
+import { Plus, Edit, Delete, Folder, Document } from '@element-plus/icons-vue';
 import { ElMessageBox } from 'element-plus';
 
 export default {
   name: 'TodoCategoryTree',
-  components: { Plus, Edit, Delete },
+  components: { Plus, Edit, Delete, Folder, Document },
   props: {
+    // 统一树（category + todo_list 叶子），由父组件 mergedTree 提供
     treeData: { type: Array, default: () => [] },
-    selectedId: { type: Number, default: null },
+    // 复合 nodeKey（`cat_<id>` / `list_<id>`），用于 el-tree current-node-key
+    selectedNodeKey: { type: String, default: null },
   },
   data() {
     return {
@@ -54,8 +89,32 @@ export default {
     };
   },
   methods: {
+    /**
+     * 是否为「无子分类且无待办项目」的空 category。
+     * 注：todo_list 在 mergedTree 中作为 category.children 叶子节点存在，
+     * 所以 children 为空即代表该 category 下无可见子项。
+     */
+    isEmptyCategory(data) {
+      return !Array.isArray(data.children) || data.children.length === 0;
+    },
+    /**
+     * 节点点击分流（D5）。
+     * 不区分 expand 触发（expand-on-click-node=false，点文字不会展开），
+     * 只把 {type, id} 交给父组件决定视图切换。
+     */
     handleNodeClick(data) {
-      this.$emit('select', data.id);
+      this.$emit('select', { type: data.__type, id: data.id });
+    },
+    /**
+     * category ＋下拉命令路由（D4）。
+     * @param cmd - 'sub-category' | 'list'
+     */
+    onCreateCommand(cmd, data) {
+      if (cmd === 'list') {
+        this.handleCreateList(data);
+      } else {
+        this.handleCreateChild(data);
+      }
     },
     async handleCreateRoot() {
       try {
@@ -83,22 +142,54 @@ export default {
         // cancel
       }
     },
-    async handleRename(data) {
+    /**
+     * 在 category 下新建待办项目（D4）。
+     * 仅 emit 事件，prompt 与 IPC 由父组件统一处理（避免子组件持有 IPC 逻辑）。
+     */
+    async handleCreateList(data) {
       try {
-        const { value } = await ElMessageBox.prompt('请输入新名称', '重命名分类', {
-          confirmButtonText: '保存',
+        const { value } = await ElMessageBox.prompt('请输入待办项目名称', '新建待办项目', {
+          confirmButtonText: '创建',
           cancelButtonText: '取消',
-          inputValue: data.name,
         });
         if (value && value.trim()) {
-          this.$emit('rename', { id: data.id, name: value.trim() });
+          this.$emit('create-list', { categoryId: data.id, name: value.trim() });
         }
       } catch {
         // cancel
       }
     },
+    /**
+     * 重命名：按节点类型分流到 category / list 事件。
+     */
+    async handleRename(data) {
+      try {
+        const title = data.__type === 'list' ? '重命名待办项目' : '重命名分类';
+        const { value } = await ElMessageBox.prompt('请输入新名称', title, {
+          confirmButtonText: '保存',
+          cancelButtonText: '取消',
+          inputValue: data.name,
+        });
+        if (value && value.trim()) {
+          if (data.__type === 'list') {
+            this.$emit('rename-list', { id: data.id, name: value.trim() });
+          } else {
+            this.$emit('rename', { id: data.id, name: value.trim() });
+          }
+        }
+      } catch {
+        // cancel
+      }
+    },
+    /**
+     * 删除：按节点类型分流。list 删除前由父组件弹二次确认。
+     */
     handleDelete(data) {
-      this.$emit('delete', data.id);
+      if (data.__type === 'list') {
+        this.$emit('delete-list', data.id);
+      } else {
+        this.$emit('delete', data.id);
+      }
     },
   },
 };
@@ -176,10 +267,34 @@ export default {
   padding-left: 6px;
 }
 
+/* list 叶子节点稍微收敛字重，与 category 视觉区分 */
+.tree-node.is-list .node-label {
+  font-weight: 400;
+}
+
+/* 空分类占位箭头：与 el-tree 三角同尺寸的透明占位，保持缩进对齐 */
+.cat-leaf-arrow {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.node-icon {
+  margin-right: 4px;
+  font-size: 14px;
+  color: var(--text-on-dark-muted, #8b8aa0);
+}
+
 .node-label {
   font-size: 13px;
   color: var(--text-on-dark, #e4e4ed);
   letter-spacing: 0.01em;
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .node-label.active {

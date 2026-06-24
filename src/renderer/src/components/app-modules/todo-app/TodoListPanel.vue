@@ -7,27 +7,6 @@
       这里再分一层 .list-panel-scroll 专门承担滚动，与 TodoSidebar 的 .sidebar-scroll 同款。
     -->
     <div class="list-panel-scroll">
-      <!-- 顶部：待办项目选择 / 新建 -->
-      <div class="panel-header">
-        <el-select
-          v-model="currentListId"
-          placeholder="选择待办项目"
-          size="small"
-          class="list-select"
-          @change="handleListChange"
-        >
-          <el-option
-            v-for="l in todoLists"
-            :key="l.id"
-            :label="l.name"
-            :value="l.id"
-          />
-        </el-select>
-        <el-button size="small" type="primary" plain @click="handleCreateList">
-          新建待办项目
-        </el-button>
-      </div>
-
       <!-- 标签视图模式：显示标签关联的 item 列表 -->
       <div v-if="labelId" class="label-items">
         <div class="section-title">标签关联待办条目</div>
@@ -44,9 +23,9 @@
       </div>
 
       <!-- 正常模式：选中 list 后展示 items 树 -->
-      <div v-else-if="currentListId" class="item-tree-container">
+      <div v-else-if="listId" class="item-tree-container">
         <div class="tree-toolbar">
-          <span class="section-title">{{ currentListName }}</span>
+          <span class="section-title">{{ listName }}</span>
           <el-button size="small" text @click="handleCreateRootItem">
             <el-icon><Plus /></el-icon> 新建待办条目
           </el-button>
@@ -67,7 +46,7 @@
 
       <!-- 未选中待办项目 -->
       <div v-else class="empty-state">
-        <el-empty description="请选择一个待办项目或分类" />
+        <el-empty description="请在左侧选择待办项目" />
       </div>
     </div>
   </div>
@@ -82,70 +61,54 @@ export default {
   name: 'TodoListPanel',
   components: { Plus, TodoItemRow },
   props: {
-    categoryId: { type: Number, default: null },
+    // 受控：当前 todo_list id（由父组件 selectedListId 驱动）
+    listId: { type: Number, default: null },
+    // 受控：list 名（由父组件从 allTodoLists 解析，避免本组件再持有 todoLists）
+    listName: { type: String, default: '' },
+    // 标签视图模式：传入 labelId 后切换到标签关联条目展示
     labelId: { type: Number, default: null },
     selectedItemId: { type: Number, default: null },
   },
   data() {
     return {
-      todoLists: [],
-      currentListId: null,
       itemTree: [],
       labelItems: [],
     };
   },
-  computed: {
-    currentListName() {
-      const found = this.todoLists.find((l) => l.id === this.currentListId);
-      return found ? found.name : '';
-    },
-  },
   watch: {
-    categoryId() {
-      this.currentListId = null;
-      this.itemTree = [];
-      this.loadLists();
+    // 切换 list 时重新加载 item 树（D6 受控模式核心入口）
+    listId() {
+      this.loadItemTree();
     },
     labelId() {
       if (this.labelId) {
         this.loadLabelItems();
-      }
-    },
-    currentListId() {
-      if (this.currentListId) {
-        this.loadItemTree();
+      } else {
+        this.labelItems = [];
       }
     },
   },
   async mounted() {
-    await this.loadLists();
+    // 初次挂载若已有 listId（搜索跳转直达），立即加载 item 树
+    if (this.listId) {
+      await this.loadItemTree();
+    } else if (this.labelId) {
+      await this.loadLabelItems();
+    }
   },
   methods: {
-    async loadLists() {
-      try {
-        const catId = this.categoryId ?? undefined;
-        this.todoLists = await window.todoApp.listTodoLists(catId);
-        if (this.todoLists.length > 0 && !this.currentListId) {
-          this.currentListId = this.todoLists[0].id;
-        }
-      } catch (err) {
-        ElMessage.error('加载待办项目失败');
-        console.error(err);
-      }
-    },
     /**
      * 加载当前 todo_list 的 item 树（含 depth/children）。
      *
-     * 由 currentListId watcher、focusTarget、promptCreateItem、handleToggleStatus 调用；
-     * 之前此方法缺失，导致 watcher 抛 TypeError: this.loadItemTree is not a function。
+     * 由 listId watcher、focusTarget、promptCreateItem、handleToggleStatus 调用。
      */
     async loadItemTree() {
-      if (!this.currentListId) {
+      if (!this.listId) {
         this.itemTree = [];
         return;
       }
       try {
-        this.itemTree = await window.todoApp.getTodoItemTree(this.currentListId);
+        this.itemTree = await window.todoApp.getTodoItemTree(this.listId);
       } catch (err) {
         ElMessage.error('加载待办条目树失败');
         console.error(err);
@@ -154,19 +117,19 @@ export default {
     /**
      * 聚焦目标 list + 滚动到指定 item（搜索跳转用，Phase 3）。
      *
-     * 由于 categoryId 由父组件传入并通过 watch 触发 loadLists，
-     * 此方法显式覆盖 currentListId 并等待 item tree 加载完成后滚动。
+     * 受控模式下 listId 由父组件设置并触发 watcher；此方法主要负责等待
+     * item 树加载完成后的滚动与高亮，兼容旧调用约定。
      *
-     * @param listId - 目标 todo_list id
-     * @param itemId - 待滚动的 todo_item id（可选，不传则只切 list）
+     * @param listId - 目标 todo_list id（应与当前 prop listId 一致）
+     * @param itemId - 待滚动的 todo_item id（可选，不传则只 load item tree）
      */
     async focusTarget(listId, itemId) {
       if (!listId) return;
-      // 确保 currentListId 正确
-      if (this.currentListId !== listId) {
-        this.currentListId = listId;
+      // listId 与 prop 不一致时，由父组件控制；此处仅确保 item 树加载完毕
+      if (this.listId !== listId) {
+        // 父组件未同步，等待 nextTick 让 prop 传入
+        await this.$nextTick();
       }
-      // 等待 list 加载完成（watcher 异步触发）
       await this.loadItemTree();
       await this.$nextTick();
       if (itemId) {
@@ -200,37 +163,6 @@ export default {
         console.error(err);
       }
     },
-    handleListChange(listId) {
-      this.$emit('select-list', listId);
-    },
-    async handleCreateList() {
-      // 强制归属分类：未分类（category_id=null）的 todo_list 只能通过搜索命中，
-      // 从分类树无法触达，会变成"孤儿"。UI 层要求先选分类再创建。
-      // 注：数据 schema 允许 null（spec §TodoList.category_id），这里仅是产品规则。
-      if (!this.categoryId) {
-        ElMessage.warning('请先在左侧选择分类后再创建待办项目');
-        return;
-      }
-      try {
-        const { value } = await ElMessageBox.prompt('请输入待办项目名称', '新建待办项目', {
-          confirmButtonText: '创建',
-          cancelButtonText: '取消',
-        });
-        if (value && value.trim()) {
-          const created = await window.todoApp.createTodoList({
-            name: value.trim(),
-            category_id: this.categoryId,
-          });
-          await this.loadLists();
-          this.currentListId = created.id;
-          ElMessage.success('待办项目已创建');
-        }
-      } catch (err) {
-        if (err !== 'cancel') {
-          ElMessage.error(err.message || '创建失败');
-        }
-      }
-    },
     async handleCreateRootItem() {
       await this.promptCreateItem(null);
     },
@@ -238,6 +170,11 @@ export default {
       await this.promptCreateItem(parentId);
     },
     async promptCreateItem(parentId) {
+      // 受控模式下 listId 由父传入；无 listId 时禁止创建（不再有内置"新建项目"）
+      if (!this.listId) {
+        ElMessage.warning('请先在左侧选择待办项目');
+        return;
+      }
       try {
         const { value } = await ElMessageBox.prompt('请输入待办条目标题', '新建待办条目', {
           confirmButtonText: '创建',
@@ -246,7 +183,7 @@ export default {
         if (value && value.trim()) {
           const created = await window.todoApp.createTodoItem({
             title: value.trim(),
-            todo_list_id: this.currentListId,
+            todo_list_id: this.listId,
             parent_id: parentId,
           });
           await this.loadItemTree();
@@ -287,47 +224,12 @@ export default {
   min-height: 0;
 }
 
-/* 真正的滚动容器：承担所有可滚动内容（panel-header + items） */
+/* 真正的滚动容器：承担所有可滚动内容（items） */
 .list-panel-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   padding: 18px 18px 24px;
-}
-
-/* 顶部：列表选择 + 新建按钮 */
-.panel-header {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 18px;
-  align-items: center;
-}
-
-.list-select {
-  flex: 1;
-}
-
-/* 列表选择器：编辑级排版 */
-.list-select :deep(.el-input__wrapper) {
-  background: rgba(99, 102, 241, 0.04);
-  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.10) inset;
-  border-radius: 8px;
-  transition: box-shadow 0.2s ease;
-}
-
-.list-select :deep(.el-input__wrapper:hover) {
-  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.24) inset;
-}
-
-.list-select :deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 0 0 1px var(--accent, #6366f1) inset,
-              0 0 0 4px rgba(99, 102, 241, 0.10);
-}
-
-.list-select :deep(.el-input__inner) {
-  color: var(--text-on-dark, #e4e4ed);
-  font-weight: 500;
-  letter-spacing: 0.01em;
 }
 
 /* 章节标题：editorial eyebrow */

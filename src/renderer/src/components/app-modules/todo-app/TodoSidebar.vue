@@ -12,11 +12,14 @@
           ref="categoryTree"
           v-if="view === 'category'"
           :tree-data="categoryTree"
-          :selected-id="selectedCategoryId"
-          @select="$emit('select-category', $event)"
+          :selected-node-key="selectedNodeKey"
+          @select="$emit('tree-select', $event)"
           @create="$emit('create-category', $event)"
           @rename="$emit('rename-category', $event)"
           @delete="$emit('delete-category', $event)"
+          @create-list="$emit('create-list', $event)"
+          @rename-list="$emit('rename-list', $event)"
+          @delete-list="$emit('delete-list', $event)"
         />
 
         <TodoLabelCloud
@@ -52,9 +55,11 @@ export default {
   name: 'TodoSidebar',
   components: { TodoCategoryTree, TodoLabelCloud, Delete },
   props: {
+    // 父组件已合并好的统一树（category + todo_list），原样透传给 TodoCategoryTree
     categoryTree: { type: Array, default: () => [] },
     labels: { type: Array, default: () => [] },
-    selectedCategoryId: { type: Number, default: null },
+    // 复合 nodeKey（`cat_<id>` / `list_<id>`），用于 el-tree 高亮
+    selectedNodeKey: { type: String, default: null },
     selectedLabelId: { type: Number, default: null },
   },
   data() {

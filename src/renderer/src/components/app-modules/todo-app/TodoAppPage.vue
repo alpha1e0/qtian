@@ -7,30 +7,41 @@
 
     <!-- 三栏布局：左导航 / 中待办项目 / 右详情 -->
     <div class="columns-row">
-      <!-- 左侧导航：分类树 / 标签云 -->
+      <!-- 左侧导航：分类+待办项目 统一树 / 标签云 -->
       <TodoSidebar
         ref="sidebar"
         class="todo-sidebar"
-        :category-tree="categoryTree"
+        :category-tree="mergedTree"
         :labels="labels"
-        :selected-category-id="selectedCategoryId"
+        :selected-node-key="currentNodeKey"
         :selected-label-id="selectedLabelId"
-        @select-category="handleSelectCategory"
+        @tree-select="handleTreeSelect"
         @create-category="handleCreateCategory"
         @rename-category="handleRenameCategory"
         @delete-category="handleDeleteCategory"
+        @create-list="handleCreateListUnderCategory"
+        @rename-list="handleRenameList"
+        @delete-list="handleDeleteList"
         @select-label="handleSelectLabel"
         @open-trash="trashDialogVisible = true"
       />
 
-      <!-- 中间面板：todo_list + todo_item 树 -->
+      <!--
+        中间面板：todo_list + todo_item 树（受控组件）。
+        始终渲染，由 listId / labelId props 驱动内部展示分支：
+          - labelId 命中 → 标签关联条目列表
+          - listId 命中 → item 树
+          - 都为 null → 空状态（用户未在侧边栏选中 list）
+        item-detail / category-detail / document-editor 等视图由右侧列独立承载，
+        中间列在这些视图下保留原 list 上下文，避免用户切换详情后列表消失。
+      -->
       <TodoListPanel
         ref="listPanel"
         class="todo-list-panel"
-        :category-id="selectedCategoryId"
+        :list-id="selectedListId"
+        :list-name="selectedListName"
         :label-id="selectedLabelId"
         :selected-item-id="selectedItemId"
-        @select-list="handleSelectList"
         @select-item="handleSelectItem"
         @toggle-status="handleToggleStatus"
       />
@@ -116,12 +127,14 @@ export default {
   data() {
     return {
       categoryTree: [],
+      // 全量 todo_list（不按 category 分批拉，避免多次 IPC；用于 mergedTree 组装）
+      allTodoLists: [],
       labels: [],
       selectedCategoryId: null,
       selectedLabelId: null,
       selectedListId: null,
       selectedItemId: null,
-      // 右侧视图状态机：'empty' | 'item-detail' | 'category-detail' | 'document-editor' | 'task-panel'
+      // 右侧视图状态机：'empty' | 'item-detail' | 'item-tree' | 'category-detail' | 'label-items' | 'document-editor' | 'task-panel'
       rightPanelView: 'empty',
       // 当前打开的文档上下文（编辑器视图使用）
       activeDoc: null,
@@ -141,9 +154,47 @@ export default {
       if (!this.selectedCategoryId) return '';
       return this.findCategoryName(this.categoryTree, this.selectedCategoryId) || '';
     },
+    /**
+     * 从 allTodoLists 中查当前 todo_list 名称（用于 TodoListPanel 顶部标题）。
+     * 取代原 TodoListPanel 内部 todoLists/currentListName 的本地状态。
+     */
+    selectedListName() {
+      if (!this.selectedListId) return '';
+      const found = this.allTodoLists.find((l) => l.id === this.selectedListId);
+      return found ? found.name : '';
+    },
+    /**
+     * 合并 category + todo_list 为统一树（D1）。
+     * category 作为分支节点，其下 todo_list 作为叶子节点。
+     * 深拷贝避免污染 categoryTree 原始数据；todo_list 节点用复合 nodeKey 区分。
+     */
+    mergedTree() {
+      return this.buildMergedTree(this.categoryTree);
+    },
+    /**
+     * el-tree 的 current-node-key（D2）。
+     * 按 rightPanelView 与选中态返回 `cat_${id}` / `list_${id}` 字符串。
+     * 未命中时返回 null（el-tree 不高亮任何节点）。
+     */
+    currentNodeKey() {
+      if (this.rightPanelView === 'item-tree' && this.selectedListId) {
+        return `list_${this.selectedListId}`;
+      }
+      if (
+        (this.rightPanelView === 'category-detail' || this.rightPanelView === 'item-detail') &&
+        this.selectedCategoryId
+      ) {
+        return `cat_${this.selectedCategoryId}`;
+      }
+      return null;
+    },
   },
   async mounted() {
-    await Promise.all([this.loadCategoryTree(), this.loadLabels()]);
+    await Promise.all([
+      this.loadCategoryTree(),
+      this.loadLabels(),
+      this.loadAllTodoLists(),
+    ]);
     // 首次进入自动选中首个顶层分类，让右侧立即展示 TodoCategoryDetail，
     // 避免初始空状态（设计意图见 spec §配置 default_category_id）。
     if (Array.isArray(this.categoryTree) && this.categoryTree.length > 0) {
@@ -167,6 +218,54 @@ export default {
         console.error(err);
       }
     },
+    /**
+     * 一次性加载全部 todo_list（不按 category 分批拉）。
+     * mergedTree computed 在渲染时按 category_id 分组挂载到对应 category 节点。
+     */
+    async loadAllTodoLists() {
+      try {
+        // listTodoLists() 无参 = 全部
+        this.allTodoLists = await window.todoApp.listTodoLists();
+      } catch (err) {
+        ElMessage.error('加载待办项目失败');
+        console.error(err);
+      }
+    },
+    /**
+     * 递归构建 mergedTree（D1）。
+     * 对每个 category 深拷贝并挂上 __type/category_id 过滤后的 todo_list 叶子。
+     * todo_list 节点字段：{ __type: 'list', nodeKey: 'list_<id>', id, name, category_id }
+     * category 节点字段：{ __type: 'category', nodeKey: 'cat_<id>', id, name, children: [...] }
+     *
+     * @param {Array} nodes - 原 categoryTree 节点数组
+     * @returns {Array} 带 __type/nodeKey 的统一树
+     */
+    buildMergedTree(nodes) {
+      if (!Array.isArray(nodes)) return [];
+      return nodes.map((node) => {
+        const catNode = {
+          __type: 'category',
+          nodeKey: `cat_${node.id}`,
+          id: node.id,
+          name: node.name,
+          children: [],
+        };
+        // 先递归子分类
+        catNode.children = this.buildMergedTree(node.children);
+        // 再把直属该 category 的 todo_list 作为叶子追加（放在子分类之后）
+        const lists = this.allTodoLists
+          .filter((l) => l.category_id === node.id)
+          .map((l) => ({
+            __type: 'list',
+            nodeKey: `list_${l.id}`,
+            id: l.id,
+            name: l.name,
+            category_id: node.id,
+          }));
+        catNode.children.push(...lists);
+        return catNode;
+      });
+    },
     /** 递归查找分类名称（树可能为空或多层） */
     findCategoryName(nodes, targetId) {
       if (!Array.isArray(nodes)) return '';
@@ -177,9 +276,25 @@ export default {
       }
       return '';
     },
+    /**
+     * 统一树节点点击分流（D5）。
+     * payload: { type: 'category' | 'list', id }
+     * - category → 切到 category-detail
+     * - list     → 切到 item-tree（中间面板显示 item 树）
+     */
+    handleTreeSelect(payload) {
+      if (!payload || !payload.type) return;
+      if (payload.type === 'category') {
+        this.handleSelectCategory(payload.id);
+      } else if (payload.type === 'list') {
+        this.handleSelectList(payload.id);
+      }
+    },
     handleSelectCategory(categoryId) {
       this.selectedCategoryId = categoryId;
       this.selectedLabelId = null;
+      // D7：切换 category 时清空 list 与 item，避免上一个 list 的 item 高亮残留
+      this.selectedListId = null;
       this.selectedItemId = null;
       this.activeDoc = null;
       this.rightPanelView = categoryId ? 'category-detail' : 'empty';
@@ -187,10 +302,27 @@ export default {
     handleSelectLabel(labelId) {
       this.selectedLabelId = labelId;
       this.selectedCategoryId = null;
+      this.selectedListId = null;
       this.selectedItemId = null;
       this.activeDoc = null;
-      // 标签视图暂无独立详情面板，先回退到 empty
-      this.rightPanelView = 'empty';
+      // 标签视图：中间面板切换到「标签关联条目列表」模式
+      this.rightPanelView = labelId ? 'label-items' : 'empty';
+    },
+    /**
+     * 选中待办项目（来自侧边栏 list 节点点击）。
+     * 切到 item-tree 视图；同时把 category 设为该 list 的归属分类，
+     * 让 TodoCategoryDetail 在 list 无条目时仍能反映归属关系（通过 selectedListName 推导）。
+     */
+    handleSelectList(listId) {
+      const list = this.allTodoLists.find((l) => l.id === listId);
+      this.selectedListId = listId;
+      // D7：切换 list 时清空 item，避免上一个 list 的 item 高亮残留
+      this.selectedItemId = null;
+      this.activeDoc = null;
+      this.selectedLabelId = null;
+      // 同步 category 上下文（编辑器/详情回退要用）
+      this.selectedCategoryId = list?.category_id ?? null;
+      this.rightPanelView = listId ? 'item-tree' : 'empty';
     },
     async handleCreateCategory({ name, parentId }) {
       try {
@@ -216,9 +348,10 @@ export default {
           type: 'warning',
         });
         await window.todoApp.deleteCategory(id);
-        await this.loadCategoryTree();
+        await Promise.all([this.loadCategoryTree(), this.loadAllTodoLists()]);
         if (this.selectedCategoryId === id) {
           this.selectedCategoryId = null;
+          this.selectedListId = null;
           this.rightPanelView = 'empty';
         }
         ElMessage.success('已删除');
@@ -228,15 +361,68 @@ export default {
         }
       }
     },
-    handleSelectList(listId) {
-      this.selectedListId = listId;
-      this.selectedItemId = null;
-      this.activeDoc = null;
-      // 选中待办项目但未选待办条目时，根据是否有分类决定回退到分类详情或空
-      if (this.selectedCategoryId) {
-        this.rightPanelView = 'category-detail';
-      } else {
-        this.rightPanelView = 'empty';
+    /**
+     * 在指定 category 下新建 todo_list（取代原 TodoListPanel.handleCreateList）。
+     * payload: { categoryId, name? } —— name 省略时弹 prompt 询问。
+     * 创建成功后刷新 allTodoLists 并自动选中新建的 list。
+     */
+    async handleCreateListUnderCategory(payload) {
+      const categoryId = payload?.categoryId;
+      if (!categoryId) {
+        ElMessage.warning('请先选择分类');
+        return;
+      }
+      let name = payload?.name;
+      try {
+        if (!name) {
+          const res = await ElMessageBox.prompt('请输入待办项目名称', '新建待办项目', {
+            confirmButtonText: '创建',
+            cancelButtonText: '取消',
+          });
+          name = res.value;
+        }
+        if (name && name.trim()) {
+          const created = await window.todoApp.createTodoList({
+            name: name.trim(),
+            category_id: categoryId,
+          });
+          await this.loadAllTodoLists();
+          // 自动选中并切到 item-tree 视图
+          this.handleSelectList(created.id);
+          ElMessage.success('待办项目已创建');
+        }
+      } catch (err) {
+        if (err !== 'cancel') {
+          ElMessage.error(err.message || '创建失败');
+        }
+      }
+    },
+    async handleRenameList({ id, name }) {
+      try {
+        await window.todoApp.updateTodoList(id, { name });
+        await this.loadAllTodoLists();
+        ElMessage.success('已重命名');
+      } catch (err) {
+        ElMessage.error(err.message || '重命名失败');
+      }
+    },
+    async handleDeleteList(id) {
+      try {
+        await ElMessageBox.confirm('删除待办项目将级联删除其下所有待办条目（软删除），确认？', '确认删除', {
+          type: 'warning',
+        });
+        await window.todoApp.deleteTodoList(id);
+        await this.loadAllTodoLists();
+        if (this.selectedListId === id) {
+          this.selectedListId = null;
+          this.selectedItemId = null;
+          this.rightPanelView = this.selectedCategoryId ? 'category-detail' : 'empty';
+        }
+        ElMessage.success('已删除');
+      } catch (err) {
+        if (err !== 'cancel') {
+          ElMessage.error(err.message || '删除失败');
+        }
       }
     },
     handleSelectItem(itemId) {
@@ -254,7 +440,7 @@ export default {
     handleItemUpdated() {
       // 表单字段（标题/状态等）变化后，强制中间面板刷新 itemTree，
       // 让列表项标题/状态等立即同步（否则用户改了标题，列表里还是旧值）。
-      // TodoListPanel 只 watch categoryId（切分类时刷新），selectedItemId 不变时
+      // TodoListPanel 只 watch listId（切 list 时刷新），selectedItemId 不变时
       // 不会自动 reload，所以这里显式调用 loadItemTree。
       this.$refs.listPanel?.loadItemTree?.();
     },
@@ -295,7 +481,7 @@ export default {
      *
      * 设计文档 §7.5：
      *   category   → 选中该 category + 中间显示其下 list + sidebar 闪烁高亮
-     *   todo_list  → 反查 list.category_id 后切换 category + 滚动到该 list
+     *   todo_list  → 反查 list.category_id 后切换 list 视图
      *   todo_item  → 反查 item.todo_list_id → list.category_id 后切换 + 滚动到 item
      *   document   → 打开文档编辑器
      */
@@ -305,35 +491,30 @@ export default {
         if (result.type === 'category') {
           this.selectedLabelId = null;
           this.selectedItemId = null;
+          this.selectedListId = null;
           this.activeDoc = null;
           this.selectedCategoryId = result.id;
           this.rightPanelView = 'category-detail';
           await this.$nextTick();
           this.$refs.sidebar?.highlightCategory(result.id);
         } else if (result.type === 'todo_list') {
-          const list = await window.todoApp.getTodoList(result.id);
-          this.selectedLabelId = null;
-          this.selectedItemId = null;
-          this.activeDoc = null;
-          this.selectedCategoryId = list?.category_id ?? null;
+          // 直接切到 item-tree 视图，listPanel 由 v-if 挂载并 watch listId 自动 loadItemTree
+          this.handleSelectList(result.id);
           await this.$nextTick();
-          // 等待 listPanel 加载新分类下的 list 后聚焦目标 list
-          await this.$refs.listPanel?.focusTarget(result.id, null);
-          this.rightPanelView = this.selectedCategoryId ? 'category-detail' : 'empty';
+          await this.$refs.listPanel?.focusTarget?.(result.id, null);
         } else if (result.type === 'todo_item') {
           const item = await window.todoApp.getTodoItem(result.id);
           if (!item) {
             ElMessage.warning('该待办条目不存在或已删除');
             return;
           }
-          const list = await window.todoApp.getTodoList(item.todo_list_id);
-          this.selectedLabelId = null;
-          this.activeDoc = null;
-          this.selectedCategoryId = list?.category_id ?? null;
+          // 先切到 item-tree 让 listPanel 挂载、加载 item 树
+          this.handleSelectList(item.todo_list_id);
+          await this.$nextTick();
+          await this.$refs.listPanel?.focusTarget?.(item.todo_list_id, item.id);
+          // 滚动完成后再切到右侧 item-detail 视图
           this.selectedItemId = item.id;
           this.rightPanelView = 'item-detail';
-          await this.$nextTick();
-          await this.$refs.listPanel?.focusTarget(item.todo_list_id, item.id);
         } else if (result.type === 'document') {
           const doc = await window.todoApp.getDocument(result.id);
           if (!doc) {
@@ -362,15 +543,19 @@ export default {
     async handleTrashRestored(item) {
       if (!item) return;
       if (item.type === 'category' || item.type === 'todo_list') {
-        await this.loadCategoryTree();
+        await Promise.all([this.loadCategoryTree(), this.loadAllTodoLists()]);
       }
       if (item.type === 'label') {
         await this.loadLabels();
       }
     },
-    /** 回收站 purge / empty 后刷新 categoryTree + labels（结构可能变化） */
+    /** 回收站 purge / empty 后刷新 categoryTree + allTodoLists + labels（结构可能变化） */
     async handleTrashChanged() {
-      await Promise.all([this.loadCategoryTree(), this.loadLabels()]);
+      await Promise.all([
+        this.loadCategoryTree(),
+        this.loadLabels(),
+        this.loadAllTodoLists(),
+      ]);
     },
     // ====================================================================
     // Phase 5：Todo 驱动 AI 任务

@@ -69,11 +69,11 @@ data/
 
 src/renderer/src/components/app-modules/todo-app/
 ├── TodoAppPage.vue                       # 主页面（左中右三栏）
-├── TodoSidebar.vue                       # 左侧导航（category/label 双视图）
-├── TodoListPanel.vue                     # 中间 todo list 展示
+├── TodoSidebar.vue                       # 左侧导航（category+todo_list 统一树 / label 双视图）
+├── TodoListPanel.vue                     # 中间 todo list 展示（受控组件）
 ├── TodoItemDetail.vue                    # 右侧 todo item 摘要 + 编辑
 ├── TodoItemRow.vue                       # 单条 todo item 行
-├── TodoCategoryTree.vue                  # category 树形组件
+├── TodoCategoryTree.vue                  # category + todo_list 统一树形组件
 ├── TodoLabelCloud.vue                    # label 标签云
 ├── TodoSearchBar.vue                     # 顶部搜索框
 ├── TodoDocumentEditor.vue                # 文档编辑器（Markdown）
@@ -1171,32 +1171,34 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 │ 左侧导航 (240px) │ 中间 待办项目                    │ 右侧摘要 (320px)   │
 │                  │                                   │                   │
 │ 视图切换：        │ ┌──────────────────────────────┐ │ ┌───────────────┐ │
-│ ○ Category       │ │ 📋 我的待办项目                │ │ │ 📝 Todo 详情   │ │
-│ ○ Label          │ │ [新建 todo]                   │ │ │               │ │
-│                  │ ├──────────────────────────────┤ │ │ 标题：xxx     │ │
-│ 📁 工作           │ │ ☐ 父 todo                    │ │ │ 状态：进行中   │ │
-│  ├ 📁 项目A       │ │   ☐ 子 todo 1                │ │ │ 进度：50%      │ │
-│  │  📋 需求整理    │ │   ☐ 子 todo 2                │ │ │ 标签：[前端]   │ │
-│  │  📋 开发计划    │ │ ☐ 普通待办条目                 │ │ │               │ │
-│  └ 📁 项目B       │ │ ☑ 已完成待办条目 (划线)         │ │ │ [▶ 运行任务]   │ │
-│ 📁 个人           │ │                              │ │ │ [📄 关联文档]   │ │
-│  📃 学习计划       │ └──────────────────────────────┘ │ └───────────────┘ │
+│ ○ 分类            │ │ 📋 <当前 list 名>  [新建条目]   │ │ │ 📝 Todo 详情   │ │
+│ ○ 标签           │ ├──────────────────────────────┤ │ │               │ │
+│                  │ │ ☐ 父 todo                    │ │ │ 标题：xxx     │ │
+│ 📁 工作           │ │   ☐ 子 todo 1                │ │ │ 状态：进行中   │ │
+│  ├ 📁 项目A       │ │   ☐ 子 todo 2                │ │ │ 进度：50%      │ │
+│  │  ├ 📄 需求整理  │ │ ☐ 普通待办条目                 │ │ │ 标签：[前端]   │ │
+│  │  └ 📄 开发计划  │ │ ☑ 已完成待办条目 (划线)         │ │ │               │ │
+│  └ 📁 项目B       │ │                              │ │ │ [▶ 运行任务]   │ │
+│ 📁 个人           │ └──────────────────────────────┘ │ │ [📄 关联文档]   │ │
+│  📃 学习计划       │                                   │ └───────────────┘ │
 │                  │                                   │                   │
 │ 标签云：           │                                   │ 文档编辑器（嵌）   │
 │ [#前端] [#后端]    │                                   │                   │
 └──────────────────┴───────────────────────────────────┴───────────────────┘
 ```
 
+> 注：左栏的统一树中 `📁` 为 category（目录语义，可展开），`📄` 为 todo_list（文件语义，叶子）；点击 category 文字切到右侧 TodoCategoryDetail，点击 todo_list 文字切到中间 item 树。中间顶部不再有「待办项目下拉」，list 名由父组件传入。
+
 ### 9.2 组件清单
 
 | 组件 | 职责 | 主要 props/事件 |
 | :--- | :--- | :--- |
-| `TodoAppPage.vue` | 三栏布局容器，管理选中 category/label/list/item，处理搜索跳转 | — |
-| `TodoSidebar.vue` | 左侧导航，category 树 / label 云切换 | `view: 'category'\|'label'` |
-| `TodoCategoryTree.vue` | 基于 el-tree 渲染递归 category（含软删除恢复） | emit `select`, `create`, `rename`, `delete` |
+| `TodoAppPage.vue` | 三栏布局容器，持有 categoryTree + allTodoLists，computed 合并 mergedTree，管理选中 category/label/list/item | — |
+| `TodoSidebar.vue` | 左侧导航，category+todo_list 统一树 / label 云切换 | `view: 'category'\|'label'` |
+| `TodoCategoryTree.vue` | 基于 el-tree 渲染 category（目录）+ todo_list（叶子）混合树 | props: `selectedNodeKey`；emit `select({type,id})`, `create`, `rename`, `delete`, `create-list`, `rename-list`, `delete-list` |
 | `TodoLabelCloud.vue` | 标签云 | emit `select-label` |
 | `TodoSearchBar.vue` | 顶部搜索框 + 历史下拉 + 结果跳转 | emit `search`, `jump-to-result`, `use-history` |
-| `TodoListPanel.vue` | 中间面板：展示 todo_list 标题 + todo items | props: `listId` |
+| `TodoListPanel.vue` | 中间面板（受控）：list 名标题 + todo items 树 | props: `listId`, `listName`, `labelId` |
 | `TodoItemRow.vue` | 单行 todo item，支持复选框、缩进、手动进度切换 | emit `toggle`, `select`, `run-task` |
 | `TodoItemDetail.vue` | 右侧详情面板，可编辑 + 任务入口 | props: `itemId` |
 | `TodoDocumentEditor.vue` | Markdown 编辑器（建议 milkdown / vditor） | props: `docId` |
@@ -1205,7 +1207,21 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 | `TaskHistoryList.vue` | 历史 task 列表，可切换查看每次执行结果 | props: `itemId` |
 | `TrashDialog.vue` | 回收站统一入口，跨表列出软删除项，支持恢复/彻底删除 | — |
 
-### 9.3 交互细节
+### 9.3 侧边栏统一树（category + todo_list）
+
+**设计动机**：原方案左栏只有 category 树，选中 category 后中间面板顶部用 `el-select` 切换 list，导致两层选择心智负担大、category 是否含 list 不可见、下拉占用纵向空间。重构为「目录 + 文件」语义的统一树。
+
+**关键决策**：
+
+1. **数据集中（D1）**：`TodoAppPage` 持有 `allTodoLists: []`（一次性拉全部 todo_list），通过 `mergedTree` computed 按递归方式把 todo_list 叶子挂到对应 category 的 `children` 数组（子分类在前，直属 todo_list 在后）。todo_list 节点字段：`{ __type: 'list', nodeKey: 'list_<id>', id, name, category_id }`；category 节点字段：`{ __type: 'category', nodeKey: 'cat_<id>', id, name, children }`。
+2. **复合 nodeKey（D2）**：category 与 todo_list 都用自增整数 id，必定冲突。用字符串前缀 `cat_${id}` / `list_${id}` 作为 el-tree `node-key` 与 `current-node-key`，避免 id 碰撞。
+3. **空分类占位（D3）**：el-tree 对无 children 的节点默认不渲染展开三角。category 节点即使为空也应保持「目录」视觉语义，因此在 `#default` slot 内为空 category 渲染一个透明占位 span（`.cat-leaf-arrow`，18×18px），与三角图标同尺寸保持缩进对齐。不用 `:has()` 是为了兼容性与可控性。
+4. **category ＋下拉（D4）**：原 category hover 的 ＋ 按钮只能新建子分类；现改为 `el-dropdown`，两项：「新建子分类」「新建待办项目」。todo_list 叶子节点 hover 只显示 ✎/🗑（不含 ＋）。根级 tree-header 的 ＋ 保留为「新建根分类」。
+5. **点击行为（D5）**：`expand-on-click-node=false` 不变（点文字不触发展开，点三角才展开）。点击 category 文字 → emit `select({type:'category'})` → 父组件切到 `category-detail`；点击 todo_list 文字 → emit `select({type:'list'})` → 父组件切到 `item-tree`。
+6. **TodoListPanel 受控化（D6）**：删除原 `panel-header`（el-select + 新建项目按钮）与 `todoLists`/`currentListId` 本地状态。props 改为 `listId` / `listName` / `labelId`，watch `listId` 触发 `loadItemTree`。顶部仅保留 `tree-toolbar`：list 名标题（prop 传入）+ 新建待办条目按钮。父组件 `TodoAppPage` 负责从 `allTodoLists` 解析 list 名。
+7. **selectedItemId 联动（D7）**：`handleSelectCategory` 与 `handleSelectList` 均在切换时清空 `selectedItemId`，避免上一个 list 的 item 高亮残留。
+
+### 9.4 交互细节
 
 - **递归层级提示**：创建 category / todo_item 时，若已达 4 层上限，禁用"新建子项"按钮并提示。
 - **状态切换**：todo item 行内复选框点击触发 `update-todo-item-status`，校验失败时弹窗提示原因。
@@ -1259,7 +1275,7 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 > - 聚合层 `TodoAppService.listTrash/purgeTrash/emptyTrash` 内置（不引入独立 Service）；`emptyTrash` 逐条 purge 不引入跨 Service 大事务
 > - `TodoCategoryService` / `TodoItemService` 新增 `collectSubtreeIdsAll`（不带 `deleted_at IS NULL` 过滤），与现有 `collectSubtreeIds` 并存
 > - 补全设计遗漏：新增 `TODO_RESTORE_DOCUMENT` / `TODO_RESTORE_LABEL` 频道（回收站 UI 恢复 document/label 必需）
-> - UI：`TodoSidebar` 底部 [回收站] 入口（§9.3，flex column + margin-top:auto）；`TrashDialog.vue` 二次确认 + 类型图标 + 时间格式化（不引入 dayjs）
+> - UI：`TodoSidebar` 底部 [回收站] 入口（§9.4，flex column + margin-top:auto）；`TrashDialog.vue` 二次确认 + 类型图标 + 时间格式化（不引入 dayjs）
 > - 测试：5 个 Service 新增 listTrash + purge 用例共 34 个，覆盖级联物理删除、幂等性、listTrash 排序/可见性
 
 ### Phase 5: Todo 驱动 AI 任务（依赖 007 任务系统） — ✅ 已实现（2026-06-18）
@@ -1296,6 +1312,20 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 - 拖拽排序、批量操作
 - 附件 GC（用户暂不要求，预留接口）
 - E2E 冒烟测试覆盖主流程 + 任务流
+
+### 重构：侧边栏统一树（category + todo_list） — ✅ 已实现（2026-06-24）
+
+**动机**：原方案左栏只有 category 树，选中 category 后中间面板顶部用 `el-select` 切换 list，导致两层选择心智负担大、category 是否含 list 不可见、下拉占用纵向空间。
+
+**核心改动**（详见 §9.3）：
+- `TodoAppPage.vue` 持有 `allTodoLists`，`mergedTree` computed 把 todo_list 叶子挂到对应 category；`currentNodeKey` 返回 `cat_<id>` / `list_<id>` 复合 key
+- `TodoCategoryTree.vue` 升级为混合树：复合 nodeKey、空分类占位箭头、category ＋下拉（新建子分类 / 新建待办项目）、list 节点 ✎/🗑
+- `TodoSidebar.vue` 透传 `tree-select` / `create-list` / `rename-list` / `delete-list` 事件
+- `TodoListPanel.vue` 改为纯受控组件：删除 panel-header el-select 与本地 todoLists/currentListId，props 改为 `listId` / `listName` / `labelId`
+- 选中行为：点 category 文字 → category-detail；点 list 文字 → item-tree；切换时清空 selectedItemId 防残留高亮
+
+> 复用：`listTodoLists()` / `createTodoList` / `updateTodoList` / `deleteTodoList` IPC 与 `el-dropdown` 组件均无需新依赖。
+> 主进程服务层无改动，所有 vitest 用例（199 个）保持不变。
 
 ## 11 已解决问题回溯（v2 决策日志）
 
