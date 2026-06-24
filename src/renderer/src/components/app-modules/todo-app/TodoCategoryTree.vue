@@ -16,75 +16,45 @@
       :highlight-current="true"
       :current-node-key="selectedNodeKey"
       @node-click="handleNodeClick"
+      @contextmenu="onTreeContextMenu"
     >
       <template #default="{ node, data }">
-        <!-- 右键菜单：替代原行内图标按钮（新建/重命名/删除）。
-             el-dropdown trigger=contextmenu 会阻止浏览器默认菜单并在节点处弹出。 -->
-        <el-dropdown
-          class="node-dropdown"
-          trigger="contextmenu"
-          placement="bottom-end"
-          @command="onContextCommand($event, data)"
-        >
-          <div class="tree-node" :class="{ 'is-list': data.__type === 'list' }">
-            <!-- 空分类占位箭头（D3）：el-tree 默认对无 children 的节点不渲染展开图标，
-                 category 节点即使无子项也应显示占位，保持"目录"语义一致性。
-                 用可见的 CaretRight 与 el-tree 默认 caret 同尺寸（24x24），避免标签错位。 -->
-            <el-icon
-              v-if="data.__type === 'category' && isEmptyCategory(data)"
-              class="cat-leaf-arrow"
-              aria-hidden="true"
-            >
-              <CaretRight />
-            </el-icon>
+        <!-- 右键菜单改用自封装 TodoContextMenu 跟随鼠标（el-dropdown 锚到触发元素，无法跟鼠标）。
+             data-node-key 用于 contextmenu handler 从 e.target 上溯找到对应节点。 -->
+        <div class="tree-node" :class="{ 'is-list': data.__type === 'list' }" :data-node-key="data.nodeKey">
+          <!-- 空分类占位箭头（D3）：el-tree 默认对无 children 的节点不渲染展开图标，
+               category 节点即使无子项也应显示占位，保持"目录"语义一致性。
+               用可见的 CaretRight 与 el-tree 默认 caret 同尺寸（24x24），避免标签错位。 -->
+          <el-icon
+            v-if="data.__type === 'category' && isEmptyCategory(data)"
+            class="cat-leaf-arrow"
+            aria-hidden="true"
+          >
+            <CaretRight />
+          </el-icon>
 
-            <span
-              class="node-label"
-              :class="{ active: data.nodeKey === selectedNodeKey }"
-              :title="node.label"
-            >
-              <el-icon v-if="data.__type === 'category'" class="node-icon"><Folder /></el-icon>
-              <el-icon v-else class="node-icon"><Document /></el-icon>
-              {{ node.label }}
-            </span>
-          </div>
-
-          <template #dropdown>
-            <el-dropdown-menu>
-              <template v-if="data.__type === 'category'">
-                <el-dropdown-item :icon="menuIcons.folderAdd" command="create-sub-category">
-                  新建子分类
-                </el-dropdown-item>
-                <el-dropdown-item :icon="menuIcons.documentAdd" command="create-list">
-                  新建待办项目
-                </el-dropdown-item>
-                <el-dropdown-item :icon="menuIcons.upload" command="import-list">
-                  导入待办项目
-                </el-dropdown-item>
-                <!-- divided：编辑/删除与上方新建项分组区隔 -->
-                <el-dropdown-item :icon="menuIcons.edit" command="rename" divided>
-                  重命名分类
-                </el-dropdown-item>
-                <el-dropdown-item :icon="menuIcons.delete" command="delete">
-                  删除分类
-                </el-dropdown-item>
-              </template>
-              <template v-else>
-                <el-dropdown-item :icon="menuIcons.download" command="export-list">
-                  导出待办项目
-                </el-dropdown-item>
-                <el-dropdown-item :icon="menuIcons.edit" command="rename" divided>
-                  重命名待办项目
-                </el-dropdown-item>
-                <el-dropdown-item :icon="menuIcons.delete" command="delete">
-                  删除待办项目
-                </el-dropdown-item>
-              </template>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+          <span
+            class="node-label"
+            :class="{ active: data.nodeKey === selectedNodeKey }"
+            :title="node.label"
+          >
+            <el-icon v-if="data.__type === 'category'" class="node-icon"><Folder /></el-icon>
+            <el-icon v-else class="node-icon"><Document /></el-icon>
+            {{ node.label }}
+          </span>
+        </div>
       </template>
     </el-tree>
+
+    <!-- 右键菜单：fixed 定位跟随鼠标，命令路由走 onContextCommand -->
+    <TodoContextMenu
+      :visible="ctxMenu.visible"
+      :x="ctxMenu.x"
+      :y="ctxMenu.y"
+      :items="ctxMenu.items"
+      @command="onContextMenuCommand"
+      @close="ctxMenu.visible = false"
+    />
   </div>
 </template>
 
@@ -102,10 +72,12 @@ import {
   Download,
 } from '@element-plus/icons-vue';
 import { ElMessageBox } from 'element-plus';
+import { markRaw } from 'vue';
+import TodoContextMenu from './TodoContextMenu.vue';
 
 export default {
   name: 'TodoCategoryTree',
-  components: { Plus, Folder, Document, CaretRight },
+  components: { Plus, Folder, Document, CaretRight, TodoContextMenu },
   props: {
     // 统一树（category + todo_list 叶子），由父组件 mergedTree 提供
     treeData: { type: Array, default: () => [] },
@@ -115,14 +87,23 @@ export default {
   data() {
     return {
       treeProps: { label: 'name', children: 'children' },
-      // 右键菜单图标：el-dropdown-item 的 :icon 需要组件引用作为实例属性暴露
-      menuIcons: {
-        folderAdd: FolderAdd,
-        documentAdd: DocumentAdd,
-        edit: Edit,
-        delete: Delete,
-        upload: Upload,
-        download: Download,
+      // 右键菜单状态：visible + 鼠标坐标 + 当前命中的节点 data + 渲染项
+      ctxMenu: {
+        visible: false,
+        x: 0,
+        y: 0,
+        items: [],
+        // 命中节点 data，供 command 路由时取 id/__type
+        targetData: null,
+      },
+      // 图标组件：用 markRaw 避免被 Vue 做成响应式代理
+      icons: {
+        folderAdd: markRaw(FolderAdd),
+        documentAdd: markRaw(DocumentAdd),
+        edit: markRaw(Edit),
+        delete: markRaw(Delete),
+        upload: markRaw(Upload),
+        download: markRaw(Download),
       },
     };
   },
@@ -136,21 +117,71 @@ export default {
       return !Array.isArray(data.children) || data.children.length === 0;
     },
     /**
-     * 节点点击分流（D5）。
-     * 不区分 expand 触发（expand-on-click-node=false，点文字不会展开），
-     * 只把 {type, id} 交给父组件决定视图切换。
+     * el-tree 节点右键：阻止浏览器默认菜单，记录鼠标坐标 + 命中节点 data，
+     * 构造对应菜单项并打开 TodoContextMenu。
+     *
+     * 节点 data 获取方式：从 e.target 上溯到带 data-node-key 的 DOM，
+     * 再用 el-tree store getNode 取节点（避免依赖 el-tree 内部 event payload）。
      */
-    handleNodeClick(data) {
-      this.$emit('select', { type: data.__type, id: data.id });
+    onTreeContextMenu(e) {
+      const domNode = e.target.closest('[data-node-key]');
+      if (!domNode) return;
+      const nodeKey = domNode.getAttribute('data-node-key');
+      // el-tree 暴露的 ref（本组件未设 ref，用 DOM 查 store 不便；改为直接在 treeData 中查找）
+      const data = this.findNodeDataByKey(this.treeData, nodeKey);
+      if (!data) return;
+
+      e.preventDefault();
+      // 阻止冒泡：否则 document 上的 contextmenu 监听器（TodoContextMenu 关闭用）
+      // 会在本 handler 之后触发，把刚 open 的新菜单立刻关闭。
+      e.stopPropagation();
+      this.ctxMenu.x = e.clientX;
+      this.ctxMenu.y = e.clientY;
+      this.ctxMenu.targetData = data;
+      this.ctxMenu.items = this.buildMenuItems(data);
+      this.ctxMenu.visible = true;
     },
     /**
-     * 右键菜单命令路由。
-     * 统一入口，按 command 分发到新建/重命名/删除流程。
-     * @param cmd - 'create-sub-category' | 'create-list' | 'rename' | 'delete'
-     * @param data - 当前右键命中的节点数据
+     * 递归查找树中 nodeKey 匹配的节点 data。
      */
-    onContextCommand(cmd, data) {
-      switch (cmd) {
+    findNodeDataByKey(nodes, key) {
+      if (!Array.isArray(nodes)) return null;
+      for (const n of nodes) {
+        if (n.nodeKey === key) return n;
+        const found = this.findNodeDataByKey(n.children, key);
+        if (found) return found;
+      }
+      return null;
+    },
+    /**
+     * 按 data.__type 构造菜单项（command/label/icon/divided）。
+     * 顺序与原 el-dropdown-menu 保持一致。
+     */
+    buildMenuItems(data) {
+      if (data.__type === 'category') {
+        return [
+          { command: 'create-sub-category', label: '新建子分类', icon: this.icons.folderAdd },
+          { command: 'create-list', label: '新建待办项目', icon: this.icons.documentAdd },
+          { command: 'import-list', label: '导入待办项目', icon: this.icons.upload },
+          { command: 'rename', label: '重命名分类', icon: this.icons.edit, divided: true },
+          { command: 'delete', label: '删除分类', icon: this.icons.delete },
+        ];
+      }
+      return [
+        { command: 'export-list', label: '导出待办项目', icon: this.icons.download },
+        { command: 'rename', label: '重命名待办项目', icon: this.icons.edit, divided: true },
+        { command: 'delete', label: '删除待办项目', icon: this.icons.delete },
+      ];
+    },
+    /**
+     * TodoContextMenu command 回调：按 command 分流，targetData 即右键命中节点。
+     */
+    onContextMenuCommand({ command }) {
+      const data = this.ctxMenu.targetData;
+      // 命令执行前先关闭菜单（用户已点 item，菜单组件本身也会 emit close，
+      // 这里显式置 false 保证状态干净，避免数据已变但菜单还残留）
+      this.ctxMenu.visible = false;
+      switch (command) {
         case 'create-sub-category':
           this.handleCreateChild(data);
           break;
@@ -323,11 +354,10 @@ export default {
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
-/* el-dropdown 包裹层：让它成为 el-tree-node__content 的弹性子项，
-   内部 .tree-node 再 flex:1 填满。保证节点行宽与 hover/选中态背景区域正确。 */
-.node-dropdown {
+/* el-tree-node__content 的直接子元素需 flex:1 填满行宽，
+   保证 hover/选中态背景区域正确（移除 el-dropdown 后由 .tree-node 直接承担）。 */
+.todo-category-tree :deep(.el-tree-node__content > .tree-node) {
   flex: 1;
-  display: flex;
   min-width: 0;
 }
 
