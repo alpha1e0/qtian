@@ -21,12 +21,14 @@
         <div class="tree-node" :class="{ 'is-list': data.__type === 'list' }">
           <!-- 空分类占位箭头（D3）：el-tree 默认对无 children 的节点不渲染展开图标，
                category 节点即使无子项也应显示占位，保持"目录"语义一致性。
-               用透明三角图标占位，避免点击时切换不可见的展开态。 -->
-          <span
+               用可见的 CaretRight 与 el-tree 默认 caret 同尺寸（24x24），避免标签错位。 -->
+          <el-icon
             v-if="data.__type === 'category' && isEmptyCategory(data)"
             class="cat-leaf-arrow"
             aria-hidden="true"
-          ></span>
+          >
+            <CaretRight />
+          </el-icon>
 
           <span
             class="node-label"
@@ -71,12 +73,12 @@
 </template>
 
 <script>
-import { Plus, Edit, Delete, Folder, Document } from '@element-plus/icons-vue';
+import { Plus, Edit, Delete, Folder, Document, CaretRight } from '@element-plus/icons-vue';
 import { ElMessageBox } from 'element-plus';
 
 export default {
   name: 'TodoCategoryTree',
-  components: { Plus, Edit, Delete, Folder, Document },
+  components: { Plus, Edit, Delete, Folder, Document, CaretRight },
   props: {
     // 统一树（category + todo_list 叶子），由父组件 mergedTree 提供
     treeData: { type: Array, default: () => [] },
@@ -238,6 +240,13 @@ export default {
   --el-tree-text-color: var(--text-on-dark, #e4e4ed);
 }
 
+/* 隐藏 el-tree 对叶子节点的内置空占位（.is-leaf 仍占 ~12px padding），
+   由项目自定义 .cat-leaf-arrow 统一负责空分类的箭头占位。
+   这样空/非空分类 .tree-node 之前的宽度都是 24px，标签起点一致，无突变。 */
+.todo-category-tree :deep(.el-tree-node__expand-icon.is-leaf) {
+  display: none;
+}
+
 .todo-category-tree :deep(.el-tree-node__content) {
   height: 30px;
   padding-right: 4px;
@@ -263,8 +272,13 @@ export default {
   flex: 1;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding-left: 6px;
+  /* 不用 space-between：空分类会渲染 .cat-leaf-arrow 占位，
+     两个可见元素会被推到两端，导致空分类（如新建的二级分类）标签右对齐。
+     改用 flex-start + label flex:1，让箭头/标签恒靠左，操作按钮自然靠右。 */
+  justify-content: flex-start;
+  /* 不在 .tree-node 上设 padding-left：空分类的 .cat-leaf-arrow 需紧贴
+     .tree-node 起点，与非空分类 el-tree caret（在 .tree-node 之外）位置对齐。
+     folder 与 caret 之间的 6px 间距改由 .node-label 的 padding-left 提供。 */
 }
 
 /* list 叶子节点稍微收敛字重，与 category 视觉区分 */
@@ -272,12 +286,15 @@ export default {
   font-weight: 400;
 }
 
-/* 空分类占位箭头：与 el-tree 三角同尺寸的透明占位，保持缩进对齐 */
+/* 空分类占位箭头：与 el-tree 默认 .el-tree-node__expand-icon 同尺寸（24x24），
+   保证空分类/非空分类的标签起点都对齐（30px）。
+   注：el-tree 默认 caret = font-size 12px + padding 6px。 */
 .cat-leaf-arrow {
-  width: 18px;
-  height: 18px;
   flex-shrink: 0;
-  display: inline-block;
+  font-size: 12px;
+  padding: 6px;
+  box-sizing: content-box;
+  color: var(--text-on-dark-muted, #8b8aa0);
 }
 
 .node-icon {
@@ -292,6 +309,13 @@ export default {
   letter-spacing: 0.01em;
   display: inline-flex;
   align-items: center;
+  /* 弹性占满剩余空间，保证操作按钮始终靠右、标签始终紧跟箭头/图标 */
+  flex: 1;
+  min-width: 0;
+  /* caret/箭头 与 folder 图标之间的 6px 间距由此提供：
+     让 .cat-leaf-arrow 与 el-tree caret 处于同一基准线，
+     folder 起点位置在空/非空分类下完全一致。 */
+  padding-left: 6px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -305,6 +329,7 @@ export default {
 .node-actions {
   display: none;
   gap: 2px;
+  flex-shrink: 0;
 }
 
 :deep(.el-tree-node__content:hover) .node-actions {
