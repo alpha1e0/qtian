@@ -203,6 +203,9 @@ const api = {
     updateTodoList: (id, patch) => ipcRenderer.invoke(IPC_CHANNELS.TODO_UPDATE_TODO_LIST, id, patch),
     deleteTodoList: (id) => ipcRenderer.invoke(IPC_CHANNELS.TODO_DELETE_TODO_LIST, id),
     restoreTodoList: (id) => ipcRenderer.invoke(IPC_CHANNELS.TODO_RESTORE_TODO_LIST, id),
+    // 导入/导出 JSON（主进程聚合 dialog + fs + exchange service，取消返回 null）
+    exportTodoList: (listId) => ipcRenderer.invoke(IPC_CHANNELS.TODO_EXPORT_TODO_LIST, listId),
+    importTodoList: (categoryId) => ipcRenderer.invoke(IPC_CHANNELS.TODO_IMPORT_TODO_LIST, categoryId),
 
     // TodoItem
     getTodoItem: (id) => ipcRenderer.invoke(IPC_CHANNELS.TODO_GET_TODO_ITEM, id),

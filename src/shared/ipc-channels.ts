@@ -96,6 +96,9 @@ export const IPC_CHANNELS = {
   TODO_UPDATE_TODO_LIST: 'qtian:todo:update-todo-list',
   TODO_DELETE_TODO_LIST: 'qtian:todo:delete-todo-list',
   TODO_RESTORE_TODO_LIST: 'qtian:todo:restore-todo-list',
+  // TodoList 导入/导出 JSON（主进程聚合 dialog + fs + exchange service）
+  TODO_EXPORT_TODO_LIST: 'qtian:todo:export-todo-list',
+  TODO_IMPORT_TODO_LIST: 'qtian:todo:import-todo-list',
 
   // TodoItem
   TODO_GET_TODO_ITEM: 'qtian:todo:get-todo-item',

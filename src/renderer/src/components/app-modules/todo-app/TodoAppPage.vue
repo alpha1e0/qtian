@@ -22,6 +22,8 @@
         @create-list="handleCreateListUnderCategory"
         @rename-list="handleRenameList"
         @delete-list="handleDeleteList"
+        @import-list="handleImportList"
+        @export-list="handleExportList"
         @select-label="handleSelectLabel"
         @open-trash="trashDialogVisible = true"
       />
@@ -423,6 +425,34 @@ export default {
         if (err !== 'cancel') {
           ElMessage.error(err.message || '删除失败');
         }
+      }
+    },
+    /**
+     * 导出待办项目为 JSON。
+     * 主进程聚合 dialog + fs + exchange.serialize，返回 null 表示用户取消（静默）。
+     */
+    async handleExportList({ listId }) {
+      try {
+        const result = await window.todoApp.exportTodoList(listId);
+        if (!result) return; // 用户取消 dialog
+        ElMessage.success(`已导出到：${result.filePath}`);
+      } catch (err) {
+        ElMessage.error(err.message || '导出失败');
+      }
+    },
+    /**
+     * 从 JSON 导入待办项目到指定 category 下。
+     * 成功后刷新 list 列表并自动选中新导入的 list。
+     */
+    async handleImportList({ categoryId }) {
+      try {
+        const result = await window.todoApp.importTodoList(categoryId);
+        if (!result) return; // 用户取消 dialog
+        await this.loadAllTodoLists();
+        this.handleSelectList(result.listId);
+        ElMessage.success(`已导入 ${result.itemCount} 个条目`);
+      } catch (err) {
+        ElMessage.error(err.message || '导入失败');
       }
     },
     handleSelectItem(itemId) {

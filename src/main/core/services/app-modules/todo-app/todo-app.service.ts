@@ -9,6 +9,7 @@ import { TodoListService } from './todo-list.service';
 import { TodoItemService } from './todo-item.service';
 import { TodoDocumentService } from './todo-document.service';
 import { TodoSearchService } from './todo-search.service';
+import { TodoListExchangeService } from './todo-list-exchange.service';
 import { TodoTokenizer } from './todo-tokenizer';
 import { TodoTaskService } from './todo-task.service';
 import { TodoAppConfig, TodoTrashItem, TodoTrashEntityType, TodoEmptyTrashResult } from './types';
@@ -44,6 +45,8 @@ export class TodoAppService {
   private itemService: TodoItemService;
   private documentService: TodoDocumentService;
   private searchService: TodoSearchService;
+  /** 待办项目 导入/导出（依赖 list/item/label/category service） */
+  private exchangeService: TodoListExchangeService;
   /** Phase 5：todo-app 任务适配层（taskManager 未注入时为 null） */
   private taskService: TodoTaskService | null = null;
 
@@ -64,6 +67,13 @@ export class TodoAppService {
     this.listService = new TodoListService(manager, this.searchService);
     this.itemService = new TodoItemService(manager, this.labelService, this.searchService);
     this.documentService = new TodoDocumentService(manager, attachDir, this.searchService);
+    // 导入/导出 service：聚合 list/item/label/category，纯逻辑无 IO
+    this.exchangeService = new TodoListExchangeService(
+      this.listService,
+      this.itemService,
+      this.labelService,
+      this.categoryService,
+    );
 
     // Phase 5：可选装配 TodoTaskService（注入 TaskManager 后启用任务能力）
     if (taskManager) {
@@ -99,6 +109,11 @@ export class TodoAppService {
 
   getSearchService(): TodoSearchService {
     return this.searchService;
+  }
+
+  /** 待办项目 导入/导出（list 维度 JSON 序列化与重建） */
+  getExchangeService(): TodoListExchangeService {
+    return this.exchangeService;
   }
 
   /** Phase 5：todo-app 任务适配层（未注入 TaskManager 时为 null） */

@@ -20,6 +20,8 @@
           @create-list="$emit('create-list', $event)"
           @rename-list="$emit('rename-list', $event)"
           @delete-list="$emit('delete-list', $event)"
+          @import-list="$emit('import-list', $event)"
+          @export-list="$emit('export-list', $event)"
         />
 
         <TodoLabelCloud

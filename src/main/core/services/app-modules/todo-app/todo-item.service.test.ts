@@ -452,4 +452,107 @@ describe('TodoItemService', () => {
       expect(svc.getById(item.id)).toBeUndefined();
     });
   });
+
+  describe('bulkCreateForImport 导入批量重建', () => {
+    it('单层 item：全部插入，parent_id=null', () => {
+      const nodes = [
+        { title: 'A', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [] },
+        { title: 'B', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [] },
+        { title: 'C', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [] },
+      ];
+      const count = svc.bulkCreateForImport(1, nodes, () => []);
+      expect(count).toBe(3);
+      const tree = svc.getTreeByList(1);
+      expect(tree).toHaveLength(3);
+      expect(tree.every((n) => n.parent_id === null)).toBe(true);
+    });
+
+    it('嵌套结构：DFS top-down，parent_id 正确链向新父', () => {
+      const nodes = [
+        {
+          title: '父', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal',
+          due_at: null, is_manual_progress: false, labels: [], children: [
+            {
+              title: '子', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal',
+              due_at: null, is_manual_progress: false, labels: [], children: [
+                { title: '孙', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [] },
+              ],
+            },
+          ],
+        },
+      ];
+      const count = svc.bulkCreateForImport(1, nodes, () => []);
+      expect(count).toBe(3);
+      const tree = svc.getTreeByList(1);
+      expect(tree).toHaveLength(1);
+      const parent = tree[0];
+      expect(parent.title).toBe('父');
+      expect(parent.children).toHaveLength(1);
+      expect(parent.children[0].title).toBe('子');
+      expect(parent.children[0].parent_id).toBe(parent.id);
+      expect(parent.children[0].children[0].title).toBe('孙');
+      expect(parent.children[0].children[0].parent_id).toBe(parent.children[0].id);
+    });
+
+    it('进度联动不触发：parent.progress 保留快照原值', () => {
+      const nodes = [
+        {
+          title: '父', description: '', task_prompt: '', status: 'in_progress', progress: 50, priority: 'normal',
+          due_at: null, is_manual_progress: false, labels: [], children: [
+            { title: 'c1', description: '', task_prompt: '', status: 'done', progress: 100, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [] },
+            { title: 'c2', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [] },
+          ],
+        },
+      ];
+      svc.bulkCreateForImport(1, nodes, () => []);
+      const parent = svc.getTreeByList(1)[0];
+      // 若触发了 recalc，parent.progress 应为 50(均值)；这里恰好相同，
+      // 改用极端值确认：见下一用例（用 80）
+      expect(parent.progress).toBe(50);
+    });
+
+    it('进度联动不触发（区分值）：parent=80, children=[0,0] 仍为 80', () => {
+      const nodes = [
+        {
+          title: '父', description: '', task_prompt: '', status: 'in_progress', progress: 80, priority: 'normal',
+          due_at: null, is_manual_progress: false, labels: [], children: [
+            { title: 'c1', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [] },
+            { title: 'c2', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [] },
+          ],
+        },
+      ];
+      svc.bulkCreateForImport(1, nodes, () => []);
+      // 若触发 recalc，均值=0；保留快照则=80
+      expect(svc.getTreeByList(1)[0].progress).toBe(80);
+    });
+
+    it('label 关联：resolveLabels 返回的 id 被 setItemLabels 挂载', () => {
+      const labelId = labelSvc.create({ name: '重要' }).id;
+      const nodes = [
+        { title: 'A', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: ['重要'], children: [] },
+      ];
+      svc.bulkCreateForImport(1, nodes, (names) => names.map((n) => labelId));
+      const tree = svc.getTreeByList(1);
+      expect(tree[0].label_ids).toContain(labelId);
+    });
+
+    it('深度超限抛错（生产环境整事务回滚；mock db 不模拟回滚，仅断言抛错）', () => {
+      // 构造 5 层嵌套（MAX=4），最深处应在 INSERT 时抛错
+      const leaf = { title: 'L5', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [] };
+      const l4 = { title: 'L4', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [leaf] };
+      const l3 = { title: 'L3', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [l4] };
+      const l2 = { title: 'L2', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [l3] };
+      const l1 = { title: 'L1', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [l2] };
+      expect(() => svc.bulkCreateForImport(1, [l1], () => [])).toThrow(/递归层级/);
+      // 注：真实 better-sqlite3 transaction 会 ROLLBACK，此处 mock 不模拟，
+      // 由 deserialize 层的 list 补偿回滚保证最终一致性。
+    });
+
+    it('title 缺失抛错', () => {
+      const nodes = [
+        { title: '', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [] },
+      ];
+      expect(() => svc.bulkCreateForImport(1, nodes, () => [])).toThrow(/empty/);
+    });
+  });
 });

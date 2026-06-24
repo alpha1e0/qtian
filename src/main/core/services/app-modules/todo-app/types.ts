@@ -289,3 +289,54 @@ export interface CreateTaskFromItemOptions {
   /** 运行时补充 prompt（可选） */
   extraPrompt?: string;
 }
+
+// ============================================================================
+// 待办项目 导入/导出（Exchange）
+// 需求文档：docs/specs/101_todo-app-import-export-req.md
+// ============================================================================
+
+/** ExportBundle 版本号（schema 变更时递增，按版本分支兼容） */
+export const TODO_EXPORT_BUNDLE_VERSION = 1;
+
+/** 单次导入条目数硬上限（防御性，避免超大文件 OOM） */
+export const TODO_MAX_IMPORT_ITEMS = 5000;
+
+/**
+ * 导出/导入用的 item 嵌套节点。
+ *
+ * 与 TodoItemNode 对齐，但剔除运行时字段（id / parent_id / todo_list_id /
+ * agent_task_id / created_at / updated_at / deleted_at），跨库无意义。
+ * label 仅保留 name（id 跨库无效，type 不参与导入导出）。
+ * 父子关系用 children 递归表达，导入端 DFS 自顶向下重建。
+ */
+export interface TodoListExportItemNode {
+  title: string;
+  description: string;
+  task_prompt: string;
+  status: TodoItemStatus;
+  progress: number;
+  priority: TodoItemPriority;
+  due_at: number | null;
+  is_manual_progress: boolean;
+  /** 标签名称列表（不含 id / type） */
+  labels: string[];
+  /** 子条目（递归） */
+  children: TodoListExportItemNode[];
+}
+
+/**
+ * 导出文件顶层结构。
+ * version 由 TODO_EXPORT_BUNDLE_VERSION 约定，导入端校验。
+ */
+export interface TodoListExportBundle {
+  version: number;
+  exported_at: number;
+  list: { name: string; description: string };
+  items: TodoListExportItemNode[];
+}
+
+/** deserialize 返回：新建的 todo_list id 与重建的 item 总数 */
+export interface TodoListImportResult {
+  listId: number;
+  itemCount: number;
+}

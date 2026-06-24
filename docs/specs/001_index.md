@@ -21,6 +21,7 @@
 | 任务系统设计 | 公共任务系统（任务抽象、TaskManager、AgentTaskExecutor、Source 机制） | ./007_task-design.md |
 | Todo 应用需求 | Todo 应用（含 FTS5 搜索、文档系统、Todo 驱动 AI 任务）需求 | ./100_todo-app-req.md |
 | Todo 应用设计 | Todo 应用补充设计 | ./100_todo-app-design.md |
+| Todo 导入导出需求 | 待办项目 JSON 导入/导出（备份、迁移、共享）需求 | ./101_todo-app-import-export-req.md |
 
 
 **注意**： AI助手包含 **快捷模式（quick-mode）** 和 **普通模式（normal-mode）**:

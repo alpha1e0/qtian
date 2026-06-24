@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron';
+import { ipcMain, BrowserWindow, dialog } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -9,6 +9,7 @@ import {
   TodoItemStatus,
   TodoItemPriority,
   TodoTrashEntityType,
+  TodoListExportBundle,
 } from '@/core/services/app-modules/todo-app/types';
 
 const logger = createLogger('IPC:TodoApp');
@@ -31,6 +32,7 @@ export function registerTodoAppHandlers(todoAppService: TodoAppService): void {
   const label = todoAppService.getLabelService();
   const doc = todoAppService.getDocumentService();
   const search = todoAppService.getSearchService();
+  const exchange = todoAppService.getExchangeService();
 
   // ===== Category =====
   ipcMain.handle(IPC_CHANNELS.TODO_GET_CATEGORY_TREE, async () => {
@@ -78,6 +80,62 @@ export function registerTodoAppHandlers(todoAppService: TodoAppService): void {
 
   ipcMain.handle(IPC_CHANNELS.TODO_RESTORE_TODO_LIST, async (_e, id: number) => {
     return list.restore(id);
+  });
+
+  // ===== TodoList 导入/导出 JSON =====
+  // 主进程聚合 dialog + fs + exchange service，渲染进程只调单一 IPC。
+  // 用户取消对话框时返回 null，渲染层静默处理。
+
+  ipcMain.handle(IPC_CHANNELS.TODO_EXPORT_TODO_LIST, async (_e, listId: number) => {
+    const win = BrowserWindow.getFocusedWindow() ?? undefined;
+    const defaultName = `todolist-${listId}-${Date.now()}.json`;
+    const result = await dialog.showSaveDialog(win!, {
+      title: '导出待办项目',
+      defaultPath: defaultName,
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+    if (result.canceled || !result.filePath) {
+      logger.info(`Export canceled: listId=${listId}`);
+      return null;
+    }
+    try {
+      const bundle = exchange.serialize(listId);
+      fs.writeFileSync(result.filePath, JSON.stringify(bundle, null, 2), 'utf8');
+      logger.info(`Exported list: listId=${listId}, file=${result.filePath}`);
+      return { filePath: result.filePath };
+    } catch (err) {
+      logger.error(`Export failed: listId=${listId}`, err);
+      throw err;
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.TODO_IMPORT_TODO_LIST, async (_e, categoryId: number) => {
+    const win = BrowserWindow.getFocusedWindow() ?? undefined;
+    const result = await dialog.showOpenDialog(win!, {
+      title: '导入待办项目',
+      properties: ['openFile'],
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      logger.info(`Import canceled: categoryId=${categoryId}`);
+      return null;
+    }
+    const filePath = result.filePaths[0];
+    try {
+      const raw = fs.readFileSync(filePath, 'utf8');
+      let bundle: unknown;
+      try {
+        bundle = JSON.parse(raw);
+      } catch (parseErr) {
+        throw new Error(`文件不是合法的 JSON：${path.basename(filePath)}`);
+      }
+      const importResult = exchange.deserialize(bundle as TodoListExportBundle, categoryId);
+      logger.info(`Imported list: categoryId=${categoryId}, file=${filePath}, items=${importResult.itemCount}`);
+      return importResult;
+    } catch (err) {
+      logger.error(`Import failed: categoryId=${categoryId}, file=${filePath}`, err);
+      throw err;
+    }
   });
 
   // ===== TodoItem =====
@@ -246,4 +304,4 @@ export function registerTodoAppHandlers(todoAppService: TodoAppService): void {
 }
 
 // 导出类型供 handler 内部引用（避免 unused import 警告）
-export type { TodoItemStatus, TodoItemPriority, TodoTrashEntityType };
+export type { TodoItemStatus, TodoItemPriority, TodoTrashEntityType, TodoListExportBundle };

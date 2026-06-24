@@ -58,6 +58,9 @@
                 <el-dropdown-item :icon="menuIcons.documentAdd" command="create-list">
                   新建待办项目
                 </el-dropdown-item>
+                <el-dropdown-item :icon="menuIcons.upload" command="import-list">
+                  导入待办项目
+                </el-dropdown-item>
                 <!-- divided：编辑/删除与上方新建项分组区隔 -->
                 <el-dropdown-item :icon="menuIcons.edit" command="rename" divided>
                   重命名分类
@@ -67,7 +70,10 @@
                 </el-dropdown-item>
               </template>
               <template v-else>
-                <el-dropdown-item :icon="menuIcons.edit" command="rename">
+                <el-dropdown-item :icon="menuIcons.download" command="export-list">
+                  导出待办项目
+                </el-dropdown-item>
+                <el-dropdown-item :icon="menuIcons.edit" command="rename" divided>
                   重命名待办项目
                 </el-dropdown-item>
                 <el-dropdown-item :icon="menuIcons.delete" command="delete">
@@ -92,6 +98,8 @@ import {
   DocumentAdd,
   Edit,
   Delete,
+  Upload,
+  Download,
 } from '@element-plus/icons-vue';
 import { ElMessageBox } from 'element-plus';
 
@@ -113,6 +121,8 @@ export default {
         documentAdd: DocumentAdd,
         edit: Edit,
         delete: Delete,
+        upload: Upload,
+        download: Download,
       },
     };
   },
@@ -146,6 +156,12 @@ export default {
           break;
         case 'create-list':
           this.handleCreateList(data);
+          break;
+        case 'import-list':
+          this.$emit('import-list', { categoryId: data.id });
+          break;
+        case 'export-list':
+          this.$emit('export-list', { listId: data.id, name: data.name });
           break;
         case 'rename':
           this.handleRename(data);

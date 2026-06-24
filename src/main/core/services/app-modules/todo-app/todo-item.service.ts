@@ -5,6 +5,7 @@ import {
   TodoItemNode,
   TodoItemPriority,
   TodoItemStatus,
+  TodoListExportItemNode,
   MAX_TODO_ITEM_DEPTH,
   VALID_STATUS_TRANSITIONS,
 } from './types';
@@ -463,6 +464,101 @@ export class TodoItemService {
       this.assignDepth(root, 1);
     }
     return roots;
+  }
+
+  /**
+   * 批量导入重建 todo_item 子树（导入专用）。
+   *
+   * 与 `create()` 的区别：
+   * - 单事务批量 INSERT，避免 N 次嵌套事务
+   * - **不调用 `recalcParentProgress`**：导出是快照语义，子项均值重算会覆盖快照内的进度
+   * - 递归 DFS 自顶向下，传新 parent_id 给子层
+   * - 标签关联由调用方通过 `resolveLabels` 回调将 name[] 翻译为 id[]
+   *
+   * 设计文档：docs/specs/101_todo-app-import-export-req.md §4
+   *
+   * @param listId - 目标 todo_list（已由调用方创建）
+   * @param nodes - bundle 内嵌套 item 节点
+   * @param resolveLabels - label name[] → id[] 翻译回调（由调用方实现 find-or-create 策略）
+   * @returns 实际插入条数
+   * @throws 深度超限 / title 缺失（事务原子回滚，不留脏数据）
+   */
+  bulkCreateForImport(
+    listId: number,
+    nodes: TodoListExportItemNode[],
+    resolveLabels: (names: string[]) => number[],
+  ): number {
+    let count = 0;
+    const now = Date.now();
+
+    /**
+     * 递归插入：DFS 自顶向下，确保 parent 先于 child 落库拿到新 id。
+     * 整体在外层 transaction 内执行，任一节点抛错则全部回滚。
+     */
+    const insertRecursive = (
+      nodeList: TodoListExportItemNode[],
+      parentId: number | null,
+      depth: number,
+    ): void => {
+      for (const node of nodeList) {
+        const title = (node.title ?? '').trim();
+        if (title.length === 0) {
+          throw new Error('Bundle item title cannot be empty');
+        }
+        if (depth > MAX_TODO_ITEM_DEPTH) {
+          throw new Error(`超出最大递归层级 (${MAX_TODO_ITEM_DEPTH})`);
+        }
+
+        const description = node.description ?? '';
+        const taskPrompt = node.task_prompt ?? '';
+        const progress = this.clampProgress(node.progress ?? 0);
+        const labelIds = resolveLabels(node.labels ?? []);
+
+        const result = this.db.insert(
+          `INSERT INTO todo_item
+            (title, description, task_prompt, parent_id, status, progress, priority, due_at,
+             todo_list_id, agent_task_id, is_manual_progress, created_at, updated_at, deleted_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL)`,
+          [
+            title,
+            description,
+            taskPrompt,
+            parentId,
+            node.status,
+            progress,
+            node.priority,
+            node.due_at ?? null,
+            listId,
+            node.is_manual_progress ? 1 : 0,
+            now,
+            now,
+          ],
+        );
+        const newId = result.lastRowid;
+        count += 1;
+
+        if (labelIds.length > 0) {
+          this.labelService.setItemLabels(newId, labelIds);
+        }
+
+        // FTS 同步（与 create() 保持一致，导入项也需可被全文搜索命中）
+        this.searchService?.syncFts('todo_item', newId, {
+          title,
+          body: this.buildItemFtsBody({ description, task_prompt: taskPrompt }),
+        });
+
+        if (node.children && node.children.length > 0) {
+          insertRecursive(node.children, newId, depth + 1);
+        }
+      }
+    };
+
+    this.db.transaction(() => {
+      insertRecursive(nodes, null, 1);
+    });
+
+    logger.info(`bulkCreateForImport: listId=${listId}, inserted=${count}`);
+    return count;
   }
 
   /** 列出某 label 关联的未删除 todo_item */
