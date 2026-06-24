@@ -244,12 +244,17 @@ export default {
           cancelButtonText: '取消',
         });
         if (value && value.trim()) {
-          await window.todoApp.createTodoItem({
+          const created = await window.todoApp.createTodoItem({
             title: value.trim(),
             todo_list_id: this.currentListId,
             parent_id: parentId,
           });
           await this.loadItemTree();
+          // 创建后立即选中新条目：
+          // - 触发父组件 handleSelectItem → rightPanelView='item-detail' 显示详情
+          // - selectedItemId 变化回流为本组件 :selected-item-id，新条目在列表中高亮
+          // 必须在 loadItemTree 之后 emit，否则新条目还没渲染，selectedItemId 高亮无的放矢
+          this.$emit('select-item', created.id);
           ElMessage.success('待办条目已创建');
         }
       } catch (err) {
