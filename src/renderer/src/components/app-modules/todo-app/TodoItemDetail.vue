@@ -313,8 +313,57 @@ export default {
       if (ok) this.$emit('updated');
     },
     async handleLabelChange(labelIds) {
-      const ok = await this.runSave(() => window.todoApp.updateTodoItem(this.itemId, { label_ids: labelIds }));
-      if (ok) this.$emit('updated');
+      // el-select 的 allow-create 把用户新输入的标签名作为"字符串"塞进 v-model，
+      // 后端 setItemLabels 拿到非数字 label_id 会触发 FOREIGN KEY constraint failed
+      // （todo_item_label.label_id REFERENCES todo_label.id）。
+      // 这里先把字符串解析为真实 label id（匹配同名已存在 → 否则 createLabel 新建），
+      // 再走统一 runSave 管线调 updateTodoItem。
+      let resolvedIds;
+      try {
+        resolvedIds = await this.resolveLabelIds(labelIds);
+      } catch (err) {
+        this.setSaveStatus('error');
+        ElMessage.error(err?.message || '创建标签失败');
+        return;
+      }
+      const ok = await this.runSave(() =>
+        window.todoApp.updateTodoItem(this.itemId, { label_ids: resolvedIds }),
+      );
+      if (ok) {
+        // 同步 v-model 为真实 id，避免下次 change 还带字符串触发重复创建
+        this.formData.labelIds = resolvedIds;
+        // 有新 label 落库时刷新选项列表，让新标签出现在下拉里
+        await this.loadLabels();
+        this.$emit('updated');
+      }
+    },
+    /**
+     * 把 labelIds 数组中的字符串值（el-select allow-create 输入的新标签名）
+     * 解析为真实的 label id：
+     *   - number：原样返回
+     *   - string：先在 allLabels 中按 name 精确匹配（避免重名触发 DB 唯一索引冲突），
+     *             找不到则调 createLabel 新建并返回新 id
+     * @param {Array<number|string>} labelIds
+     * @returns {Promise<number[]>}
+     */
+    async resolveLabelIds(labelIds) {
+      const resolved = [];
+      for (const id of labelIds) {
+        if (typeof id === 'number') {
+          resolved.push(id);
+          continue;
+        }
+        const name = String(id).trim();
+        if (!name) continue;
+        const existing = this.allLabels.find((l) => l.name === name);
+        if (existing) {
+          resolved.push(existing.id);
+          continue;
+        }
+        const created = await window.todoApp.createLabel({ name });
+        resolved.push(created.id);
+      }
+      return resolved;
     },
     /**
      * 新建文档：先弹框收集名称，落库后通知父组件切换到编辑器视图。
