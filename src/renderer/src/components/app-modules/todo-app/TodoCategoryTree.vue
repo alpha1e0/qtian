@@ -18,67 +18,86 @@
       @node-click="handleNodeClick"
     >
       <template #default="{ node, data }">
-        <div class="tree-node" :class="{ 'is-list': data.__type === 'list' }">
-          <!-- 空分类占位箭头（D3）：el-tree 默认对无 children 的节点不渲染展开图标，
-               category 节点即使无子项也应显示占位，保持"目录"语义一致性。
-               用可见的 CaretRight 与 el-tree 默认 caret 同尺寸（24x24），避免标签错位。 -->
-          <el-icon
-            v-if="data.__type === 'category' && isEmptyCategory(data)"
-            class="cat-leaf-arrow"
-            aria-hidden="true"
-          >
-            <CaretRight />
-          </el-icon>
-
-          <span
-            class="node-label"
-            :class="{ active: data.nodeKey === selectedNodeKey }"
-            :title="node.label"
-          >
-            <el-icon v-if="data.__type === 'category'" class="node-icon"><Folder /></el-icon>
-            <el-icon v-else class="node-icon"><Document /></el-icon>
-            {{ node.label }}
-          </span>
-
-          <span class="node-actions">
-            <!-- category 节点：＋拆成下拉菜单（新建子分类 / 新建待办项目） -->
-            <el-dropdown
-              v-if="data.__type === 'category'"
-              trigger="click"
-              @command="onCreateCommand($event, data)"
-              @click.stop
+        <!-- 右键菜单：替代原行内图标按钮（新建/重命名/删除）。
+             el-dropdown trigger=contextmenu 会阻止浏览器默认菜单并在节点处弹出。 -->
+        <el-dropdown
+          class="node-dropdown"
+          trigger="contextmenu"
+          placement="bottom-end"
+          @command="onContextCommand($event, data)"
+        >
+          <div class="tree-node" :class="{ 'is-list': data.__type === 'list' }">
+            <!-- 空分类占位箭头（D3）：el-tree 默认对无 children 的节点不渲染展开图标，
+                 category 节点即使无子项也应显示占位，保持"目录"语义一致性。
+                 用可见的 CaretRight 与 el-tree 默认 caret 同尺寸（24x24），避免标签错位。 -->
+            <el-icon
+              v-if="data.__type === 'category' && isEmptyCategory(data)"
+              class="cat-leaf-arrow"
+              aria-hidden="true"
             >
-              <el-button size="small" text @click.stop>
-                <el-icon><Plus /></el-icon>
-              </el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="sub-category">新建子分类</el-dropdown-item>
-                  <el-dropdown-item command="list">新建待办项目</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+              <CaretRight />
+            </el-icon>
 
-            <el-button size="small" text @click.stop="handleRename(data)">
-              <el-icon><Edit /></el-icon>
-            </el-button>
-            <el-button size="small" text @click.stop="handleDelete(data)">
-              <el-icon><Delete /></el-icon>
-            </el-button>
-          </span>
-        </div>
+            <span
+              class="node-label"
+              :class="{ active: data.nodeKey === selectedNodeKey }"
+              :title="node.label"
+            >
+              <el-icon v-if="data.__type === 'category'" class="node-icon"><Folder /></el-icon>
+              <el-icon v-else class="node-icon"><Document /></el-icon>
+              {{ node.label }}
+            </span>
+          </div>
+
+          <template #dropdown>
+            <el-dropdown-menu>
+              <template v-if="data.__type === 'category'">
+                <el-dropdown-item :icon="menuIcons.folderAdd" command="create-sub-category">
+                  新建子分类
+                </el-dropdown-item>
+                <el-dropdown-item :icon="menuIcons.documentAdd" command="create-list">
+                  新建待办项目
+                </el-dropdown-item>
+                <!-- divided：编辑/删除与上方新建项分组区隔 -->
+                <el-dropdown-item :icon="menuIcons.edit" command="rename" divided>
+                  重命名分类
+                </el-dropdown-item>
+                <el-dropdown-item :icon="menuIcons.delete" command="delete">
+                  删除分类
+                </el-dropdown-item>
+              </template>
+              <template v-else>
+                <el-dropdown-item :icon="menuIcons.edit" command="rename">
+                  重命名待办项目
+                </el-dropdown-item>
+                <el-dropdown-item :icon="menuIcons.delete" command="delete">
+                  删除待办项目
+                </el-dropdown-item>
+              </template>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </template>
     </el-tree>
   </div>
 </template>
 
 <script>
-import { Plus, Edit, Delete, Folder, Document, CaretRight } from '@element-plus/icons-vue';
+import {
+  Plus,
+  Folder,
+  Document,
+  CaretRight,
+  FolderAdd,
+  DocumentAdd,
+  Edit,
+  Delete,
+} from '@element-plus/icons-vue';
 import { ElMessageBox } from 'element-plus';
 
 export default {
   name: 'TodoCategoryTree',
-  components: { Plus, Edit, Delete, Folder, Document, CaretRight },
+  components: { Plus, Folder, Document, CaretRight },
   props: {
     // 统一树（category + todo_list 叶子），由父组件 mergedTree 提供
     treeData: { type: Array, default: () => [] },
@@ -88,6 +107,13 @@ export default {
   data() {
     return {
       treeProps: { label: 'name', children: 'children' },
+      // 右键菜单图标：el-dropdown-item 的 :icon 需要组件引用作为实例属性暴露
+      menuIcons: {
+        folderAdd: FolderAdd,
+        documentAdd: DocumentAdd,
+        edit: Edit,
+        delete: Delete,
+      },
     };
   },
   methods: {
@@ -108,14 +134,27 @@ export default {
       this.$emit('select', { type: data.__type, id: data.id });
     },
     /**
-     * category ＋下拉命令路由（D4）。
-     * @param cmd - 'sub-category' | 'list'
+     * 右键菜单命令路由。
+     * 统一入口，按 command 分发到新建/重命名/删除流程。
+     * @param cmd - 'create-sub-category' | 'create-list' | 'rename' | 'delete'
+     * @param data - 当前右键命中的节点数据
      */
-    onCreateCommand(cmd, data) {
-      if (cmd === 'list') {
-        this.handleCreateList(data);
-      } else {
-        this.handleCreateChild(data);
+    onContextCommand(cmd, data) {
+      switch (cmd) {
+        case 'create-sub-category':
+          this.handleCreateChild(data);
+          break;
+        case 'create-list':
+          this.handleCreateList(data);
+          break;
+        case 'rename':
+          this.handleRename(data);
+          break;
+        case 'delete':
+          this.handleDelete(data);
+          break;
+        default:
+          break;
       }
     },
     async handleCreateRoot() {
@@ -268,13 +307,21 @@ export default {
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
+/* el-dropdown 包裹层：让它成为 el-tree-node__content 的弹性子项，
+   内部 .tree-node 再 flex:1 填满。保证节点行宽与 hover/选中态背景区域正确。 */
+.node-dropdown {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+}
+
 .tree-node {
   flex: 1;
   display: flex;
   align-items: center;
   /* 不用 space-between：空分类会渲染 .cat-leaf-arrow 占位，
      两个可见元素会被推到两端，导致空分类（如新建的二级分类）标签右对齐。
-     改用 flex-start + label flex:1，让箭头/标签恒靠左，操作按钮自然靠右。 */
+     改用 flex-start + label flex:1，让箭头/标签恒靠左。 */
   justify-content: flex-start;
   /* 不在 .tree-node 上设 padding-left：空分类的 .cat-leaf-arrow 需紧贴
      .tree-node 起点，与非空分类 el-tree caret（在 .tree-node 之外）位置对齐。
@@ -324,20 +371,5 @@ export default {
 .node-label.active {
   color: var(--accent-text);
   font-weight: 600;
-}
-
-.node-actions {
-  display: none;
-  gap: 2px;
-  flex-shrink: 0;
-}
-
-:deep(.el-tree-node__content:hover) .node-actions {
-  display: flex;
-}
-
-/* 树节点操作按钮：去除默认蓝色 hover */
-.node-actions :deep(.el-button:hover) {
-  color: var(--accent-text);
 }
 </style>
