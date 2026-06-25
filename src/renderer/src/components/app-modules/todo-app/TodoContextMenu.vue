@@ -5,34 +5,39 @@
     视觉沿用 Element Plus dropdown 样式（class 名复用），保持 UI 一致。
 
     关键点：
+    - Teleport 到 body：祖先 .todo-sidebar 有 `animation: ... both` 永久 transform，
+      会让 fixed 后代相对它定位（菜单会偏 ~80px 且被 overflow 裁剪）。挂到 body 后
+      fixed 才真正相对视口，clientX/Y 直接可用。
     - 视口边界翻转：右/下放不下时翻到左/上
     - 点外面 / ESC / 滚动 / 再次右键 → 关闭
     - 子元素点击后由父组件决定是否关闭（command 处理后调 close）
   -->
-  <ul
-    v-if="visible"
-    ref="menuRef"
-    class="el-dropdown-menu todo-ctx-menu"
-    :style="menuStyle"
-    role="menu"
-    @click.stop
-    @contextmenu.prevent.stop="onReContext"
-  >
-    <template v-for="(item, idx) in items" :key="item.command + '-' + idx">
-      <li v-if="item.divided" class="el-dropdown-menu__item--divided el-popper-divider" />
-      <li
-        class="el-dropdown-menu__item todo-ctx-item"
-        :class="{ 'is-disabled': item.disabled }"
-        role="menuitem"
-        @click="onItemClick(item)"
-      >
-        <el-icon v-if="item.icon" class="todo-ctx-icon">
-          <component :is="item.icon" />
-        </el-icon>
-        <span>{{ item.label }}</span>
-      </li>
-    </template>
-  </ul>
+  <Teleport to="body">
+    <ul
+      v-if="visible"
+      ref="menuRef"
+      class="el-dropdown-menu todo-ctx-menu"
+      :style="menuStyle"
+      role="menu"
+      @click.stop
+      @contextmenu.prevent.stop="onReContext"
+    >
+      <template v-for="(item, idx) in items" :key="item.command + '-' + idx">
+        <li v-if="item.divided" class="el-dropdown-menu__item--divided el-popper-divider" />
+        <li
+          class="el-dropdown-menu__item todo-ctx-item"
+          :class="{ 'is-disabled': item.disabled }"
+          role="menuitem"
+          @click="onItemClick(item)"
+        >
+          <el-icon v-if="item.icon" class="todo-ctx-icon">
+            <component :is="item.icon" />
+          </el-icon>
+          <span>{{ item.label }}</span>
+        </li>
+      </template>
+    </ul>
+  </Teleport>
 </template>
 
 <script>

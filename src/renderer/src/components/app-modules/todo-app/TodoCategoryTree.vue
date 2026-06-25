@@ -16,12 +16,13 @@
       :highlight-current="true"
       :current-node-key="selectedNodeKey"
       @node-click="handleNodeClick"
-      @contextmenu="onTreeContextMenu"
+      @node-contextmenu="onTreeContextMenu"
     >
       <template #default="{ node, data }">
         <!-- 右键菜单改用自封装 TodoContextMenu 跟随鼠标（el-dropdown 锚到触发元素，无法跟鼠标）。
-             data-node-key 用于 contextmenu handler 从 e.target 上溯找到对应节点。 -->
-        <div class="tree-node" :class="{ 'is-list': data.__type === 'list' }" :data-node-key="data.nodeKey">
+             node-contextmenu 直接提供 data，无需在 DOM 上挂 data-node-key 再上溯查找，
+             且命中范围覆盖整行（含 expand-icon 列、content padding）。 -->
+        <div class="tree-node" :class="{ 'is-list': data.__type === 'list' }">
           <!-- 空分类占位箭头（D3）：el-tree 默认对无 children 的节点不渲染展开图标，
                category 节点即使无子项也应显示占位，保持"目录"语义一致性。
                用可见的 CaretRight 与 el-tree 默认 caret 同尺寸（24x24），避免标签错位。 -->
@@ -109,6 +110,13 @@ export default {
   },
   methods: {
     /**
+     * 节点左键点击：emit select 事件，由父组件（TodoSidebar → TodoAppPage）
+     * 驱动右侧详情视图切换。不在子组件内直接操作 store/IPC，保持职责单一。
+     */
+    handleNodeClick(data) {
+      this.$emit('select', { type: data.__type, id: data.id });
+    },
+    /**
      * 是否为「无子分类且无待办项目」的空 category。
      * 注：todo_list 在 mergedTree 中作为 category.children 叶子节点存在，
      * 所以 children 为空即代表该 category 下无可见子项。
@@ -120,38 +128,23 @@ export default {
      * el-tree 节点右键：阻止浏览器默认菜单，记录鼠标坐标 + 命中节点 data，
      * 构造对应菜单项并打开 TodoContextMenu。
      *
-     * 节点 data 获取方式：从 e.target 上溯到带 data-node-key 的 DOM，
-     * 再用 el-tree store getNode 取节点（避免依赖 el-tree 内部 event payload）。
+     * 使用 el-tree 内置的 node-contextmenu 事件：回调签名 (event, data, node)，
+     * 直接拿到节点 data，免去 DOM 上溯查找；命中范围覆盖 .el-tree-node__content
+     * 整行（含 expand-icon 列、content padding）。
      */
-    onTreeContextMenu(e) {
-      const domNode = e.target.closest('[data-node-key]');
-      if (!domNode) return;
-      const nodeKey = domNode.getAttribute('data-node-key');
-      // el-tree 暴露的 ref（本组件未设 ref，用 DOM 查 store 不便；改为直接在 treeData 中查找）
-      const data = this.findNodeDataByKey(this.treeData, nodeKey);
+    onTreeContextMenu(event, data) {
+      // data 为 null/undefined 时（理论上不会，但防御）直接放行浏览器默认菜单
       if (!data) return;
 
-      e.preventDefault();
+      event.preventDefault();
       // 阻止冒泡：否则 document 上的 contextmenu 监听器（TodoContextMenu 关闭用）
       // 会在本 handler 之后触发，把刚 open 的新菜单立刻关闭。
-      e.stopPropagation();
-      this.ctxMenu.x = e.clientX;
-      this.ctxMenu.y = e.clientY;
+      event.stopPropagation();
+      this.ctxMenu.x = event.clientX;
+      this.ctxMenu.y = event.clientY;
       this.ctxMenu.targetData = data;
       this.ctxMenu.items = this.buildMenuItems(data);
       this.ctxMenu.visible = true;
-    },
-    /**
-     * 递归查找树中 nodeKey 匹配的节点 data。
-     */
-    findNodeDataByKey(nodes, key) {
-      if (!Array.isArray(nodes)) return null;
-      for (const n of nodes) {
-        if (n.nodeKey === key) return n;
-        const found = this.findNodeDataByKey(n.children, key);
-        if (found) return found;
-      }
-      return null;
     },
     /**
      * 按 data.__type 构造菜单项（command/label/icon/divided）。
