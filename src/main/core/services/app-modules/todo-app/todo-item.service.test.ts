@@ -28,21 +28,18 @@ vi.mock('@/core/utils/logger', () => ({
 
 import { TodoDb } from './todo-db';
 import { TodoItemService } from './todo-item.service';
-import { TodoLabelService } from './todo-label.service';
 import { MAX_TODO_ITEM_DEPTH } from './types';
 
 const SQL_PATH = path.join(process.cwd(), 'data', 'todo-app.sql');
 
 describe('TodoItemService', () => {
   let db: TodoDb;
-  let labelSvc: TodoLabelService;
   let svc: TodoItemService;
 
   beforeEach(() => {
     db = new TodoDb(':memory:', SQL_PATH);
     db.initialize();
-    labelSvc = new TodoLabelService(db.getDBManager());
-    svc = new TodoItemService(db.getDBManager(), labelSvc);
+    svc = new TodoItemService(db.getDBManager());
   });
 
   describe('create', () => {
@@ -54,7 +51,6 @@ describe('TodoItemService', () => {
       expect(item.progress).toBe(0);
       expect(item.priority).toBe('normal');
       expect(item.is_manual_progress).toBe(false);
-      expect(item.label_ids).toEqual([]);
       expect(item.agent_task_id).toBeNull();
     });
 
@@ -70,13 +66,6 @@ describe('TodoItemService', () => {
     it('浮点 progress 截断为整数', () => {
       const item = svc.create({ title: 't', todo_list_id: 1, progress: 33.7 });
       expect(item.progress).toBe(33);
-    });
-
-    it('应保存 label_ids', () => {
-      const l1 = labelSvc.create({ name: 'a' });
-      const l2 = labelSvc.create({ name: 'b' });
-      const item = svc.create({ title: 't', todo_list_id: 1, label_ids: [l1.id, l2.id] });
-      expect(item.label_ids.sort()).toEqual([l1.id, l2.id].sort());
     });
 
     it('create 子 item 后触发父进度联动', () => {
@@ -317,18 +306,6 @@ describe('TodoItemService', () => {
     });
   });
 
-  describe('listByLabel', () => {
-    it('应返回标签关联的 item', () => {
-      const label = labelSvc.create({ name: 'tag' });
-      const item = svc.create({ title: 't', todo_list_id: 1, label_ids: [label.id] });
-      svc.create({ title: 'untagged', todo_list_id: 1 });
-
-      const items = svc.listByLabel(label.id);
-      expect(items).toHaveLength(1);
-      expect(items[0].id).toBe(item.id);
-    });
-  });
-
   describe('collectSubtree', () => {
     it('应收集所有子孙并按 (depth, created_at) 排序', () => {
       const root = svc.create({ title: 'root', todo_list_id: 1 });
@@ -352,14 +329,13 @@ describe('TodoItemService', () => {
   });
 
   describe('listTrash', () => {
-    it('应返回已软删除 todo_item（label_ids 为空数组）', () => {
+    it('应返回已软删除 todo_item', () => {
       const item = svc.create({ title: 'gone', todo_list_id: 1 });
       svc.delete(item.id);
       const trash = svc.listTrash();
       expect(trash).toHaveLength(1);
       expect(trash[0].id).toBe(item.id);
       expect(trash[0].deleted_at).not.toBeNull();
-      expect(trash[0].label_ids).toEqual([]);
     });
 
     it('恢复后不应出现在 listTrash', () => {
@@ -391,11 +367,9 @@ describe('TodoItemService', () => {
       expect(mgr.get('SELECT id FROM todo_item WHERE id = ?', [grand.id])).toBeUndefined();
     });
 
-    it('应级联物理删除关联 document + item_label', () => {
+    it('应级联物理删除关联 document', () => {
       const mgr = db.getDBManager();
       const item = svc.create({ title: 'task', todo_list_id: 1 });
-      const label = labelSvc.create({ name: 'Lx' });
-      svc.update(item.id, { label_ids: [label.id] });
       mgr.insert(
         'INSERT INTO todo_document (name, content, todo_list_id, todo_item_id, created_at, updated_at, deleted_at) VALUES (?, ?, NULL, ?, ?, ?, NULL)',
         ['doc', '', item.id, 1, 1],
@@ -405,9 +379,6 @@ describe('TodoItemService', () => {
       svc.purge(item.id);
 
       expect(mgr.get('SELECT id FROM todo_document WHERE todo_item_id = ?', [item.id])).toBeUndefined();
-      expect(
-        mgr.get('SELECT todo_item_id FROM todo_item_label WHERE todo_item_id = ?', [item.id]),
-      ).toBeUndefined();
     });
 
     it('未删除实体 purge 为 no-op（实体仍存在）', () => {
@@ -456,11 +427,11 @@ describe('TodoItemService', () => {
   describe('bulkCreateForImport 导入批量重建', () => {
     it('单层 item：全部插入，parent_id=null', () => {
       const nodes = [
-        { title: 'A', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [] },
-        { title: 'B', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [] },
-        { title: 'C', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [] },
+        { title: 'A', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, children: [] },
+        { title: 'B', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, children: [] },
+        { title: 'C', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, children: [] },
       ];
-      const count = svc.bulkCreateForImport(1, nodes, () => []);
+      const count = svc.bulkCreateForImport(1, nodes);
       expect(count).toBe(3);
       const tree = svc.getTreeByList(1);
       expect(tree).toHaveLength(3);
@@ -471,17 +442,17 @@ describe('TodoItemService', () => {
       const nodes = [
         {
           title: '父', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal',
-          due_at: null, is_manual_progress: false, labels: [], children: [
+          due_at: null, is_manual_progress: false, children: [
             {
               title: '子', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal',
-              due_at: null, is_manual_progress: false, labels: [], children: [
-                { title: '孙', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [] },
+              due_at: null, is_manual_progress: false, children: [
+                { title: '孙', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, children: [] },
               ],
             },
           ],
         },
       ];
-      const count = svc.bulkCreateForImport(1, nodes, () => []);
+      const count = svc.bulkCreateForImport(1, nodes);
       expect(count).toBe(3);
       const tree = svc.getTreeByList(1);
       expect(tree).toHaveLength(1);
@@ -498,13 +469,13 @@ describe('TodoItemService', () => {
       const nodes = [
         {
           title: '父', description: '', task_prompt: '', status: 'in_progress', progress: 50, priority: 'normal',
-          due_at: null, is_manual_progress: false, labels: [], children: [
-            { title: 'c1', description: '', task_prompt: '', status: 'done', progress: 100, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [] },
-            { title: 'c2', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [] },
+          due_at: null, is_manual_progress: false, children: [
+            { title: 'c1', description: '', task_prompt: '', status: 'done', progress: 100, priority: 'normal', due_at: null, is_manual_progress: false, children: [] },
+            { title: 'c2', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, children: [] },
           ],
         },
       ];
-      svc.bulkCreateForImport(1, nodes, () => []);
+      svc.bulkCreateForImport(1, nodes);
       const parent = svc.getTreeByList(1)[0];
       // 若触发了 recalc，parent.progress 应为 50(均值)；这里恰好相同，
       // 改用极端值确认：见下一用例（用 80）
@@ -515,44 +486,34 @@ describe('TodoItemService', () => {
       const nodes = [
         {
           title: '父', description: '', task_prompt: '', status: 'in_progress', progress: 80, priority: 'normal',
-          due_at: null, is_manual_progress: false, labels: [], children: [
-            { title: 'c1', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [] },
-            { title: 'c2', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [] },
+          due_at: null, is_manual_progress: false, children: [
+            { title: 'c1', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, children: [] },
+            { title: 'c2', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, children: [] },
           ],
         },
       ];
-      svc.bulkCreateForImport(1, nodes, () => []);
+      svc.bulkCreateForImport(1, nodes);
       // 若触发 recalc，均值=0；保留快照则=80
       expect(svc.getTreeByList(1)[0].progress).toBe(80);
     });
 
-    it('label 关联：resolveLabels 返回的 id 被 setItemLabels 挂载', () => {
-      const labelId = labelSvc.create({ name: '重要' }).id;
-      const nodes = [
-        { title: 'A', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: ['重要'], children: [] },
-      ];
-      svc.bulkCreateForImport(1, nodes, (names) => names.map((n) => labelId));
-      const tree = svc.getTreeByList(1);
-      expect(tree[0].label_ids).toContain(labelId);
-    });
-
     it('深度超限抛错（生产环境整事务回滚；mock db 不模拟回滚，仅断言抛错）', () => {
       // 构造 5 层嵌套（MAX=4），最深处应在 INSERT 时抛错
-      const leaf = { title: 'L5', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [] };
-      const l4 = { title: 'L4', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [leaf] };
-      const l3 = { title: 'L3', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [l4] };
-      const l2 = { title: 'L2', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [l3] };
-      const l1 = { title: 'L1', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [l2] };
-      expect(() => svc.bulkCreateForImport(1, [l1], () => [])).toThrow(/递归层级/);
+      const leaf = { title: 'L5', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, children: [] };
+      const l4 = { title: 'L4', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, children: [leaf] };
+      const l3 = { title: 'L3', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, children: [l4] };
+      const l2 = { title: 'L2', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, children: [l3] };
+      const l1 = { title: 'L1', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, children: [l2] };
+      expect(() => svc.bulkCreateForImport(1, [l1])).toThrow(/递归层级/);
       // 注：真实 better-sqlite3 transaction 会 ROLLBACK，此处 mock 不模拟，
       // 由 deserialize 层的 list 补偿回滚保证最终一致性。
     });
 
     it('title 缺失抛错', () => {
       const nodes = [
-        { title: '', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [] },
+        { title: '', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, children: [] },
       ];
-      expect(() => svc.bulkCreateForImport(1, nodes, () => [])).toThrow(/empty/);
+      expect(() => svc.bulkCreateForImport(1, nodes)).toThrow(/empty/);
     });
   });
 });

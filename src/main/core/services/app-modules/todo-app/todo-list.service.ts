@@ -1,6 +1,7 @@
 import { DBManager } from '@/core/database/db-manager';
 import { createLogger } from '@/core/utils/logger';
 import { TodoList } from './types';
+import { TodoLabelService } from './todo-label.service';
 import { TodoSearchService } from './todo-search.service';
 
 const logger = createLogger('TodoListService');
@@ -9,21 +10,29 @@ const logger = createLogger('TodoListService');
 const DEFAULT_DESCRIPTION = '';
 
 /**
- * TodoList Service — 列表 CRUD + 级联软删除
+ * TodoList Service — 列表 CRUD + 级联软删除 + 标签多对多维护
  *
  * 职责：
  * - list（按 categoryId 过滤，null 表示未分类）
  * - create / update / delete（级联 todo_item + document）/ restore
+ * - 标签作用域：todo_list_label 多对多（label_ids 在 create/update 时全量覆盖）
+ * - listByLabel：列出某 label 关联的未删除 todo_list（标签云视图使用）
  *
  * FTS 集成（Phase 3）：searchService 为可选依赖（默认 null）。
  * 可搜索字段：name（title） + description（body）。
  */
 export class TodoListService {
   private db: DBManager;
+  private labelService: TodoLabelService;
   private searchService: TodoSearchService | null;
 
-  constructor(db: DBManager, searchService: TodoSearchService | null = null) {
+  constructor(
+    db: DBManager,
+    labelService: TodoLabelService,
+    searchService: TodoSearchService | null = null,
+  ) {
     this.db = db;
+    this.labelService = labelService;
     this.searchService = searchService;
   }
 
@@ -34,41 +43,45 @@ export class TodoListService {
    * - categoryId 为数字：该分类下的列表
    */
   list(categoryId?: number | null): TodoList[] {
+    let rows: TodoListRow[];
     if (categoryId === undefined) {
-      const rows = this.db.query<TodoListRow>(
+      rows = this.db.query<TodoListRow>(
         `SELECT id, name, description, category_id, created_at, updated_at, deleted_at
          FROM todo_list WHERE deleted_at IS NULL ORDER BY created_at ASC`,
       );
-      return rows.map((r) => this.mapRow(r));
-    }
-    if (categoryId === null) {
+    } else if (categoryId === null) {
       // 未分类
-      const rows = this.db.query<TodoListRow>(
+      rows = this.db.query<TodoListRow>(
         `SELECT id, name, description, category_id, created_at, updated_at, deleted_at
          FROM todo_list WHERE category_id IS NULL AND deleted_at IS NULL ORDER BY created_at ASC`,
       );
-      return rows.map((r) => this.mapRow(r));
+    } else {
+      rows = this.db.query<TodoListRow>(
+        `SELECT id, name, description, category_id, created_at, updated_at, deleted_at
+         FROM todo_list WHERE category_id = ? AND deleted_at IS NULL ORDER BY created_at ASC`,
+        [categoryId],
+      );
     }
-    const rows = this.db.query<TodoListRow>(
-      `SELECT id, name, description, category_id, created_at, updated_at, deleted_at
-       FROM todo_list WHERE category_id = ? AND deleted_at IS NULL ORDER BY created_at ASC`,
-      [categoryId],
-    );
-    return rows.map((r) => this.mapRow(r));
+    return rows.map((r) => this.mapRow(r, this.labelService.getListLabels(r.id)));
   }
 
-  /** 按 id 获取未删除 todo_list */
+  /** 按 id 获取未删除 todo_list（含 label_ids） */
   getById(id: number): TodoList | undefined {
     const row = this.db.get<TodoListRow>(
       `SELECT id, name, description, category_id, created_at, updated_at, deleted_at
        FROM todo_list WHERE id = ? AND deleted_at IS NULL`,
       [id],
     );
-    return row ? this.mapRow(row) : undefined;
+    return row ? this.mapRow(row, this.labelService.getListLabels(id)) : undefined;
   }
 
   /** 创建 todo_list */
-  create(data: { name: string; description?: string; category_id?: number | null }): TodoList {
+  create(data: {
+    name: string;
+    description?: string;
+    category_id?: number | null;
+    label_ids?: number[];
+  }): TodoList {
     const name = data.name.trim();
     if (name.length === 0) {
       throw new Error('TodoList name cannot be empty');
@@ -81,6 +94,9 @@ export class TodoListService {
          VALUES (?, ?, ?, ?, ?, NULL)`,
         [name, description, data.category_id ?? null, now, now],
       );
+      if (data.label_ids && data.label_ids.length > 0) {
+        this.labelService.setListLabels(result.lastRowid, data.label_ids);
+      }
       this.searchService?.syncFts('todo_list', result.lastRowid, { title: name, body: description });
       return result.lastRowid;
     });
@@ -88,8 +104,16 @@ export class TodoListService {
     return this.getById(newId)!;
   }
 
-  /** 更新 todo_list（name / description / category_id） */
-  update(id: number, patch: { name?: string; description?: string; category_id?: number | null }): TodoList {
+  /** 更新 todo_list（name / description / category_id / label_ids） */
+  update(
+    id: number,
+    patch: {
+      name?: string;
+      description?: string;
+      category_id?: number | null;
+      label_ids?: number[];
+    },
+  ): TodoList {
     const existing = this.getById(id);
     if (!existing) {
       throw new Error(`TodoList ${id} not found`);
@@ -122,7 +146,11 @@ export class TodoListService {
         `UPDATE todo_list SET ${sets.join(', ')} WHERE id = ? AND deleted_at IS NULL`,
         params,
       );
-      // 仅 name/description 变更时才同步 FTS（category_id 移动不影响可搜索内容）
+      // 标签关联（全量覆盖）
+      if (patch.label_ids !== undefined) {
+        this.labelService.setListLabels(id, patch.label_ids);
+      }
+      // 仅 name/description 变更时才同步 FTS（category_id / label_ids 不影响可搜索内容）
       if (patch.name !== undefined || patch.description !== undefined) {
         const after = this.getById(id);
         if (after) {
@@ -135,6 +163,19 @@ export class TodoListService {
     });
 
     return this.getById(id)!;
+  }
+
+  /** 列出某 label 关联的未删除 todo_list（标签云视图使用） */
+  listByLabel(labelId: number): TodoList[] {
+    const rows = this.db.query<TodoListRow>(
+      `SELECT tl.id, tl.name, tl.description, tl.category_id, tl.created_at, tl.updated_at, tl.deleted_at
+       FROM todo_list tl
+       INNER JOIN todo_list_label tll ON tl.id = tll.todo_list_id
+       WHERE tll.label_id = ? AND tl.deleted_at IS NULL
+       ORDER BY tl.created_at ASC`,
+      [labelId],
+    );
+    return rows.map((r) => this.mapRow(r, this.labelService.getListLabels(r.id)));
   }
 
   /**
@@ -188,6 +229,8 @@ export class TodoListService {
            AND todo_item_id IN (SELECT id FROM todo_item WHERE todo_list_id = ?)`,
         [now, now, id],
       );
+      // 清理 todo_list_label 关联（todo_item_label 由 item 维度清理，保留兼容）
+      this.db.execute(`DELETE FROM todo_list_label WHERE todo_list_id = ?`, [id]);
 
       // 级联清理 FTS
       this.searchService?.syncFtsBatch('todo_list', [id]);
@@ -219,20 +262,20 @@ export class TodoListService {
     return this.getById(id);
   }
 
-  /** 列出回收站中的 todo_list */
+  /** 列出回收站中的 todo_list（label_ids 返回 []，因为软删除时已清关联） */
   listTrash(): TodoList[] {
     const rows = this.db.query<TodoListRow>(
       `SELECT id, name, description, category_id, created_at, updated_at, deleted_at
        FROM todo_list WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`,
     );
-    return rows.map((r) => this.mapRow(r));
+    return rows.map((r) => this.mapRow(r, []));
   }
 
   /**
    * 物理删除已软删除的 todo_list（不可恢复）。
    *
    * 级联物理删除（依赖关系逆序）：
-   *   todo_item_label → todo_document → todo_item → todo_list
+   *   todo_list_label → todo_item_label → todo_document → todo_item → todo_list
    *
    * 幂等性：先校验 `deleted_at IS NOT NULL`，未删除实体为 no-op。
    * FTS 无需操作：软删除时已清理。
@@ -256,31 +299,36 @@ export class TodoListService {
     const itemIds = itemIdsRows.map((r) => r.id);
 
     this.db.transaction(() => {
-      // 1. 清理 todo_item_label 关联
+      // 1. 清理 todo_list_label 关联（当前作用域）
+      this.db.execute(
+        `DELETE FROM todo_list_label WHERE todo_list_id = ?`,
+        [id],
+      );
+      // 2. 清理 todo_item_label 关联（历史作用域，保留清理以防残留）
       if (itemIds.length > 0) {
         const itemIdList = itemIds.join(',');
         this.db.execute(
           `DELETE FROM todo_item_label WHERE todo_item_id IN (${itemIdList})`,
         );
       }
-      // 2. 物理删除关联 document（todo_list 维度）
+      // 3. 物理删除关联 document（todo_list 维度）
       this.db.execute(
         `DELETE FROM todo_document WHERE todo_list_id = ?`,
         [id],
       );
-      // 2b. 物理删除关联 document（item 维度）
+      // 3b. 物理删除关联 document（item 维度）
       if (itemIds.length > 0) {
         const itemIdList = itemIds.join(',');
         this.db.execute(
           `DELETE FROM todo_document WHERE todo_item_id IN (${itemIdList})`,
         );
       }
-      // 3. 物理删除 todo_item
+      // 4. 物理删除 todo_item
       this.db.execute(
         `DELETE FROM todo_item WHERE todo_list_id = ?`,
         [id],
       );
-      // 4. 物理删除 todo_list
+      // 5. 物理删除 todo_list
       this.db.execute(
         `DELETE FROM todo_list WHERE id = ?`,
         [id],
@@ -294,12 +342,13 @@ export class TodoListService {
   // 内部工具
   // =========================================================================
 
-  private mapRow(row: TodoListRow): TodoList {
+  private mapRow(row: TodoListRow, labelIds: number[]): TodoList {
     return {
       id: row.id,
       name: row.name,
       description: row.description,
       category_id: row.category_id,
+      label_ids: labelIds,
       created_at: row.created_at,
       updated_at: row.updated_at,
       deleted_at: row.deleted_at ?? null,

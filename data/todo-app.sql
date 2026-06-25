@@ -81,12 +81,30 @@ CREATE INDEX IF NOT EXISTS idx_item_due    ON todo_item(due_at)        WHERE del
 
 -- ============================================================
 -- TodoItem <-> Label 多对多
+-- ------------------------------------------------------------
+-- 历史 associaton 表：标签功能现已迁移到 todo_list 维度（见 todo_list_label）。
+-- 保留此表仅为兼容历史数据，业务侧不再写入；label 软删除时仍级联清理。
 -- ============================================================
 CREATE TABLE IF NOT EXISTS todo_item_label (
   todo_item_id INTEGER NOT NULL,
   label_id     INTEGER NOT NULL,
   PRIMARY KEY (todo_item_id, label_id),
   FOREIGN KEY (todo_item_id) REFERENCES todo_item(id) ON DELETE NO ACTION,
+  FOREIGN KEY (label_id)     REFERENCES todo_label(id) ON DELETE NO ACTION
+);
+
+-- ============================================================
+-- TodoList <-> Label 多对多（当前生效的标签作用域）
+-- ------------------------------------------------------------
+-- 设计要点：
+-- - 标签云与「待办项目」直接关联；UI 在 TodoListDetail 维护多对多。
+-- - label 软删除 / purge 时由 Service 层级联清理本表，避免悬挂引用。
+-- ============================================================
+CREATE TABLE IF NOT EXISTS todo_list_label (
+  todo_list_id INTEGER NOT NULL,
+  label_id     INTEGER NOT NULL,
+  PRIMARY KEY (todo_list_id, label_id),
+  FOREIGN KEY (todo_list_id) REFERENCES todo_list(id) ON DELETE NO ACTION,
   FOREIGN KEY (label_id)     REFERENCES todo_label(id) ON DELETE NO ACTION
 );
 

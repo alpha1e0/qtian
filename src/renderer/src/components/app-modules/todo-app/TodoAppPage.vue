@@ -309,8 +309,9 @@ export default {
       this.selectedListId = null;
       this.selectedItemId = null;
       this.activeDoc = null;
-      // 标签视图：中间面板切换到「标签关联条目列表」模式
-      this.rightPanelView = labelId ? 'label-items' : 'empty';
+      // 标签视图：中间面板切换到「标签关联待办项目列表」模式（由 TodoListPanel.labelId 驱动）；
+      // 右侧详情无 list 选中，保持空状态，等用户点击具体项目卡片后再切到 list-detail。
+      this.rightPanelView = 'empty';
     },
     /**
      * 选中待办项目（来自侧边栏 list 节点点击 / 中间面板顶部 list 名点击）。
@@ -486,11 +487,11 @@ export default {
       await this.loadCategoryTree();
     },
     /**
-     * 待办项目详情改名 / 改描述成功后刷新 allTodoLists，
-     * 让 sidebar 节点名 + 中间面板顶部 list 名同步显示。
+     * 待办项目详情改名 / 改描述 / 改标签成功后刷新 allTodoLists + labels，
+     * 让 sidebar 节点名 + 中间面板顶部 list 名 + 标签云（可能新建标签）同步显示。
      */
     async handleListUpdated() {
-      await this.loadAllTodoLists();
+      await Promise.all([this.loadAllTodoLists(), this.loadLabels()]);
     },
     /**
      * 子组件请求打开文档：切换到编辑器视图。

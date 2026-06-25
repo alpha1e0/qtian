@@ -122,16 +122,22 @@ describe('TodoLabelService', () => {
       expect(l2.id).not.toBe(l1.id);
     });
 
-    it('删除标签时清理 todo_item_label 关联', () => {
+    it('删除标签时清理 todo_list_label（当前作用域）与 todo_item_label（历史作用域）关联', () => {
       const label = svc.create({ name: 'linked' });
       // 直接通过 DBManager 模拟关联行
       const mgr = db.getDBManager();
       mgr.insert(
+        'INSERT INTO todo_list_label (todo_list_id, label_id) VALUES (?, ?)',
+        [10, label.id],
+      );
+      mgr.insert(
         'INSERT INTO todo_item_label (todo_item_id, label_id) VALUES (?, ?)',
         [1, label.id],
       );
+      expect(mgr.get('SELECT label_id FROM todo_list_label WHERE todo_list_id = ?', [10])).toBeDefined();
       expect(mgr.get('SELECT label_id FROM todo_item_label WHERE todo_item_id = ?', [1])).toBeDefined();
       svc.delete(label.id);
+      expect(mgr.get('SELECT label_id FROM todo_list_label WHERE todo_list_id = ?', [10])).toBeUndefined();
       expect(mgr.get('SELECT label_id FROM todo_item_label WHERE todo_item_id = ?', [1])).toBeUndefined();
     });
   });
@@ -168,6 +174,40 @@ describe('TodoLabelService', () => {
     });
   });
 
+  describe('setListLabels / getListLabels', () => {
+    it('应全量覆盖 list 的标签关联（当前生效作用域）', () => {
+      const l1 = svc.create({ name: 'a' });
+      const l2 = svc.create({ name: 'b' });
+      const l3 = svc.create({ name: 'c' });
+
+      svc.setListLabels(10, [l1.id, l2.id]);
+      expect(svc.getListLabels(10).sort()).toEqual([l1.id, l2.id].sort());
+
+      // 覆盖为 l3
+      svc.setListLabels(10, [l3.id]);
+      expect(svc.getListLabels(10)).toEqual([l3.id]);
+    });
+
+    it('传空数组清除所有关联', () => {
+      const l1 = svc.create({ name: 'a' });
+      svc.setListLabels(20, [l1.id]);
+      svc.setListLabels(20, []);
+      expect(svc.getListLabels(20)).toEqual([]);
+    });
+
+    it('主键冲突时忽略（重复 setListLabels 不抛错）', () => {
+      const l1 = svc.create({ name: 'a' });
+      // 直接构造已存在的关联行，再次插入应被 OR IGNORE 忽略
+      const mgr = db.getDBManager();
+      mgr.insert(
+        'INSERT INTO todo_list_label (todo_list_id, label_id) VALUES (?, ?)',
+        [30, l1.id],
+      );
+      expect(() => svc.setListLabels(30, [l1.id])).not.toThrow();
+      expect(svc.getListLabels(30)).toEqual([l1.id]);
+    });
+  });
+
   describe('listTrash', () => {
     it('应返回已软删除标签', () => {
       const l = svc.create({ name: 'gone' });
@@ -200,10 +240,14 @@ describe('TodoLabelService', () => {
       expect(mgr.get('SELECT id FROM todo_label WHERE id = ?', [l.id])).toBeUndefined();
     });
 
-    it('应清理残留 todo_item_label 关联（防御性）', () => {
+    it('应清理残留 todo_list_label / todo_item_label 关联（防御性）', () => {
       const mgr = db.getDBManager();
       const l = svc.create({ name: 'purge-me' });
       // 模拟关联残留（即使 delete 时已清，这里手动插入验证 purge 不抛错且清理掉）
+      mgr.insert(
+        'INSERT INTO todo_list_label (todo_list_id, label_id) VALUES (?, ?)',
+        [888, l.id],
+      );
       mgr.insert(
         'INSERT INTO todo_item_label (todo_item_id, label_id) VALUES (?, ?)',
         [999, l.id],
@@ -211,10 +255,17 @@ describe('TodoLabelService', () => {
       svc.delete(l.id);
       // 再次插入残留（delete 已清一次）
       mgr.insert(
+        'INSERT INTO todo_list_label (todo_list_id, label_id) VALUES (?, ?)',
+        [887, l.id],
+      );
+      mgr.insert(
         'INSERT INTO todo_item_label (todo_item_id, label_id) VALUES (?, ?)',
         [998, l.id],
       );
       svc.purge(l.id);
+      expect(
+        mgr.get('SELECT label_id FROM todo_list_label WHERE label_id = ?', [l.id]),
+      ).toBeUndefined();
       expect(
         mgr.get('SELECT label_id FROM todo_item_label WHERE label_id = ?', [l.id]),
       ).toBeUndefined();

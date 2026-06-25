@@ -28,12 +28,15 @@ const SQL_PATH = path.join(process.cwd(), 'data', 'todo-app.sql');
 
 describe('TodoListService', () => {
   let db: TodoDb;
+  let labelSvc: TodoLabelService;
   let svc: TodoListService;
 
   beforeEach(() => {
     db = new TodoDb(':memory:', SQL_PATH);
     db.initialize();
-    svc = new TodoListService(db.getDBManager());
+    labelSvc = new TodoLabelService(db.getDBManager());
+    // 标签已迁移到 list 维度：TodoListService 构造时必须传入 labelService
+    svc = new TodoListService(db.getDBManager(), labelSvc);
   });
 
   describe('create', () => {
@@ -52,6 +55,46 @@ describe('TodoListService', () => {
     it('支持未分类（category_id=null）', () => {
       const l = svc.create({ name: 'uncat', category_id: null });
       expect(l.category_id).toBeNull();
+    });
+
+    it('create 时携带 label_ids 落库并可读回', () => {
+      const a = labelSvc.create({ name: 'A' });
+      const b = labelSvc.create({ name: 'B' });
+      const l = svc.create({ name: 'with-labels', category_id: null, label_ids: [a.id, b.id] });
+      expect(l.label_ids.sort()).toEqual([a.id, b.id].sort());
+      // getById 也能读到
+      expect(svc.getById(l.id)?.label_ids.sort()).toEqual([a.id, b.id].sort());
+    });
+  });
+
+  describe('update label_ids', () => {
+    it('全量覆盖 list 的标签关联', () => {
+      const a = labelSvc.create({ name: 'A' });
+      const b = labelSvc.create({ name: 'B' });
+      const c = labelSvc.create({ name: 'C' });
+      const l = svc.create({ name: 'L', category_id: null, label_ids: [a.id, b.id] });
+
+      svc.update(l.id, { label_ids: [c.id] });
+      expect(svc.getById(l.id)?.label_ids).toEqual([c.id]);
+    });
+  });
+
+  describe('listByLabel', () => {
+    it('只返回关联该 label 的未删除 todo_list', () => {
+      const a = labelSvc.create({ name: 'A' });
+      const l1 = svc.create({ name: 'L1', category_id: null, label_ids: [a.id] });
+      svc.create({ name: 'L2', category_id: null }); // 无标签
+
+      const result = svc.listByLabel(a.id);
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe(l1.id);
+    });
+
+    it('软删除后不再出现在 listByLabel', () => {
+      const a = labelSvc.create({ name: 'A' });
+      const l1 = svc.create({ name: 'L1', category_id: null, label_ids: [a.id] });
+      svc.delete(l1.id);
+      expect(svc.listByLabel(a.id)).toHaveLength(0);
     });
   });
 
@@ -106,8 +149,7 @@ describe('TodoListService', () => {
   describe('delete 级联', () => {
     it('应级联软删除其下的 todo_item', () => {
       const l = svc.create({ name: 'list' });
-      const labelSvc = new TodoLabelService(db.getDBManager());
-      const itemSvc = new TodoItemService(db.getDBManager(), labelSvc);
+      const itemSvc = new TodoItemService(db.getDBManager());
       const item = itemSvc.create({ title: 'task', todo_list_id: l.id });
 
       svc.delete(l.id);
@@ -120,8 +162,7 @@ describe('TodoListService', () => {
     it('应级联软删除 list/item 维度的 document', () => {
       const mgr = db.getDBManager();
       const l = svc.create({ name: 'list' });
-      const labelSvc = new TodoLabelService(db.getDBManager());
-      const itemSvc = new TodoItemService(db.getDBManager(), labelSvc);
+      const itemSvc = new TodoItemService(db.getDBManager());
       const item = itemSvc.create({ title: 'task', todo_list_id: l.id });
       // 构造 item 维度 + list 维度的 document
       mgr.insert(
@@ -197,15 +238,18 @@ describe('TodoListService', () => {
       expect(mgr.get('SELECT id FROM todo_list WHERE id = ?', [l.id])).toBeUndefined();
     });
 
-    it('应级联物理删除其下 todo_item + document（list/item 维度） + item_label', () => {
+    it('应级联物理删除其下 todo_item + document（list/item 维度） + list_label & item_label', () => {
       const mgr = db.getDBManager();
       const l = svc.create({ name: 'list' });
-      const labelSvc = new TodoLabelService(db.getDBManager());
-      const itemSvc = new TodoItemService(db.getDBManager(), labelSvc);
+      const itemSvc = new TodoItemService(db.getDBManager());
       const item = itemSvc.create({ title: 'task', todo_list_id: l.id });
-      // 为 item 关联 label 和 document（item 维度 + list 维度）
+      // list 维度 label（当前作用域）+ 残留的 item 维度 label（历史作用域）
       const label = labelSvc.create({ name: 'L1' });
-      itemSvc.update(item.id, { label_ids: [label.id] });
+      svc.update(l.id, { label_ids: [label.id] });
+      mgr.insert(
+        'INSERT INTO todo_item_label (todo_item_id, label_id) VALUES (?, ?)',
+        [item.id, label.id],
+      );
       mgr.insert(
         'INSERT INTO todo_document (name, content, todo_list_id, todo_item_id, created_at, updated_at, deleted_at) VALUES (?, ?, NULL, ?, ?, ?, NULL)',
         ['doc-item', '', item.id, 1, 1],
@@ -215,13 +259,16 @@ describe('TodoListService', () => {
         ['doc-list', '', l.id, 1, 1],
       );
 
-      svc.delete(l.id); // 级联软删除 item + document
+      svc.delete(l.id); // 级联软删除 item + document（list_label 在 delete 时已清，但 purge 仍幂等清理）
       svc.purge(l.id);
 
       expect(mgr.get('SELECT id FROM todo_list WHERE id = ?', [l.id])).toBeUndefined();
       expect(mgr.get('SELECT id FROM todo_item WHERE id = ?', [item.id])).toBeUndefined();
       expect(mgr.get('SELECT id FROM todo_document WHERE todo_item_id = ?', [item.id])).toBeUndefined();
       expect(mgr.get('SELECT id FROM todo_document WHERE todo_list_id = ?', [l.id])).toBeUndefined();
+      expect(
+        mgr.get('SELECT todo_list_id FROM todo_list_label WHERE todo_list_id = ?', [l.id]),
+      ).toBeUndefined();
       expect(
         mgr.get('SELECT todo_item_id FROM todo_item_label WHERE todo_item_id = ?', [item.id]),
       ).toBeUndefined();

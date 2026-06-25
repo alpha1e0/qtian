@@ -114,7 +114,7 @@ export const IPC_CHANNELS = {
   TODO_CREATE_LABEL: 'qtian:todo:create-label',
   TODO_UPDATE_LABEL: 'qtian:todo:update-label',
   TODO_DELETE_LABEL: 'qtian:todo:delete-label',
-  TODO_LIST_TODO_ITEMS_BY_LABEL: 'qtian:todo:list-todo-items-by-label',
+  TODO_LIST_TODO_LISTS_BY_LABEL: 'qtian:todo:list-todo-lists-by-label',
 
   // Document
   TODO_LIST_DOCS_BY_LIST: 'qtian:todo:list-docs-by-list',

@@ -190,8 +190,8 @@ export function registerTodoAppHandlers(todoAppService: TodoAppService): void {
     label.delete(id);
   });
 
-  ipcMain.handle(IPC_CHANNELS.TODO_LIST_TODO_ITEMS_BY_LABEL, async (_e, labelId: number) => {
-    return item.listByLabel(labelId);
+  ipcMain.handle(IPC_CHANNELS.TODO_LIST_TODO_LISTS_BY_LABEL, async (_e, labelId: number) => {
+    return list.listByLabel(labelId);
   });
 
   // ===== Document =====

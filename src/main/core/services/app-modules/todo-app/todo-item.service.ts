@@ -9,7 +9,6 @@ import {
   MAX_TODO_ITEM_DEPTH,
   VALID_STATUS_TRANSITIONS,
 } from './types';
-import { TodoLabelService } from './todo-label.service';
 import { TodoSearchService } from './todo-search.service';
 
 const logger = createLogger('TodoItemService');
@@ -23,10 +22,13 @@ const DEFAULT_STATUS: TodoItemStatus = 'init';
  *
  * 职责：
  * - create / update / delete（递归软删除子 item + document）/ restore
- * - getById / getTreeByList / listByLabel
+ * - getById / getTreeByList
  * - updateStatus（含状态机校验）
  * - recalcParentProgress（含防环检测）
  * - collectSubtree（Phase 5 任务拼装用，本期实现）
+ *
+ * 标签功能已迁移到 todo_list 维度（由 TodoListService 维护 todo_list_label），
+ * 本 Service 不再持有 TodoLabelService 依赖；历史 todo_item_label 表保留但不再写入。
  *
  * FTS 集成（Phase 3）：searchService 为可选依赖（默认 null）。
  * 可搜索字段：title + description + task_prompt（body = description + task_prompt 合并分词）。
@@ -40,16 +42,13 @@ const DEFAULT_STATUS: TodoItemStatus = 'init';
  */
 export class TodoItemService {
   private db: DBManager;
-  private labelService: TodoLabelService;
   private searchService: TodoSearchService | null;
 
   constructor(
     db: DBManager,
-    labelService: TodoLabelService,
     searchService: TodoSearchService | null = null,
   ) {
     this.db = db;
-    this.labelService = labelService;
     this.searchService = searchService;
   }
 
@@ -76,7 +75,6 @@ export class TodoItemService {
     due_at?: number | null;
     todo_list_id: number;
     is_manual_progress?: boolean;
-    label_ids?: number[];
   }): TodoItem {
     const title = data.title.trim();
     if (title.length === 0) {
@@ -114,11 +112,6 @@ export class TodoItemService {
       );
       const insertedId = result.lastRowid;
 
-      // 设置标签关联
-      if (data.label_ids && data.label_ids.length > 0) {
-        this.labelService.setItemLabels(insertedId, data.label_ids);
-      }
-
       // FTS 同步：title + (description + task_prompt 合并)
       this.searchService?.syncFts('todo_item', insertedId, {
         title,
@@ -153,7 +146,6 @@ export class TodoItemService {
       priority?: TodoItemPriority;
       due_at?: number | null;
       is_manual_progress?: boolean;
-      label_ids?: number[];
     },
   ): TodoItem {
     const existing = this.getById(id);
@@ -235,11 +227,6 @@ export class TodoItemService {
         params,
       );
 
-      // 标签关联
-      if (patch.label_ids !== undefined) {
-        this.labelService.setItemLabels(id, patch.label_ids);
-      }
-
       // FTS 同步（仅可搜索字段变更时）
       if (ftsDirty) {
         const after = this.getById(id);
@@ -297,7 +284,7 @@ export class TodoItemService {
         `UPDATE todo_document SET deleted_at = ?, updated_at = ? WHERE todo_item_id IN (${idList}) AND deleted_at IS NULL`,
         [now, now],
       );
-      // 清理标签关联
+      // 清理历史 todo_item_label 关联（表已弃用但保留，避免悬挂引用）
       this.db.execute(
         `DELETE FROM todo_item_label WHERE todo_item_id IN (${idList})`,
       );
@@ -404,17 +391,17 @@ export class TodoItemService {
     logger.info(`TodoItem purged: id=${id}, subtree=${subtreeIds.length} nodes`);
   }
 
-  /** 列出回收站中的 todo_item（label_ids 返回 []，因为软删除时已清关联） */
+  /** 列出回收站中的 todo_item */
   listTrash(): TodoItem[] {
     const rows = this.db.query<TodoItemRow>(
       `SELECT id, title, description, task_prompt, parent_id, status, progress, priority,
               due_at, todo_list_id, agent_task_id, is_manual_progress, created_at, updated_at, deleted_at
        FROM todo_item WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`,
     );
-    return rows.map((r) => this.mapRow(r, []));
+    return rows.map((r) => this.mapRow(r));
   }
 
-  /** 按 id 获取未删除 todo_item（含 label_ids） */
+  /** 按 id 获取未删除 todo_item */
   getById(id: number): TodoItem | undefined {
     const row = this.db.get<TodoItemRow>(
       `SELECT id, title, description, task_prompt, parent_id, status, progress, priority,
@@ -425,7 +412,7 @@ export class TodoItemService {
     if (!row) {
       return undefined;
     }
-    return this.mapRow(row, this.labelService.getItemLabels(id));
+    return this.mapRow(row);
   }
 
   /**
@@ -444,11 +431,10 @@ export class TodoItemService {
       return [];
     }
 
-    // 构建索引（含 label_ids）
+    // 构建索引
     const nodeMap = new Map<number, TodoItemNode>();
     for (const r of rows) {
-      const labels = this.labelService.getItemLabels(r.id);
-      nodeMap.set(r.id, { ...this.mapRow(r, labels), children: [], depth: 0 });
+      nodeMap.set(r.id, { ...this.mapRow(r), children: [], depth: 0 });
     }
 
     // 组装父子 + 计算深度
@@ -473,20 +459,20 @@ export class TodoItemService {
    * - 单事务批量 INSERT，避免 N 次嵌套事务
    * - **不调用 `recalcParentProgress`**：导出是快照语义，子项均值重算会覆盖快照内的进度
    * - 递归 DFS 自顶向下，传新 parent_id 给子层
-   * - 标签关联由调用方通过 `resolveLabels` 回调将 name[] 翻译为 id[]
+   *
+   * 标签已迁移到 todo_list 维度，item 不再参与标签导入；list 维度标签由
+   * `TodoListExchangeService.deserialize` 在 list 创建后单独写入。
    *
    * 设计文档：docs/specs/101_todo-app-import-export-req.md §4
    *
    * @param listId - 目标 todo_list（已由调用方创建）
    * @param nodes - bundle 内嵌套 item 节点
-   * @param resolveLabels - label name[] → id[] 翻译回调（由调用方实现 find-or-create 策略）
    * @returns 实际插入条数
    * @throws 深度超限 / title 缺失（事务原子回滚，不留脏数据）
    */
   bulkCreateForImport(
     listId: number,
     nodes: TodoListExportItemNode[],
-    resolveLabels: (names: string[]) => number[],
   ): number {
     let count = 0;
     const now = Date.now();
@@ -512,7 +498,6 @@ export class TodoItemService {
         const description = node.description ?? '';
         const taskPrompt = node.task_prompt ?? '';
         const progress = this.clampProgress(node.progress ?? 0);
-        const labelIds = resolveLabels(node.labels ?? []);
 
         const result = this.db.insert(
           `INSERT INTO todo_item
@@ -537,10 +522,6 @@ export class TodoItemService {
         const newId = result.lastRowid;
         count += 1;
 
-        if (labelIds.length > 0) {
-          this.labelService.setItemLabels(newId, labelIds);
-        }
-
         // FTS 同步（与 create() 保持一致，导入项也需可被全文搜索命中）
         this.searchService?.syncFts('todo_item', newId, {
           title,
@@ -559,21 +540,6 @@ export class TodoItemService {
 
     logger.info(`bulkCreateForImport: listId=${listId}, inserted=${count}`);
     return count;
-  }
-
-  /** 列出某 label 关联的未删除 todo_item */
-  listByLabel(labelId: number): TodoItem[] {
-    const rows = this.db.query<TodoItemRow>(
-      `SELECT ti.id, ti.title, ti.description, ti.task_prompt, ti.parent_id, ti.status, ti.progress,
-              ti.priority, ti.due_at, ti.todo_list_id, ti.agent_task_id, ti.is_manual_progress,
-              ti.created_at, ti.updated_at, ti.deleted_at
-       FROM todo_item ti
-       INNER JOIN todo_item_label til ON ti.id = til.todo_item_id
-       WHERE til.label_id = ? AND ti.deleted_at IS NULL
-       ORDER BY ti.created_at ASC`,
-      [labelId],
-    );
-    return rows.map((r) => this.mapRow(r, this.labelService.getItemLabels(r.id)));
   }
 
   /**
@@ -841,7 +807,7 @@ export class TodoItemService {
     return Math.min(Math.max(Math.trunc(p), 0), 100);
   }
 
-  private mapRow(row: TodoItemRow, labelIds: number[]): TodoItem {
+  private mapRow(row: TodoItemRow): TodoItem {
     return {
       id: row.id,
       title: row.title,
@@ -855,7 +821,6 @@ export class TodoItemService {
       todo_list_id: row.todo_list_id,
       agent_task_id: row.agent_task_id,
       is_manual_progress: row.is_manual_progress === 1,
-      label_ids: labelIds,
       created_at: row.created_at,
       updated_at: row.updated_at,
       deleted_at: row.deleted_at ?? null,

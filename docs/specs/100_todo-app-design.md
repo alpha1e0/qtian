@@ -15,7 +15,7 @@
 | 时间字段 | `created_at` / `updated_at` 存储 INTEGER (Unix ms) | 现有项目使用 ms 时间戳 |
 | 软删除 | **启用软删除**，所有业务表新增 `deleted_at INTEGER` | 用户要求；误删可恢复；FTS 同步需在软删除时移除 |
 | 递归层级 | category、todo_item 均限制 **4 层** | 需求约束，性能考虑 |
-| 标签作用域 | **全局共享**，跨 category/todo_list | 与 UI 左侧"label 方式"导航一致 |
+| 标签作用域 | **全局共享**，跨 category；挂在 **todo_list（待办项目）** 维度（通过 `todo_list_label` 多对多） | 与 UI 左侧"label 方式"导航一致；标签云点击后展示关联的待办项目。历史 `todo_item_label` 表保留兼容旧数据，新业务不再写入 |
 | 文档存储 | 内容存数据库；图片/附件存文件系统 `attach/` | 数据库仅存元数据 + 正文，附件按 hash 分目录避免性能瓶颈 |
 | 进度联动 | todo_item 新增 `is_manual_progress` 标记；为 true 时父进度自动计算跳过该子项 | 用户要求保留手动进度不被覆盖 |
 | Todo 驱动任务 | todo_item 通过 `agent_task_id` 关联**通用任务实体**（`007_task-design.md` 定义的 `task` + `task_agent`）；todo-app 作为 Source 模块接入 | 任务系统已公共化（见 `007_task-design.md`），避免每个应用各自实现；任务 ≠ 对话 |
@@ -144,10 +144,12 @@ interface TodoList {
   id: number;
   /** 名称（≤150 字符） */
   name: string;
-  /** 描述（≤500 字符） */
+  /** 描述（≤1500 字符） */
   description: string;
   /** 所属 category ID（null 表示未分类） */
   category_id: number | null;
+  /** 标签 ID 列表（来自 todo_list_label 多对多关系） */
+  label_ids: number[];
   created_at: number;
   updated_at: number;
   /** 软删除时间（null 表示未删除） */
@@ -178,7 +180,7 @@ interface TodoItem {
   id: number;
   /** 待办内容（≤150 字符） */
   title: string;
-  /** 待办描述（≤500 字符） */
+  /** 待办描述（≤1500 字符） */
   description: string;
   /** 任务描述（驱动 AI 任务，可选；为补充上下文） */
   task_prompt: string;
@@ -198,14 +200,16 @@ interface TodoItem {
   agent_task_id: number | null;
   /** 是否手动设置进度；为 true 时父进度计算跳过该子项 */
   is_manual_progress: boolean;
-  /** 标签 ID 列表（来自 label 表，多对多） */
-  label_ids: number[];
   created_at: number;
   updated_at: number;
   /** 软删除时间（null 表示未删除） */
   deleted_at: number | null;
 }
 ```
+
+> **标签作用域说明**：标签功能在 `todo_list`（待办项目）维度生效，由 `todo_list_label` 多对多表承载
+> （§4.2）。`todo_item`（待办条目）不再持有标签字段；历史上曾挂在 `todo_item_label` 表，
+> 该表保留以便兼容旧数据，但新业务不再写入。
 
 ### 3.4 Label
 
@@ -413,7 +417,16 @@ CREATE INDEX IF NOT EXISTS idx_item_parent ON todo_item(parent_id)     WHERE del
 CREATE INDEX IF NOT EXISTS idx_item_status ON todo_item(status)        WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_item_due    ON todo_item(due_at)        WHERE deleted_at IS NULL;
 
--- TodoItem <-> Label 多对多
+-- TodoList <-> Label 多对多（当前生效作用域，标签功能挂"待办项目"维度）
+CREATE TABLE IF NOT EXISTS todo_list_label (
+  todo_list_id INTEGER NOT NULL,
+  label_id     INTEGER NOT NULL,
+  PRIMARY KEY (todo_list_id, label_id),
+  FOREIGN KEY (todo_list_id) REFERENCES todo_list(id) ON DELETE NO ACTION,
+  FOREIGN KEY (label_id)     REFERENCES todo_label(id) ON DELETE NO ACTION
+);
+
+-- TodoItem <-> Label 多对多（历史作用域，保留表结构兼容旧数据；新业务不再写入）
 CREATE TABLE IF NOT EXISTS todo_item_label (
   todo_item_id INTEGER NOT NULL,
   label_id     INTEGER NOT NULL,
@@ -505,9 +518,9 @@ CREATE VIRTUAL TABLE IF NOT EXISTS todo_fts USING fts5(
 | :--- | :--- |
 | `TodoAppService` | 模块入口：DB 初始化、Service 单例装配、生命周期管理 |
 | `TodoCategoryService` | Category CRUD + 树构建 + 递归层级校验 |
-| `TodoListService` | TodoList CRUD |
+| `TodoListService` | TodoList CRUD + 标签多对多维护（`todo_list_label`） |
 | `TodoItemService` | TodoItem CRUD + 递归层级校验 + 状态机校验 |
-| `TodoLabelService` | Label CRUD（name 唯一） |
+| `TodoLabelService` | Label CRUD（name 唯一） + `todo_list_label` 多对多维护（兼容历史 `todo_item_label`） |
 | `TodoDocumentService` | Document CRUD + 附件落盘（hash 命名） |
 | `TodoSearchService` | FTS5 查询封装 + snippet 拼接 |
 | `TodoTaskService` | **适配层**：prompt 组装 + 委托 `TaskManager` + 总结文档生成；不再管理任务生命周期（见 `007_task-design.md`） |
@@ -559,8 +572,6 @@ class TodoItemService {
   getById(id: number): TodoItem | undefined;
   /** 获取 todo_list 下所有未删除 todo item，按 parent_id 组装成树 */
   getTreeByList(listId: number): TodoItemNode[];
-  /** 列出某 label 关联的 todo item */
-  listByLabel(labelId: number): TodoItem[];
   /**
    * 状态机转换校验
    * 合法转换：
@@ -792,7 +803,7 @@ class TodoTaskService {
 'qtian:todo:create-label'           // (data) → TodoLabel  name 在未删除行内唯一
 'qtian:todo:update-label'           // (id, patch) → TodoLabel
 'qtian:todo:delete-label'           // (id) → void  软删除
-'qtian:todo:list-todo-items-by-label' // (labelId) → TodoItem[]
+'qtian:todo:list-todo-lists-by-label' // (labelId) → TodoList[]  标签云视图：关联此标签的待办项目
 
 // ===== Document =====
 'qtian:todo:list-docs-by-list'      // (listId) → TodoDocument[]
@@ -1177,7 +1188,7 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 │ 📁 工作           │ │   ☐ 子 todo 1                │ │ │ 状态：进行中   │ │
 │  ├ 📁 项目A       │ │   ☐ 子 todo 2                │ │ │ 进度：50%      │ │
 │  │  ├ 📄 需求整理  │ │ ☐ 普通待办条目                 │ │ │ 标签：[前端]   │ │
-│  │  └ 📄 开发计划  │ │ ☑ 已完成待办条目 (划线)         │ │ │               │ │
+│  │  └ 📄 开发计划  │ │ ☑ 已完成待办条目 (划线)         │ │ │ （仅项目级）   │ │
 │  └ 📁 项目B       │ │                              │ │ │ [▶ 运行任务]   │ │
 │ 📁 个人           │ └──────────────────────────────┘ │ │ [📄 关联文档]   │ │
 │  📃 学习计划       │                                   │ └───────────────┘ │
@@ -1187,7 +1198,9 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 └──────────────────┴───────────────────────────────────┴───────────────────┘
 ```
 
-> 注：左栏的统一树中 `📁` 为 category（目录语义，可展开），`📄` 为 todo_list（文件语义，叶子）；点击 category 文字切到右侧 `category-detail`（分类元信息 + 改名），点击 todo_list 文字切到右侧 `list-detail`（项目详情 + 文档列表），中间面板同时展示该 list 的 item 树；点击中间面板顶部的 list 名同样切到右侧 `list-detail`（item 树保留）。右侧详情区在三种选中态下都展示「总结信息 + 元素信息（可编辑）」结构，与 `TodoItemDetail` 的失焦自动保存体验一致。
+> 注：左栏的统一树中 `📁` 为 category（目录语义，可展开），`📄` 为 todo_list（文件语义，叶子）；点击 category 文字切到右侧 `category-detail`（分类元信息 + 改名），点击 todo_list 文字切到右侧 `list-detail`（项目详情 + 文档列表，**标签在此处编辑**），中间面板同时展示该 list 的 item 树；点击中间面板顶部的 list 名同样切到右侧 `list-detail`（item 树保留）。右侧详情区在三种选中态下都展示「总结信息 + 元素信息（可编辑）」结构，与 `TodoItemDetail` 的失焦自动保存体验一致。
+>
+> **标签归属**：标签挂在"待办项目"（todo_list）维度（§4.2 `todo_list_label`），而非"待办条目"（todo_item）。右侧 mockup 中 `标签：[前端]` 仅在 list-detail 视图出现；item-detail 视图不含标签字段。
 
 ### 9.2 组件清单
 
@@ -1202,7 +1215,7 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 | `TodoItemRow.vue` | 单行 todo item，支持复选框、缩进、手动进度切换 | emit `toggle`, `select`, `run-task` |
 | `TodoItemDetail.vue` | 右侧详情面板，可编辑 + 任务入口 | props: `itemId` |
 | `TodoCategoryDetail.vue` | 右侧分类详情面板：总结信息（创建/修改时间 + 直接子项目数）+ 名称可编辑（失焦自动保存） | props: `categoryId`；emit `updated` |
-| `TodoListDetail.vue` | 右侧待办项目详情面板：总结信息（创建/修改时间）+ 名称/描述可编辑（失焦自动保存）+ 项目文档列表 | props: `listId`；emit `updated`, `open-doc` |
+| `TodoListDetail.vue` | 右侧待办项目详情面板：总结信息（创建/修改时间）+ 名称/描述/标签可编辑（失焦自动保存）+ 项目文档列表 | props: `listId`；emit `updated`, `open-doc` |
 | `TodoDocumentEditor.vue` | Markdown 编辑器（建议 milkdown / vditor） | props: `docId` |
 | `TaskRunDialog.vue` | 任务运行前的 Agent / LLM 选择对话框 | emit `confirm({agentName, llmConfigName, extraPrompt})` |
 | `TaskPanel.vue` | 任务面板（嵌入详情区，展示对话流 + 历史 + 总结链接） | props: `taskId` |
@@ -1329,6 +1342,27 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 
 > 复用：`listTodoLists()` / `createTodoList` / `updateTodoList` / `deleteTodoList` IPC 与 `el-dropdown` 组件均无需新依赖。
 > 主进程服务层无改动，所有 vitest 用例（199 个）保持不变。
+
+### 重构：标签归属从 todo_item 迁移到 todo_list — ✅ 已实现（2026-06-26）
+
+**动机**：原设计将标签挂在"待办条目"（todo_item）上，与 UI 左侧"标签云"点击后展示同维度对象（待办项目 todo_list）的语义不一致；多个条目共享同一标签需要重复打标，使用成本高。标签本质是"项目分类"维度，应挂在 todo_list。
+
+**核心改动**：
+- **DB schema（§4.2）**：新增 `todo_list_label` 表（todo_list_id × label_id 多对多）；保留 `todo_item_label` 表兼容旧数据，但新业务不再写入
+- **类型（§3.2 / §3.3）**：`TodoList.label_ids: number[]` 新增；`TodoItem.label_ids` 字段移除
+- **Service**：
+  - `TodoListService` 构造增加 `labelService` 依赖；`create/update` 支持 `label_ids`；新增 `listByLabel(labelId)`；`delete/purge` 清理 `todo_list_label`
+  - `TodoItemService` 构造去除 `labelService` 依赖；`create/update` 不再接受 `label_ids`；移除 `listByLabel`
+  - `TodoLabelService` 新增 `setListLabels` / `getListLabels`；`delete/purge` 同时清理 `todo_list_label` + 历史 `todo_item_label`
+  - `TodoListExchangeService.serialize/deserialize`：bundle 内 `labels` 提升至 list 维度（`TodoListExportBundle.labels`）
+- **IPC（§6）**：`qtian:todo:list-todo-items-by-label` → `qtian:todo:list-todo-lists-by-label`（返回 `TodoList[]`）；preload `listTodoItemsByLabel` → `listTodoListsByLabel`
+- **前端**：
+  - `TodoItemDetail.vue` 移除标签 el-form-item / allLabels / handleLabelChange / resolveLabelIds
+  - `TodoListDetail.vue` 新增标签 el-form-item（multiple + allow-create）+ labelIds 字段 + 失焦保存管线
+  - `TodoListPanel.vue` 标签视图模式改为展示"标签关联的待办项目"卡片列表（原为 item 行）
+  - `TodoAppPage.vue` `handleListUpdated` 触发 labels 重载；`handleSelectLabel` 切右侧到 empty 视图（list 在中间面板展开）
+
+> 单元测试 240 用例全通过（label/item/list/exchange suite 同步更新）；历史 `todo_item_label` 表保留以便兼容旧数据，可在后续版本清理时再决定迁移策略。
 
 ## 11 已解决问题回溯（v2 决策日志）
 

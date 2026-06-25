@@ -11,8 +11,9 @@ const DEFAULT_LABEL_TYPE = 'default';
  * Label Service — 全局标签 CRUD（name 在未删除行内唯一，由部分唯一索引保证）
  *
  * 职责：
- * - list / create / update / delete（软删除 + 清理 todo_item_label）/ restore
- * - setItemLabels / getItemLabels：维护 todo_item_label 多对多关系
+ * - list / create / update / delete（软删除 + 清理 todo_list_label & 历史 todo_item_label）/ restore
+ * - setListLabels / getListLabels：维护 todo_list_label 多对多关系（当前生效作用域）
+ * - setItemLabels / getItemLabels：保留以兼容历史 todo_item_label 数据，新业务不再写入
  *
  * create 时 name 唯一性由 DB 的部分唯一索引 uq_label_name_active 保证，
  * 插入冲突由 better-sqlite3 抛出约束错误，Service 层转换为可读异常。
@@ -115,7 +116,10 @@ export class TodoLabelService {
       [now, id],
     );
     if (changes > 0) {
-      // 清理多对多关联（物理删除 todo_item_label 行，软删除恢复时需重新建立关联）
+      // 清理多对多关联（物理删除关联行，软删除恢复时需重新建立关联）：
+      // - todo_list_label：当前生效作用域
+      // - todo_item_label：历史作用域，保留清理以防残留
+      this.db.execute(`DELETE FROM todo_list_label WHERE label_id = ?`, [id]);
       this.db.execute(`DELETE FROM todo_item_label WHERE label_id = ?`, [id]);
       logger.info(`Label deleted: id=${id}`);
     }
@@ -163,6 +167,10 @@ export class TodoLabelService {
     this.db.transaction(() => {
       // 防御性清理关联（delete 时已清，但 purge 防止任何残留）
       this.db.execute(
+        `DELETE FROM todo_list_label WHERE label_id = ?`,
+        [id],
+      );
+      this.db.execute(
         `DELETE FROM todo_item_label WHERE label_id = ?`,
         [id],
       );
@@ -185,8 +193,33 @@ export class TodoLabelService {
   }
 
   /**
+   * 设置 todo_list 的标签集合（全量覆盖，当前生效作用域）。
+   * 先删除现有关联，再插入新的关联；todo_list_label 主键冲突时忽略（INSERT OR IGNORE）。
+   */
+  setListLabels(listId: number, labelIds: number[]): void {
+    this.db.execute(`DELETE FROM todo_list_label WHERE todo_list_id = ?`, [listId]);
+    for (const labelId of labelIds) {
+      this.db.execute(
+        `INSERT OR IGNORE INTO todo_list_label (todo_list_id, label_id) VALUES (?, ?)`,
+        [listId, labelId],
+      );
+    }
+  }
+
+  /** 获取 todo_list 关联的标签 ID 列表 */
+  getListLabels(listId: number): number[] {
+    const rows = this.db.query<{ label_id: number }>(
+      `SELECT label_id FROM todo_list_label WHERE todo_list_id = ?`,
+      [listId],
+    );
+    return rows.map((r) => r.label_id);
+  }
+
+  /**
    * 设置 todo_item 的标签集合（全量覆盖）。
    * 先删除现有关联，再插入新的关联；todo_item_label 主键冲突时忽略（INSERT OR IGNORE）。
+   *
+   * 注意：标签功能已迁移到 todo_list 维度，此方法仅保留以兼容历史调用方与旧数据。
    */
   setItemLabels(itemId: number, labelIds: number[]): void {
     this.db.execute(`DELETE FROM todo_item_label WHERE todo_item_id = ?`, [itemId]);
@@ -198,7 +231,7 @@ export class TodoLabelService {
     }
   }
 
-  /** 获取 todo_item 关联的标签 ID 列表 */
+  /** 获取 todo_item 关联的标签 ID 列表（历史作用域，新业务不调用） */
   getItemLabels(itemId: number): number[] {
     const rows = this.db.query<{ label_id: number }>(
       `SELECT label_id FROM todo_item_label WHERE todo_item_id = ?`,

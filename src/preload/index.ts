@@ -222,8 +222,8 @@ const api = {
     createLabel: (data) => ipcRenderer.invoke(IPC_CHANNELS.TODO_CREATE_LABEL, data),
     updateLabel: (id, patch) => ipcRenderer.invoke(IPC_CHANNELS.TODO_UPDATE_LABEL, id, patch),
     deleteLabel: (id) => ipcRenderer.invoke(IPC_CHANNELS.TODO_DELETE_LABEL, id),
-    listTodoItemsByLabel: (labelId) =>
-      ipcRenderer.invoke(IPC_CHANNELS.TODO_LIST_TODO_ITEMS_BY_LABEL, labelId),
+    listTodoListsByLabel: (labelId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.TODO_LIST_TODO_LISTS_BY_LABEL, labelId),
 
     // Document
     listDocsByList: (listId) =>

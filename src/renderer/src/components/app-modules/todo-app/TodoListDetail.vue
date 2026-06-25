@@ -53,6 +53,24 @@
                 @blur="handleSave"
               />
             </el-form-item>
+            <el-form-item label="标签">
+              <el-select
+                v-model="formData.labelIds"
+                multiple
+                filterable
+                allow-create
+                default-first-option
+                placeholder="选择或创建标签"
+                @change="handleLabelChange"
+              >
+                <el-option
+                  v-for="label in allLabels"
+                  :key="label.id"
+                  :label="label.name"
+                  :value="label.id"
+                />
+              </el-select>
+            </el-form-item>
           </el-form>
         </div>
 
@@ -107,9 +125,11 @@ export default {
   data() {
     return {
       loading: true,
-      // 表单数据：与 IPC 字段对齐（name/description 可编辑，时间戳只读展示）
+      // 表单数据：与 IPC 字段对齐（name/description/label_ids 可编辑，时间戳只读展示）
       formData: null,
       documents: [],
+      // 全量标签列表（用于 el-select 选项）
+      allLabels: [],
       // 顶部状态条：'idle' | 'saving' | 'saved' | 'error'
       saveStatus: 'idle',
       saveStatusTimer: null,
@@ -122,6 +142,7 @@ export default {
   },
   async mounted() {
     await this.loadAll();
+    await this.loadLabels();
   },
   beforeUnmount() {
     // 清理状态条定时器，避免组件卸载后回调触发 setState on unmounted
@@ -146,6 +167,7 @@ export default {
           this.formData = {
             name: list.name,
             description: list.description ?? '',
+            labelIds: [...(list.label_ids || [])],
             createdAt: list.created_at,
             updatedAt: list.updated_at,
           };
@@ -167,6 +189,67 @@ export default {
       } catch (err) {
         console.error(err);
       }
+    },
+    async loadLabels() {
+      try {
+        this.allLabels = await window.todoApp.listLabels();
+      } catch (err) {
+        console.error(err);
+      }
+    },
+    /**
+     * 标签变更：el-select allow-create 把新输入名以"字符串"塞入 v-model，
+     * 后端 setListLabels 拿到非数字 id 会触发外键约束失败
+     * （todo_list_label.label_id REFERENCES todo_label.id）。
+     * 这里先把字符串解析为真实 label id（同名已存在复用 → 否则 createLabel 新建），
+     * 再走 runSave 管线调 updateTodoList。
+     * 保存成功后 emit 'updated'，让父组件刷新 labels / sidebar 标签云。
+     */
+    async handleLabelChange(labelIds) {
+      let resolvedIds;
+      try {
+        resolvedIds = await this.resolveLabelIds(labelIds);
+      } catch (err) {
+        this.setSaveStatus('error');
+        ElMessage.error(err?.message || '创建标签失败');
+        return;
+      }
+      const ok = await this.runSave(() =>
+        window.todoApp.updateTodoList(this.listId, { label_ids: resolvedIds }),
+      );
+      if (ok) {
+        // 同步 v-model 为真实 id，避免下次 change 还带字符串触发重复创建
+        this.formData.labelIds = resolvedIds;
+        // 有新 label 落库时刷新选项列表，让新标签出现在下拉里
+        await this.loadLabels();
+        this.$emit('updated');
+      }
+    },
+    /**
+     * 把 labelIds 中的字符串值（el-select allow-create 输入的新标签名）
+     * 解析为真实 label id：
+     *   - number：原样返回
+     *   - string：先在 allLabels 中按 name 精确匹配（避免重名触发唯一索引冲突），
+     *             找不到则调 createLabel 新建并返回新 id
+     */
+    async resolveLabelIds(labelIds) {
+      const resolved = [];
+      for (const id of labelIds) {
+        if (typeof id === 'number') {
+          resolved.push(id);
+          continue;
+        }
+        const name = String(id).trim();
+        if (!name) continue;
+        const existing = this.allLabels.find((l) => l.name === name);
+        if (existing) {
+          resolved.push(existing.id);
+          continue;
+        }
+        const created = await window.todoApp.createLabel({ name });
+        resolved.push(created.id);
+      }
+      return resolved;
     },
     /**
      * 失焦保存：name 非空才发请求，description 一并提交。

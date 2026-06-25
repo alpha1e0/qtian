@@ -48,10 +48,15 @@ export class TodoListExchangeService {
       throw new Error(`TodoList ${listId} not found`);
     }
     const tree = this.itemService.getTreeByList(listId);
+    // 标签已迁移到 list 维度：从 todo_list_label 解析为 name 列表
+    const labelNames = list.label_ids
+      .map((id) => this.labelService.getById(id)?.name)
+      .filter((n): n is string => typeof n === 'string');
     return {
       version: TODO_EXPORT_BUNDLE_VERSION,
       exported_at: Date.now(),
       list: { name: list.name, description: list.description },
+      labels: labelNames,
       items: tree.map((n) => this.mapNodeToBundle(n)),
     };
   }
@@ -97,15 +102,17 @@ export class TodoListExchangeService {
     };
 
     // Step 1：新建 todo_list（listService 内部自有事务 + FTS）
+    // 标签已迁移到 list 维度：bundle.labels 解析为 label_ids，随 list 创建一并写入
     const newList = this.listService.create({
       name: bundle.list.name,
       description: bundle.list.description,
       category_id: categoryId,
+      label_ids: resolveLabels(bundle.labels ?? []),
     });
 
     try {
       // Step 2：批量重建 items（单事务，跳过进度联动，失败原子回滚 item）
-      const itemCount = this.itemService.bulkCreateForImport(newList.id, bundle.items, resolveLabels);
+      const itemCount = this.itemService.bulkCreateForImport(newList.id, bundle.items);
       logger.info(`Imported list: id=${newList.id}, items=${itemCount}`);
       return { listId: newList.id, itemCount };
     } catch (err) {
@@ -121,13 +128,8 @@ export class TodoListExchangeService {
   // 内部工具
   // =========================================================================
 
-  /** 把 TodoItemNode 递归映射为导出节点（label 转为 name 列表） */
+  /** 把 TodoItemNode 递归映射为导出节点（item 不再携带标签） */
   private mapNodeToBundle(node: TodoItemNode): TodoListExportItemNode {
-    const labelNames = this.labelService
-      .getItemLabels(node.id)
-      .map((id) => this.labelService.getById(id)?.name)
-      .filter((n): n is string => typeof n === 'string');
-
     return {
       title: node.title,
       description: node.description,
@@ -137,7 +139,6 @@ export class TodoListExchangeService {
       priority: node.priority,
       due_at: node.due_at,
       is_manual_progress: node.is_manual_progress,
-      labels: labelNames,
       children: (node.children ?? []).map((c) => this.mapNodeToBundle(c)),
     };
   }

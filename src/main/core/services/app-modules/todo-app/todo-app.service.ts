@@ -64,8 +64,10 @@ export class TodoAppService {
     this.searchService = new TodoSearchService(manager, new TodoTokenizer());
     this.labelService = new TodoLabelService(manager);
     this.categoryService = new TodoCategoryService(manager, this.searchService);
-    this.listService = new TodoListService(manager, this.searchService);
-    this.itemService = new TodoItemService(manager, this.labelService, this.searchService);
+    // listService 现在持有 labelService，承担 todo_list_label 多对多维护
+    this.listService = new TodoListService(manager, this.labelService, this.searchService);
+    // itemService 不再依赖 labelService（标签已迁移到 list 维度）
+    this.itemService = new TodoItemService(manager, this.searchService);
     this.documentService = new TodoDocumentService(manager, attachDir, this.searchService);
     // 导入/导出 service：聚合 list/item/label/category，纯逻辑无 IO
     this.exchangeService = new TodoListExchangeService(

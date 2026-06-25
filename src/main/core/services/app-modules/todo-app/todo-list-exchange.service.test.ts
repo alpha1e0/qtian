@@ -52,8 +52,8 @@ describe('TodoListExchangeService', () => {
     const manager = db.getDBManager();
     labelSvc = new TodoLabelService(manager);
     categorySvc = new TodoCategoryService(manager);
-    listSvc = new TodoListService(manager);
-    itemSvc = new TodoItemService(manager, labelSvc);
+    listSvc = new TodoListService(manager, labelSvc);
+    itemSvc = new TodoItemService(manager);
     exchange = new TodoListExchangeService(listSvc, itemSvc, labelSvc, categorySvc);
   });
 
@@ -61,18 +61,19 @@ describe('TodoListExchangeService', () => {
   // serialize
   // =========================================================================
   describe('serialize', () => {
-    it('list + 多层 item + label → bundle 结构正确', () => {
+    it('list + 多层 item + label → bundle 结构正确（label 在 list 维度）', () => {
       const cat = categorySvc.create({ name: 'C1' });
-      const list = listSvc.create({ name: 'L1', description: 'desc', category_id: cat.id });
       const labelA = labelSvc.create({ name: 'A' });
       const labelB = labelSvc.create({ name: 'B' });
+      const list = listSvc.create({
+        name: 'L1', description: 'desc', category_id: cat.id, label_ids: [labelA.id, labelB.id],
+      });
       const parent = itemSvc.create({
-        title: '父', todo_list_id: list.id, label_ids: [labelA.id], progress: 30,
+        title: '父', todo_list_id: list.id, progress: 30,
         is_manual_progress: true,
       });
       itemSvc.create({
-        title: '子', todo_list_id: list.id, parent_id: parent.id,
-        label_ids: [labelB.id], progress: 60,
+        title: '子', todo_list_id: list.id, parent_id: parent.id, progress: 60,
       });
 
       const bundle = exchange.serialize(list.id);
@@ -80,15 +81,17 @@ describe('TodoListExchangeService', () => {
       expect(bundle.version).toBe(TODO_EXPORT_BUNDLE_VERSION);
       expect(typeof bundle.exported_at).toBe('number');
       expect(bundle.list).toEqual({ name: 'L1', description: 'desc' });
+      // 标签已迁移到 list 维度
+      expect(bundle.labels.sort()).toEqual(['A', 'B']);
       expect(bundle.items).toHaveLength(1);
       const root = bundle.items[0];
       expect(root.title).toBe('父');
       expect(root.progress).toBe(30);
-      expect(root.labels).toEqual(['A']);
+      // item 节点不再携带 labels
+      expect((root as any).labels).toBeUndefined();
       expect(root.children).toHaveLength(1);
       expect(root.children[0].title).toBe('子');
       expect(root.children[0].progress).toBe(60);
-      expect(root.children[0].labels).toEqual(['B']);
     });
 
     it('不导出 agent_task_id / 原 id（断言字段不存在）', () => {
@@ -131,11 +134,12 @@ describe('TodoListExchangeService', () => {
   describe('deserialize', () => {
     /** 构造合法 bundle 工厂 */
     const makeBundle = (overrides: Partial<{
-      name: string; description: string; items: any[]; version: number;
+      name: string; description: string; items: any[]; version: number; labels: string[];
     }> = {}) => ({
       version: overrides.version ?? TODO_EXPORT_BUNDLE_VERSION,
       exported_at: Date.now(),
       list: { name: overrides.name ?? '导入项目', description: overrides.description ?? '' },
+      labels: overrides.labels ?? [],
       items: overrides.items ?? [],
     });
 
@@ -145,9 +149,9 @@ describe('TodoListExchangeService', () => {
         items: [
           {
             title: '父', description: '', task_prompt: '', status: 'init', progress: 40,
-            priority: 'normal', due_at: null, is_manual_progress: false, labels: ['x'],
+            priority: 'normal', due_at: null, is_manual_progress: false,
             children: [
-              { title: '子', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [] },
+              { title: '子', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, children: [] },
             ],
           },
         ],
@@ -198,9 +202,9 @@ describe('TodoListExchangeService', () => {
     it('深度 = MAX 通过，> MAX 抛错（预校验，INSERT 前）', () => {
       const cat = categorySvc.create({ name: 'C' });
       const makeChain = (depth: number) => {
-        let node: any = { title: 'leaf', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [] };
+        let node: any = { title: 'leaf', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, children: [] };
         for (let i = depth - 1; i > 0; i--) {
-          node = { title: `L${i}`, description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [node] };
+          node = { title: `L${i}`, description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, children: [node] };
         }
         return [node];
       };
@@ -210,26 +214,27 @@ describe('TodoListExchangeService', () => {
       expect(() => exchange.deserialize(makeBundle({ items: makeChain(MAX_TODO_ITEM_DEPTH + 1) }), cat.id)).toThrow(/MAX_TODO_ITEM_DEPTH/);
     });
 
-    it('标签 find-or-create：已存在用现成 id，不存在的建后挂', () => {
+    it('标签 find-or-create（list 维度）：已存在用现成 id，不存在的建后挂', () => {
       const cat = categorySvc.create({ name: 'C' });
       const existing = labelSvc.create({ name: '已存在' });
       const beforeCount = labelSvc.list().length;
 
       const bundle = makeBundle({
+        labels: ['已存在', '新标签'],
         items: [
-          { title: 'A', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: ['已存在', '新标签'], children: [] },
+          { title: 'A', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, children: [] },
         ],
       });
       const result = exchange.deserialize(bundle, cat.id);
 
       // 新标签被建出来，原标签未重建
       expect(labelSvc.list().length).toBe(beforeCount + 1);
-      const tree = itemSvc.getTreeByList(result.listId);
+      const list = listSvc.getById(result.listId);
       const labels = labelSvc.list();
-      const attached = tree[0].label_ids.map((id) => labels.find((l) => l.id === id)?.name).sort();
+      const attached = (list?.label_ids ?? []).map((id) => labels.find((l) => l.id === id)?.name).sort();
       expect(attached).toEqual(['已存在', '新标签']);
       // 原标签 id 被复用
-      expect(tree[0].label_ids).toContain(existing.id);
+      expect(list?.label_ids).toContain(existing.id);
     });
 
     it('标签 name 在回收站（软删）→ 视为不存在，允许新建同名', () => {
@@ -238,14 +243,15 @@ describe('TodoListExchangeService', () => {
       labelSvc.delete(ghost.id); // 进回收站
 
       const bundle = makeBundle({
+        labels: ['幽灵'],
         items: [
-          { title: 'A', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, labels: ['幽灵'], children: [] },
+          { title: 'A', description: '', task_prompt: '', status: 'init', progress: 0, priority: 'normal', due_at: null, is_manual_progress: false, children: [] },
         ],
       });
       const result = exchange.deserialize(bundle, cat.id);
 
-      const tree = itemSvc.getTreeByList(result.listId);
-      const attachedName = labelSvc.list().find((l) => l.id === tree[0].label_ids[0])?.name;
+      const list = listSvc.getById(result.listId);
+      const attachedName = labelSvc.list().find((l) => l.id === (list?.label_ids ?? [])[0])?.name;
       expect(attachedName).toBe('幽灵');
     });
 
@@ -253,7 +259,7 @@ describe('TodoListExchangeService', () => {
       const cat = categorySvc.create({ name: 'C' });
       const items = Array.from({ length: TODO_MAX_IMPORT_ITEMS + 1 }, (_, i) => ({
         title: `t${i}`, description: '', task_prompt: '', status: 'init', progress: 0,
-        priority: 'normal', due_at: null, is_manual_progress: false, labels: [], children: [],
+        priority: 'normal', due_at: null, is_manual_progress: false, children: [],
       }));
       expect(() => exchange.deserialize(makeBundle({ items }), cat.id)).toThrow(/exceed limit/);
     });
@@ -294,28 +300,30 @@ describe('TodoListExchangeService', () => {
 
     it('与 serialize 互为逆运算：导出后导入，结构等价', () => {
       const cat = categorySvc.create({ name: 'C' });
-      const list = listSvc.create({ name: '原始', description: 'd', category_id: cat.id });
       const labelX = labelSvc.create({ name: 'X' });
-      // parent 用 is_manual_progress=true，避免 create('c') 时进度联动改写 parent.progress
+      // 标签挂 list 维度；parent 用 is_manual_progress=true，避免 create('c') 时进度联动改写 parent.progress
+      const list = listSvc.create({
+        name: '原始', description: 'd', category_id: cat.id, label_ids: [labelX.id],
+      });
       const parent = itemSvc.create({
-        title: 'p', todo_list_id: list.id, progress: 55, is_manual_progress: true, label_ids: [labelX.id],
+        title: 'p', todo_list_id: list.id, progress: 55, is_manual_progress: true,
       });
       itemSvc.create({ title: 'c', todo_list_id: list.id, parent_id: parent.id, progress: 10 });
 
       const bundle = exchange.serialize(list.id);
       const result = exchange.deserialize(bundle, cat.id);
 
-      // 新 list 与原 list 同名、同 category
+      // 新 list 与原 list 同名、同 category、label 迁移到 list 维度
       const newList = listSvc.getById(result.listId);
       expect(newList?.name).toBe('原始');
       expect(newList?.category_id).toBe(cat.id);
+      expect(newList?.label_ids).toContain(labelX.id);
       // 结构等价（不含 id）；parent.is_manual_progress=true，progress 保持 55 不被联动改写
       const newTree = itemSvc.getTreeByList(result.listId);
       expect(newTree).toHaveLength(1);
       expect(newTree[0].title).toBe('p');
       expect(newTree[0].progress).toBe(55);
       expect(newTree[0].is_manual_progress).toBe(true);
-      expect(newTree[0].label_ids).toContain(labelX.id);
       expect(newTree[0].children).toHaveLength(1);
       expect(newTree[0].children[0].title).toBe('c');
       expect(newTree[0].children[0].progress).toBe(10);

@@ -72,12 +72,17 @@ export interface TodoCategory {
 
 /**
  * Todo 列表容器
+ *
+ * 注意：label_ids 不在 todo_list 表中，由 todo_list_label 多对多表 JOIN 得到。
+ *      Service 层在返回 TodoList 时补全该字段。
  */
 export interface TodoList {
   id: number;
   name: string;
   description: string;
   category_id: number | null;
+  /** 标签 ID 列表（来自 todo_list_label 多对多） */
+  label_ids: number[];
   created_at: number;
   updated_at: number;
   /** 软删除时间（null 表示未删除） */
@@ -87,8 +92,8 @@ export interface TodoList {
 /**
  * Todo 条目（递归结构，限制 4 层）
  *
- * 注意：label_ids 不在 todo_item 表中，由 todo_item_label 多对多表 JOIN 得到。
- *      Service 层在返回 TodoItem 时补全该字段。
+ * 标签功能已迁移到 todo_list 维度（见 TodoList.label_ids）；todo_item 不再持有标签。
+ * 历史 todo_item_label 表保留以兼容旧数据，但不再写入。
  */
 export interface TodoItem {
   id: number;
@@ -106,8 +111,6 @@ export interface TodoItem {
   agent_task_id: number | null;
   /** 是否手动设置进度；为 true 时父进度计算跳过该子项 */
   is_manual_progress: boolean;
-  /** 标签 ID 列表（来自 todo_item_label 多对多） */
-  label_ids: number[];
   created_at: number;
   updated_at: number;
   /** 软删除时间（null 表示未删除） */
@@ -306,8 +309,9 @@ export const TODO_MAX_IMPORT_ITEMS = 5000;
  *
  * 与 TodoItemNode 对齐，但剔除运行时字段（id / parent_id / todo_list_id /
  * agent_task_id / created_at / updated_at / deleted_at），跨库无意义。
- * label 仅保留 name（id 跨库无效，type 不参与导入导出）。
  * 父子关系用 children 递归表达，导入端 DFS 自顶向下重建。
+ *
+ * 注意：标签已迁移到 todo_list 维度，item 节点不再携带 labels。
  */
 export interface TodoListExportItemNode {
   title: string;
@@ -318,8 +322,6 @@ export interface TodoListExportItemNode {
   priority: TodoItemPriority;
   due_at: number | null;
   is_manual_progress: boolean;
-  /** 标签名称列表（不含 id / type） */
-  labels: string[];
   /** 子条目（递归） */
   children: TodoListExportItemNode[];
 }
@@ -327,11 +329,16 @@ export interface TodoListExportItemNode {
 /**
  * 导出文件顶层结构。
  * version 由 TODO_EXPORT_BUNDLE_VERSION 约定，导入端校验。
+ *
+ * labels 位于 list 维度（与运行时 TodoList.label_ids 对应），
+ * 仅保留 name（id 跨库无效，type 不参与导入导出）。
  */
 export interface TodoListExportBundle {
   version: number;
   exported_at: number;
   list: { name: string; description: string };
+  /** 待办项目级标签名称列表（不含 id / type） */
+  labels: string[];
   items: TodoListExportItemNode[];
 }
 
