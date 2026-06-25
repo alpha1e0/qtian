@@ -5,6 +5,7 @@ import * as path from 'path';
 import { IPC_CHANNELS } from '../channels';
 import { createLogger } from '@/core/utils/logger';
 import { TodoAppService } from '@/core/services/app-modules/todo-app/todo-app.service';
+import { buildExportFileName } from '@/core/services/app-modules/todo-app/todo-export-filename';
 import {
   TodoItemStatus,
   TodoItemPriority,
@@ -88,7 +89,10 @@ export function registerTodoAppHandlers(todoAppService: TodoAppService): void {
 
   ipcMain.handle(IPC_CHANNELS.TODO_EXPORT_TODO_LIST, async (_e, listId: number) => {
     const win = BrowserWindow.getFocusedWindow() ?? undefined;
-    const defaultName = `todolist-${listId}-${Date.now()}.json`;
+    // 默认文件名包含待办项目名称与本地时间戳（YYYYMMDDHHmmss），
+    // 取不到 list 时由工具内部回退为 `todolist-<listId>-...`
+    const targetList = list.getById(listId);
+    const defaultName = buildExportFileName(targetList?.name ?? '', Date.now(), listId);
     const result = await dialog.showSaveDialog(win!, {
       title: '导出待办项目',
       defaultPath: defaultName,
