@@ -97,16 +97,16 @@ CREATE TABLE IF NOT EXISTS todo_document (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,
   name             TEXT NOT NULL,
   content          TEXT NOT NULL DEFAULT '',
-  todo_category_id INTEGER,
+  todo_list_id     INTEGER,
   todo_item_id     INTEGER,
   created_at       INTEGER NOT NULL,
   updated_at       INTEGER NOT NULL,
   deleted_at       INTEGER,
-  FOREIGN KEY (todo_category_id) REFERENCES todo_category(id) ON DELETE NO ACTION,
-  FOREIGN KEY (todo_item_id)     REFERENCES todo_item(id)     ON DELETE NO ACTION
+  FOREIGN KEY (todo_list_id) REFERENCES todo_list(id) ON DELETE NO ACTION,
+  FOREIGN KEY (todo_item_id) REFERENCES todo_item(id) ON DELETE NO ACTION
 );
-CREATE INDEX IF NOT EXISTS idx_doc_category ON todo_document(todo_category_id) WHERE deleted_at IS NULL;
-CREATE INDEX IF NOT EXISTS idx_doc_item     ON todo_document(todo_item_id)     WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_doc_list ON todo_document(todo_list_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_doc_item ON todo_document(todo_item_id) WHERE deleted_at IS NULL;
 
 -- ============================================================
 -- 搜索历史（Phase 3）

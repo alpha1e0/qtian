@@ -1,7 +1,7 @@
 /**
  * TodoDocumentService 单元测试
  *
- * 重点：saveAttachment hash 去重、分桶目录、category_id 和 item_id 互斥
+ * 重点：saveAttachment hash 去重、分桶目录、list_id 和 item_id 互斥
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -52,12 +52,12 @@ describe('TodoDocumentService', () => {
       expect(doc.name).toBe('笔记');
       expect(doc.content).toBe('# Hello');
       expect(doc.todo_item_id).toBe(1);
-      expect(doc.todo_category_id).toBeNull();
+      expect(doc.todo_list_id).toBeNull();
     });
 
-    it('应创建文档（关联 category）', () => {
-      const doc = svc.create({ name: 'cat-doc', todo_category_id: 5 });
-      expect(doc.todo_category_id).toBe(5);
+    it('应创建文档（关联 list）', () => {
+      const doc = svc.create({ name: 'list-doc', todo_list_id: 5 });
+      expect(doc.todo_list_id).toBe(5);
       expect(doc.todo_item_id).toBeNull();
     });
 
@@ -65,15 +65,15 @@ describe('TodoDocumentService', () => {
       expect(() => svc.create({ name: '' })).toThrow(/empty/);
     });
 
-    it('category_id 和 item_id 同时非 null 时抛错', () => {
-      expect(() => svc.create({ name: 'x', todo_category_id: 1, todo_item_id: 2 })).toThrow(
+    it('list_id 和 item_id 同时非 null 时抛错', () => {
+      expect(() => svc.create({ name: 'x', todo_list_id: 1, todo_item_id: 2 })).toThrow(
         /不可同时/,
       );
     });
 
     it('两者都为 null 时允许（游离文档）', () => {
       const doc = svc.create({ name: 'free' });
-      expect(doc.todo_category_id).toBeNull();
+      expect(doc.todo_list_id).toBeNull();
       expect(doc.todo_item_id).toBeNull();
     });
   });
@@ -102,12 +102,12 @@ describe('TodoDocumentService', () => {
     });
   });
 
-  describe('listByCategory / listByItem', () => {
-    it('listByCategory 返回该分类文档', () => {
-      svc.create({ name: 'c1', todo_category_id: 1 });
-      svc.create({ name: 'c2', todo_category_id: 1 });
+  describe('listByList / listByItem', () => {
+    it('listByList 返回该项目文档', () => {
+      svc.create({ name: 'c1', todo_list_id: 1 });
+      svc.create({ name: 'c2', todo_list_id: 1 });
       svc.create({ name: 'i1', todo_item_id: 9 });
-      expect(svc.listByCategory(1)).toHaveLength(2);
+      expect(svc.listByList(1)).toHaveLength(2);
     });
 
     it('listByItem 返回该 item 文档', () => {

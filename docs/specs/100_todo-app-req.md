@@ -43,8 +43,8 @@ todo应用模块是一个和agent结合到一起的待办应用模块，可以�
 
 - 名称
 - 内容
-- todo_category_id
-- todo_item_id
+- todo_list_id（关联待办项目）
+- todo_item_id（关联待办条目，与 todo_list_id 互斥）
 - 创建时间、最后修改时间
 
 **标签包含如下字段**

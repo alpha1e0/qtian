@@ -380,7 +380,7 @@ export default {
           name: value.trim(),
           content: '',
           todo_item_id: this.itemId,
-          todo_category_id: null,
+          todo_list_id: null,
         });
         await this.loadDocuments();
         this.$emit('open-doc', {

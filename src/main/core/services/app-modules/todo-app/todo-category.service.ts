@@ -133,9 +133,19 @@ export class TodoCategoryService {
     const relatedItemIds = this.db.query<{ id: number }>(
       `SELECT id FROM todo_item WHERE todo_list_id IN (SELECT id FROM todo_list WHERE category_id IN (${idList})) AND deleted_at IS NULL`,
     ).map((r) => r.id);
-    const relatedDocIds = this.db.query<{ id: number }>(
-      `SELECT id FROM todo_document WHERE todo_category_id IN (${idList}) AND deleted_at IS NULL`,
+    // document 通过 todo_list_id 或 todo_item_id 关联，分别收集后合并去重
+    const docListIds = this.db.query<{ id: number }>(
+      `SELECT id FROM todo_document
+       WHERE deleted_at IS NULL
+         AND todo_list_id IN (SELECT id FROM todo_list WHERE category_id IN (${idList}))`,
     ).map((r) => r.id);
+    const docItemIds = this.db.query<{ id: number }>(
+      `SELECT id FROM todo_document
+       WHERE deleted_at IS NULL
+         AND todo_item_id IN (SELECT id FROM todo_item WHERE todo_list_id IN
+           (SELECT id FROM todo_list WHERE category_id IN (${idList})))`,
+    ).map((r) => r.id);
+    const relatedDocIds = Array.from(new Set([...docListIds, ...docItemIds]));
 
     this.db.transaction(() => {
       this.db.execute(
@@ -154,9 +164,18 @@ export class TodoCategoryService {
          AND deleted_at IS NULL`,
         [now, now],
       );
-      // 软删除关联 document
+      // 软删除关联 document（todo_list 维度，拆为两条避免 OR 写法以兼容 mock-db）
       this.db.execute(
-        `UPDATE todo_document SET deleted_at = ?, updated_at = ? WHERE todo_category_id IN (${idList}) AND deleted_at IS NULL`,
+        `UPDATE todo_document SET deleted_at = ?, updated_at = ?
+         WHERE deleted_at IS NULL
+           AND todo_list_id IN (SELECT id FROM todo_list WHERE category_id IN (${idList}))`,
+        [now, now],
+      );
+      this.db.execute(
+        `UPDATE todo_document SET deleted_at = ?, updated_at = ?
+         WHERE deleted_at IS NULL
+           AND todo_item_id IN (SELECT id FROM todo_item WHERE todo_list_id IN
+             (SELECT id FROM todo_list WHERE category_id IN (${idList})))`,
         [now, now],
       );
 
@@ -354,10 +373,12 @@ export class TodoCategoryService {
           `DELETE FROM todo_item_label WHERE todo_item_id IN (${itemIdList})`,
         );
       }
-      // 2. 物理删除关联 document（category 维度）
-      this.db.execute(
-        `DELETE FROM todo_document WHERE todo_category_id IN (${idList})`,
-      );
+      // 2. 物理删除关联 document（todo_list 维度，子树 category 下所有 list 关联文档）
+      if (listIds.length > 0) {
+        this.db.execute(
+          `DELETE FROM todo_document WHERE todo_list_id IN (${listIdList})`,
+        );
+      }
       // 2b. 物理删除关联 document（item 维度，子树 list 下的 item 关联文档）
       if (itemIds.length > 0) {
         const itemIdList = itemIds.join(',');

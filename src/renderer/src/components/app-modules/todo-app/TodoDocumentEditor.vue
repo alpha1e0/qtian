@@ -113,7 +113,7 @@ export default {
   props: {
     docId: { type: Number, default: null },
     itemId: { type: Number, default: null },
-    categoryId: { type: Number, default: null },
+    listId: { type: Number, default: null },
     /** 顶部展示的标题路径（例如 "待办条目标题 / 文档名"），由父组件拼装 */
     titlePath: { type: String, default: '' },
   },
@@ -288,7 +288,7 @@ export default {
         name: this.docName.trim(),
         content,
         todo_item_id: this.itemId ?? null,
-        todo_category_id: this.categoryId ?? null,
+        todo_list_id: this.listId ?? null,
       };
       await window.todoApp.saveDocument(payload);
       if (isAuto) {

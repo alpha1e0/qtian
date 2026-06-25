@@ -19,13 +19,13 @@ const DEFAULT_CONTENT = '';
  *
  * 职责：
  * - create / update / delete（软删除）/ restore / getById
- * - listByCategory / listByItem
+ * - listByList / listByItem
  * - saveAttachment：sha256 前 16 位命名 + 前 2 位分桶 + 去重（已存在不重写）
  *
  * FTS 集成（Phase 3）：searchService 为可选依赖（默认 null）。
  * 可搜索字段：name（title） + content（body）。
  *
- * create 约束：todo_category_id 和 todo_item_id 不可同时非 null。
+ * create 约束：todo_list_id 和 todo_item_id 不可同时非 null。
  */
 export class TodoDocumentService {
   private db: DBManager;
@@ -41,12 +41,12 @@ export class TodoDocumentService {
 
   /**
    * 创建文档。
-   * @throws Error todo_category_id 和 todo_item_id 同时非 null 时抛错
+   * @throws Error todo_list_id 和 todo_item_id 同时非 null 时抛错
    */
   create(data: {
     name: string;
     content?: string;
-    todo_category_id?: number | null;
+    todo_list_id?: number | null;
     todo_item_id?: number | null;
   }): TodoDocument {
     const name = data.name.trim();
@@ -54,19 +54,19 @@ export class TodoDocumentService {
       throw new Error('Document name cannot be empty');
     }
 
-    const categoryId = data.todo_category_id ?? null;
+    const listId = data.todo_list_id ?? null;
     const itemId = data.todo_item_id ?? null;
-    if (categoryId !== null && itemId !== null) {
-      throw new Error('todo_category_id 和 todo_item_id 不可同时非 null');
+    if (listId !== null && itemId !== null) {
+      throw new Error('todo_list_id 和 todo_item_id 不可同时非 null');
     }
 
     const now = Date.now();
     const content = data.content ?? DEFAULT_CONTENT;
     const newId = this.db.transaction(() => {
       const result = this.db.insert(
-        `INSERT INTO todo_document (name, content, todo_category_id, todo_item_id, created_at, updated_at, deleted_at)
+        `INSERT INTO todo_document (name, content, todo_list_id, todo_item_id, created_at, updated_at, deleted_at)
          VALUES (?, ?, ?, ?, ?, ?, NULL)`,
-        [name, content, categoryId, itemId, now, now],
+        [name, content, listId, itemId, now, now],
       );
       this.searchService?.syncFts('document', result.lastRowid, { title: name, body: content });
       return result.lastRowid;
@@ -157,7 +157,7 @@ export class TodoDocumentService {
   /** 列出回收站中的文档 */
   listTrash(): TodoDocument[] {
     const rows = this.db.query<TodoDocumentRow>(
-      `SELECT id, name, content, todo_category_id, todo_item_id, created_at, updated_at, deleted_at
+      `SELECT id, name, content, todo_list_id, todo_item_id, created_at, updated_at, deleted_at
        FROM todo_document WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`,
     );
     return rows.map((r) => this.mapRow(r));
@@ -192,19 +192,19 @@ export class TodoDocumentService {
   /** 按 id 获取未删除文档 */
   getById(id: number): TodoDocument | undefined {
     const row = this.db.get<TodoDocumentRow>(
-      `SELECT id, name, content, todo_category_id, todo_item_id, created_at, updated_at, deleted_at
+      `SELECT id, name, content, todo_list_id, todo_item_id, created_at, updated_at, deleted_at
        FROM todo_document WHERE id = ? AND deleted_at IS NULL`,
       [id],
     );
     return row ? this.mapRow(row) : undefined;
   }
 
-  /** 列出 category 下的未删除文档 */
-  listByCategory(categoryId: number): TodoDocument[] {
+  /** 列出 todo_list 下的未删除文档 */
+  listByList(listId: number): TodoDocument[] {
     const rows = this.db.query<TodoDocumentRow>(
-      `SELECT id, name, content, todo_category_id, todo_item_id, created_at, updated_at, deleted_at
-       FROM todo_document WHERE todo_category_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC`,
-      [categoryId],
+      `SELECT id, name, content, todo_list_id, todo_item_id, created_at, updated_at, deleted_at
+       FROM todo_document WHERE todo_list_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC`,
+      [listId],
     );
     return rows.map((r) => this.mapRow(r));
   }
@@ -212,7 +212,7 @@ export class TodoDocumentService {
   /** 列出 todo_item 下的未删除文档 */
   listByItem(itemId: number): TodoDocument[] {
     const rows = this.db.query<TodoDocumentRow>(
-      `SELECT id, name, content, todo_category_id, todo_item_id, created_at, updated_at, deleted_at
+      `SELECT id, name, content, todo_list_id, todo_item_id, created_at, updated_at, deleted_at
        FROM todo_document WHERE todo_item_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC`,
       [itemId],
     );
@@ -268,7 +268,7 @@ export class TodoDocumentService {
       id: row.id,
       name: row.name,
       content: row.content,
-      todo_category_id: row.todo_category_id,
+      todo_list_id: row.todo_list_id,
       todo_item_id: row.todo_item_id,
       created_at: row.created_at,
       updated_at: row.updated_at,
@@ -281,7 +281,7 @@ interface TodoDocumentRow {
   id: number;
   name: string;
   content: string;
-  todo_category_id: number | null;
+  todo_list_id: number | null;
   todo_item_id: number | null;
   created_at: number;
   updated_at: number;

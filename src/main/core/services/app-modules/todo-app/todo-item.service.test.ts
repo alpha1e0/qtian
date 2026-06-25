@@ -397,7 +397,7 @@ describe('TodoItemService', () => {
       const label = labelSvc.create({ name: 'Lx' });
       svc.update(item.id, { label_ids: [label.id] });
       mgr.insert(
-        'INSERT INTO todo_document (name, content, todo_category_id, todo_item_id, created_at, updated_at, deleted_at) VALUES (?, ?, NULL, ?, ?, ?, NULL)',
+        'INSERT INTO todo_document (name, content, todo_list_id, todo_item_id, created_at, updated_at, deleted_at) VALUES (?, ?, NULL, ?, ?, ?, NULL)',
         ['doc', '', item.id, 1, 1],
       );
 

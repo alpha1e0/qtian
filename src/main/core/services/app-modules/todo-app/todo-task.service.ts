@@ -264,7 +264,7 @@ export class TodoTaskService {
         name: `${task.title}${SUMMARY_DOC_TITLE_SUFFIX}`,
         content: summary,
         todo_item_id: task.source_ref_id,
-        todo_category_id: null,
+        todo_list_id: null,
       });
 
       logger.info(

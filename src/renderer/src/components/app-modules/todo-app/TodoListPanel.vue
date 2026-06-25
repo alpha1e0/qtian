@@ -26,6 +26,9 @@
       <div v-else-if="listId" class="item-tree-container">
         <div class="tree-toolbar">
           <span class="section-title">{{ listName }}</span>
+          <el-button size="small" text @click="$emit('open-list-docs', listId)">
+            <el-icon><Document /></el-icon> 项目文档
+          </el-button>
           <el-button size="small" text @click="handleCreateRootItem">
             <el-icon><Plus /></el-icon> 新建待办条目
           </el-button>
@@ -53,13 +56,13 @@
 </template>
 
 <script>
-import { Plus } from '@element-plus/icons-vue';
+import { Plus, Document } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import TodoItemRow from './TodoItemRow.vue';
 
 export default {
   name: 'TodoListPanel',
-  components: { Plus, TodoItemRow },
+  components: { Plus, Document, TodoItemRow },
   props: {
     // 受控：当前 todo_list id（由父组件 selectedListId 驱动）
     listId: { type: Number, default: null },

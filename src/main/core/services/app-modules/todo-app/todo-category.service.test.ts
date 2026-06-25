@@ -298,11 +298,11 @@ describe('TodoCategoryService', () => {
         [itemId, labelId],
       );
       mgr.insert(
-        'INSERT INTO todo_document (name, content, todo_category_id, todo_item_id, created_at, updated_at, deleted_at) VALUES (?, ?, ?, NULL, ?, ?, NULL)',
-        ['doc-cat', '', root.id, 1, 1],
+        'INSERT INTO todo_document (name, content, todo_list_id, todo_item_id, created_at, updated_at, deleted_at) VALUES (?, ?, ?, NULL, ?, ?, NULL)',
+        ['doc-list', '', listId, 1, 1],
       );
       mgr.insert(
-        'INSERT INTO todo_document (name, content, todo_category_id, todo_item_id, created_at, updated_at, deleted_at) VALUES (?, ?, NULL, ?, ?, ?, NULL)',
+        'INSERT INTO todo_document (name, content, todo_list_id, todo_item_id, created_at, updated_at, deleted_at) VALUES (?, ?, NULL, ?, ?, ?, NULL)',
         ['doc-item', '', itemId, 1, 1],
       );
 
@@ -311,7 +311,7 @@ describe('TodoCategoryService', () => {
 
       expect(mgr.get('SELECT id FROM todo_list WHERE id = ?', [listId])).toBeUndefined();
       expect(mgr.get('SELECT id FROM todo_item WHERE id = ?', [itemId])).toBeUndefined();
-      expect(mgr.get('SELECT id FROM todo_document WHERE todo_category_id = ?', [root.id])).toBeUndefined();
+      expect(mgr.get('SELECT id FROM todo_document WHERE todo_list_id = ?', [listId])).toBeUndefined();
       expect(mgr.get('SELECT id FROM todo_document WHERE todo_item_id = ?', [itemId])).toBeUndefined();
       expect(
         mgr.get('SELECT todo_item_id FROM todo_item_label WHERE todo_item_id = ?', [itemId]),

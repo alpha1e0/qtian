@@ -226,8 +226,8 @@ const api = {
       ipcRenderer.invoke(IPC_CHANNELS.TODO_LIST_TODO_ITEMS_BY_LABEL, labelId),
 
     // Document
-    listDocsByCategory: (categoryId) =>
-      ipcRenderer.invoke(IPC_CHANNELS.TODO_LIST_DOCS_BY_CATEGORY, categoryId),
+    listDocsByList: (listId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.TODO_LIST_DOCS_BY_LIST, listId),
     listDocsByItem: (itemId) => ipcRenderer.invoke(IPC_CHANNELS.TODO_LIST_DOCS_BY_ITEM, itemId),
     getDocument: (id) => ipcRenderer.invoke(IPC_CHANNELS.TODO_GET_DOCUMENT, id),
     saveDocument: (data) => ipcRenderer.invoke(IPC_CHANNELS.TODO_SAVE_DOCUMENT, data),

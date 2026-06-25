@@ -195,8 +195,8 @@ export function registerTodoAppHandlers(todoAppService: TodoAppService): void {
   });
 
   // ===== Document =====
-  ipcMain.handle(IPC_CHANNELS.TODO_LIST_DOCS_BY_CATEGORY, async (_e, categoryId: number) => {
-    return doc.listByCategory(categoryId);
+  ipcMain.handle(IPC_CHANNELS.TODO_LIST_DOCS_BY_LIST, async (_e, listId: number) => {
+    return doc.listByList(listId);
   });
 
   ipcMain.handle(IPC_CHANNELS.TODO_LIST_DOCS_BY_ITEM, async (_e, itemId: number) => {
@@ -207,14 +207,14 @@ export function registerTodoAppHandlers(todoAppService: TodoAppService): void {
     return doc.getById(id);
   });
 
-  ipcMain.handle(IPC_CHANNELS.TODO_SAVE_DOCUMENT, async (_e, data: { id?: number; name: string; content?: string; todo_category_id?: number | null; todo_item_id?: number | null }) => {
+  ipcMain.handle(IPC_CHANNELS.TODO_SAVE_DOCUMENT, async (_e, data: { id?: number; name: string; content?: string; todo_list_id?: number | null; todo_item_id?: number | null }) => {
     if (data.id) {
       return doc.update(data.id, { name: data.name, content: data.content });
     }
     return doc.create({
       name: data.name,
       content: data.content,
-      todo_category_id: data.todo_category_id,
+      todo_list_id: data.todo_list_id,
       todo_item_id: data.todo_item_id,
     });
   });

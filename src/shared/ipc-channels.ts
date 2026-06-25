@@ -117,7 +117,7 @@ export const IPC_CHANNELS = {
   TODO_LIST_TODO_ITEMS_BY_LABEL: 'qtian:todo:list-todo-items-by-label',
 
   // Document
-  TODO_LIST_DOCS_BY_CATEGORY: 'qtian:todo:list-docs-by-category',
+  TODO_LIST_DOCS_BY_LIST: 'qtian:todo:list-docs-by-list',
   TODO_LIST_DOCS_BY_ITEM: 'qtian:todo:list-docs-by-item',
   TODO_GET_DOCUMENT: 'qtian:todo:get-document',
   TODO_SAVE_DOCUMENT: 'qtian:todo:save-document',

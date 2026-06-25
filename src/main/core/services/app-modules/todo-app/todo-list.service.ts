@@ -152,10 +152,18 @@ export class TodoListService {
       `SELECT id FROM todo_item WHERE todo_list_id = ? AND deleted_at IS NULL`,
       [id],
     ).map((r) => r.id);
-    const relatedDocIds = this.db.query<{ id: number }>(
-      `SELECT id FROM todo_document WHERE todo_item_id IN (SELECT id FROM todo_item WHERE todo_list_id = ?) AND deleted_at IS NULL`,
+    // document 通过 todo_list_id 直接关联 + 通过 todo_item_id 间接关联，分别收集后合并去重
+    const docByList = this.db.query<{ id: number }>(
+      `SELECT id FROM todo_document WHERE deleted_at IS NULL AND todo_list_id = ?`,
       [id],
     ).map((r) => r.id);
+    const docByItem = this.db.query<{ id: number }>(
+      `SELECT id FROM todo_document
+       WHERE deleted_at IS NULL
+         AND todo_item_id IN (SELECT id FROM todo_item WHERE todo_list_id = ?)`,
+      [id],
+    ).map((r) => r.id);
+    const relatedDocIds = Array.from(new Set([...docByList, ...docByItem]));
 
     this.db.transaction(() => {
       this.db.execute(
@@ -168,10 +176,16 @@ export class TodoListService {
         `UPDATE todo_item SET deleted_at = ?, updated_at = ? WHERE todo_list_id = ? AND deleted_at IS NULL`,
         [now, now, id],
       );
-      // 软删除关联 document（item 维度的 document 也一并清理）
+      // 软删除关联 document（拆为两条避免 OR 写法以兼容 mock-db）
       this.db.execute(
         `UPDATE todo_document SET deleted_at = ?, updated_at = ?
-         WHERE todo_item_id IN (SELECT id FROM todo_item WHERE todo_list_id = ?) AND deleted_at IS NULL`,
+         WHERE deleted_at IS NULL AND todo_list_id = ?`,
+        [now, now, id],
+      );
+      this.db.execute(
+        `UPDATE todo_document SET deleted_at = ?, updated_at = ?
+         WHERE deleted_at IS NULL
+           AND todo_item_id IN (SELECT id FROM todo_item WHERE todo_list_id = ?)`,
         [now, now, id],
       );
 
@@ -249,7 +263,12 @@ export class TodoListService {
           `DELETE FROM todo_item_label WHERE todo_item_id IN (${itemIdList})`,
         );
       }
-      // 2. 物理删除关联 document（item 维度）
+      // 2. 物理删除关联 document（todo_list 维度）
+      this.db.execute(
+        `DELETE FROM todo_document WHERE todo_list_id = ?`,
+        [id],
+      );
+      // 2b. 物理删除关联 document（item 维度）
       if (itemIds.length > 0) {
         const itemIdList = itemIds.join(',');
         this.db.execute(

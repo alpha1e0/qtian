@@ -269,17 +269,21 @@ export class TodoSearchService {
       case 'document': {
         const r = this.db.get<{
           name: string;
-          todo_category_id: number | null;
+          todo_list_id: number | null;
           todo_item_id: number | null;
         }>(
-          `SELECT name, todo_category_id, todo_item_id FROM todo_document WHERE id = ? AND deleted_at IS NULL`,
+          `SELECT name, todo_list_id, todo_item_id FROM todo_document WHERE id = ? AND deleted_at IS NULL`,
           [entityId],
         );
         if (!r) return null;
         title = r.name;
-        // 优先 category 维度；item 维度文档回查 item→list→category
-        if (r.todo_category_id !== null) {
-          categoryId = r.todo_category_id;
+        // document 通过 todo_list_id 或 todo_item_id 关联；回查所属 category 路径
+        if (r.todo_list_id !== null) {
+          const listRow = this.db.get<{ category_id: number | null }>(
+            `SELECT category_id FROM todo_list WHERE id = ? AND deleted_at IS NULL`,
+            [r.todo_list_id],
+          );
+          categoryId = listRow?.category_id ?? null;
         } else if (r.todo_item_id !== null) {
           const itemRow = this.db.get<{ todo_list_id: number }>(
             `SELECT todo_list_id FROM todo_item WHERE id = ? AND deleted_at IS NULL`,

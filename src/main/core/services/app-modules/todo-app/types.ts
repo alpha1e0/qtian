@@ -128,14 +128,14 @@ export interface TodoLabel {
 }
 
 /**
- * 关联到 category 或 todo_item 的 Markdown 文档
+ * 关联到 todo_list 或 todo_item 的 Markdown 文档
  */
 export interface TodoDocument {
   id: number;
   name: string;
   content: string;
-  /** 关联的 category ID（与 todo_item_id 至少一个为 null） */
-  todo_category_id: number | null;
+  /** 关联的 todo_list ID（与 todo_item_id 不可同时非 null） */
+  todo_list_id: number | null;
   todo_item_id: number | null;
   created_at: number;
   updated_at: number;
