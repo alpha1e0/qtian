@@ -25,10 +25,15 @@
       <!-- 正常模式：选中 list 后展示 items 树 -->
       <div v-else-if="listId" class="item-tree-container">
         <div class="tree-toolbar">
-          <span class="section-title">{{ listName }}</span>
-          <el-button size="small" text @click="$emit('open-list-docs', listId)">
-            <el-icon><Document /></el-icon> 项目文档
-          </el-button>
+          <!--
+            list 名作为可点击入口：触发 select-list，让父组件切到右侧 list-detail。
+            中间面板的 item 树仍保留（v-if 由 selectedListId 驱动，与 rightPanelView 解耦）。
+          -->
+          <span
+            class="section-title list-name-link"
+            :title="`查看「${listName}」项目详情`"
+            @click="$emit('select-list', listId)"
+          >{{ listName }}</span>
           <el-button size="small" text @click="handleCreateRootItem">
             <el-icon><Plus /></el-icon> 新建待办条目
           </el-button>
@@ -56,13 +61,16 @@
 </template>
 
 <script>
-import { Plus, Document } from '@element-plus/icons-vue';
+import { Plus } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import TodoItemRow from './TodoItemRow.vue';
 
 export default {
   name: 'TodoListPanel',
-  components: { Plus, Document, TodoItemRow },
+  components: { Plus, TodoItemRow },
+  // select-list：顶部 list 名被点击时触发，父组件切到右侧 list-detail 视图（中间 item 树保留）。
+  // open-list-docs 已废弃移除（项目文档入口收敛到右侧 TodoListDetail 内）。
+  emits: ['select-item', 'toggle-status', 'select-list'],
   props: {
     // 受控：当前 todo_list id（由父组件 selectedListId 驱动）
     listId: { type: Number, default: null },
@@ -258,6 +266,21 @@ export default {
   color: var(--text-on-dark, #e4e4ed);
   letter-spacing: 0.02em;
   text-transform: none;
+}
+
+/*
+ * list 名作为右侧详情的入口：hover 加下划线 + 着色提示，
+ * 让用户感知"点击可查看项目详情"，与右键菜单的重命名入口解耦。
+ */
+.list-name-link {
+  cursor: pointer;
+  transition: color 0.18s ease, text-decoration-color 0.18s ease;
+  text-decoration: underline transparent;
+}
+
+.list-name-link:hover {
+  color: var(--accent, #6366f1);
+  text-decoration-color: var(--accent, #6366f1);
 }
 
 .empty-hint {

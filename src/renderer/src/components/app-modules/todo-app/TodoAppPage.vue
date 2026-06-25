@@ -34,8 +34,8 @@
           - labelId 命中 → 标签关联条目列表
           - listId 命中 → item 树
           - 都为 null → 空状态（用户未在侧边栏选中 list）
-        item-detail / list-detail / document-editor 等视图由右侧列独立承载，
-        中间列在这些视图下保留原 list 上下文，避免用户切换详情后列表消失。
+        item-detail / list-detail / category-detail / document-editor 等视图由
+        右侧列独立承载，中间列在这些视图下保留原 list 上下文，避免用户切换详情后列表消失。
       -->
       <TodoListPanel
         ref="listPanel"
@@ -46,7 +46,7 @@
         :selected-item-id="selectedItemId"
         @select-item="handleSelectItem"
         @toggle-status="handleToggleStatus"
-        @open-list-docs="handleOpenListDocs"
+        @select-list="handleSelectList"
       />
 
       <!-- 右侧详情：状态机路由 -->
@@ -61,12 +61,19 @@
         @view-task="openTaskPanel"
         @rerun-task="openRunDialog('rerun')"
       />
+      <TodoCategoryDetail
+        v-else-if="rightPanelView === 'category-detail'"
+        :key="`cat-${selectedCategoryId}-${detailKey}`"
+        class="todo-item-detail"
+        :category-id="selectedCategoryId"
+        @updated="handleCategoryUpdated"
+      />
       <TodoListDetail
         v-else-if="rightPanelView === 'list-detail'"
         :key="`list-${selectedListId}-${detailKey}`"
         class="todo-item-detail"
         :list-id="selectedListId"
-        :list-name="selectedListName"
+        @updated="handleListUpdated"
         @open-doc="openDoc"
       />
       <TodoDocumentEditor
@@ -90,7 +97,7 @@
         @select-task="handleSelectTask"
       />
       <div v-else class="todo-item-detail todo-item-detail-empty">
-        <el-empty description="选择一个待办条目查看详情，或点击中间面板「项目文档」查看项目级文档" />
+        <el-empty description="请在左侧选择一个分类、待办项目或条目查看详情" />
       </div>
     </div>
 
@@ -116,6 +123,7 @@
 import TodoSidebar from './TodoSidebar.vue';
 import TodoListPanel from './TodoListPanel.vue';
 import TodoItemDetail from './TodoItemDetail.vue';
+import TodoCategoryDetail from './TodoCategoryDetail.vue';
 import TodoListDetail from './TodoListDetail.vue';
 import TodoDocumentEditor from './TodoDocumentEditor.vue';
 import TodoSearchBar from './TodoSearchBar.vue';
@@ -126,7 +134,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 
 export default {
   name: 'TodoAppPage',
-  components: { TodoSidebar, TodoListPanel, TodoItemDetail, TodoListDetail, TodoDocumentEditor, TodoSearchBar, TrashDialog, TaskRunDialog, TaskPanel },
+  components: { TodoSidebar, TodoListPanel, TodoItemDetail, TodoCategoryDetail, TodoListDetail, TodoDocumentEditor, TodoSearchBar, TrashDialog, TaskRunDialog, TaskPanel },
   data() {
     return {
       categoryTree: [],
@@ -137,7 +145,9 @@ export default {
       selectedLabelId: null,
       selectedListId: null,
       selectedItemId: null,
-      // 右侧视图状态机：'empty' | 'item-detail' | 'item-tree' | 'list-detail' | 'label-items' | 'document-editor' | 'task-panel'
+      // 右侧视图状态机：'empty' | 'item-detail' | 'category-detail' | 'list-detail' | 'label-items' | 'document-editor' | 'task-panel'
+      // 中间面板视图（item 树 / 标签条目列表）由 selectedListId / selectedLabelId 单独驱动，
+      // 不走 rightPanelView，保证右侧详情切换时中间面板上下文不丢。
       rightPanelView: 'empty',
       // 当前打开的文档上下文（编辑器视图使用）
       activeDoc: null,
@@ -175,9 +185,16 @@ export default {
      * 未命中时返回 null（el-tree 不高亮任何节点）。
      */
     currentNodeKey() {
+      // category 详情：高亮 category 节点
       if (
-        (this.rightPanelView === 'item-tree' ||
-          this.rightPanelView === 'list-detail' ||
+        this.rightPanelView === 'category-detail' &&
+        this.selectedCategoryId
+      ) {
+        return `cat_${this.selectedCategoryId}`;
+      }
+      // list / item 详情：高亮所属 list 节点（item 隶属于 list，共用 list 高亮）
+      if (
+        (this.rightPanelView === 'list-detail' ||
           this.rightPanelView === 'item-detail') &&
         this.selectedListId
       ) {
@@ -192,8 +209,8 @@ export default {
       this.loadLabels(),
       this.loadAllTodoLists(),
     ]);
-    // 首次进入：若有 todo_list 自动选中第一个并切到 item-tree 视图，
-    // 否则保持空状态（category 仅作分组容器，不再有详情视图）。
+    // 首次进入：若有 todo_list 自动选中第一个并切到 list-detail 视图，
+    // 否则保持空状态等待用户主动选择。
     if (Array.isArray(this.allTodoLists) && this.allTodoLists.length > 0) {
       this.handleSelectList(this.allTodoLists[0].id);
     }
@@ -266,8 +283,8 @@ export default {
     /**
      * 统一树节点点击分流（D5）。
      * payload: { type: 'category' | 'list', id }
-     * - category → 仅作为侧栏分组定位（右侧保持空）
-     * - list     → 切到 item-tree（中间面板显示 item 树）
+     * - category → 切到右侧 category-detail（显示分类元信息 + 可改名）
+     * - list     → 切到右侧 list-detail（中间面板同时显示 item 树）
      */
     handleTreeSelect(payload) {
       if (!payload || !payload.type) return;
@@ -280,12 +297,11 @@ export default {
     handleSelectCategory(categoryId) {
       this.selectedCategoryId = categoryId;
       this.selectedLabelId = null;
-      // category 仅作为侧栏分组容器，不再有详情视图：选中后清空右侧。
-      // 用户应进一步选中其下 todo_list 节点来打开 list-detail 或 item-tree。
+      // 选中 category 后右侧切到 category-detail，展示分类元信息 + 改名入口。
       this.selectedListId = null;
       this.selectedItemId = null;
       this.activeDoc = null;
-      this.rightPanelView = 'empty';
+      this.rightPanelView = categoryId ? 'category-detail' : 'empty';
     },
     handleSelectLabel(labelId) {
       this.selectedLabelId = labelId;
@@ -297,9 +313,10 @@ export default {
       this.rightPanelView = labelId ? 'label-items' : 'empty';
     },
     /**
-     * 选中待办项目（来自侧边栏 list 节点点击）。
-     * 切到 item-tree 视图；同时把 category 设为该 list 的归属分类，
-     * 让 TodoListDetail / TodoDocumentEditor 回退时能正确还原 list 上下文。
+     * 选中待办项目（来自侧边栏 list 节点点击 / 中间面板顶部 list 名点击）。
+     * 切到右侧 list-detail 视图；中间面板的 item 树由 selectedListId 驱动保留显示。
+     * 同时把 category 设为该 list 的归属分类，
+     * 让 TodoDocumentEditor 回退时能正确还原上下文。
      */
     handleSelectList(listId) {
       const list = this.allTodoLists.find((l) => l.id === listId);
@@ -310,7 +327,7 @@ export default {
       this.selectedLabelId = null;
       // 同步 category 上下文（编辑器/详情回退要用）
       this.selectedCategoryId = list?.category_id ?? null;
-      this.rightPanelView = listId ? 'item-tree' : 'empty';
+      this.rightPanelView = listId ? 'list-detail' : 'empty';
     },
     async handleCreateCategory({ name, parentId }) {
       try {
@@ -375,7 +392,7 @@ export default {
             category_id: categoryId,
           });
           await this.loadAllTodoLists();
-          // 自动选中并切到 item-tree 视图
+          // 自动选中并切到 list-detail 视图（中间面板同时加载 item 树）
           this.handleSelectList(created.id);
           ElMessage.success('待办项目已创建');
         }
@@ -404,8 +421,8 @@ export default {
         if (this.selectedListId === id) {
           this.selectedListId = null;
           this.selectedItemId = null;
-          // category 无详情视图，删除当前 list 后切回空状态
-          this.rightPanelView = 'empty';
+          // 删除当前 list 后回退到所属 category 详情（若有），否则空状态
+          this.rightPanelView = this.selectedCategoryId ? 'category-detail' : 'empty';
         }
         ElMessage.success('已删除');
       } catch (err) {
@@ -462,6 +479,20 @@ export default {
       this.$refs.listPanel?.loadItemTree?.();
     },
     /**
+     * 分类详情改名成功后刷新 categoryTree + mergedTree，
+     * 让 sidebar 高亮节点名称和中间面板（若显示）同步。
+     */
+    async handleCategoryUpdated() {
+      await this.loadCategoryTree();
+    },
+    /**
+     * 待办项目详情改名 / 改描述成功后刷新 allTodoLists，
+     * 让 sidebar 节点名 + 中间面板顶部 list 名同步显示。
+     */
+    async handleListUpdated() {
+      await this.loadAllTodoLists();
+    },
+    /**
      * 子组件请求打开文档：切换到编辑器视图。
      * payload: { id?, itemId?, listId?, titlePath }
      */
@@ -489,21 +520,6 @@ export default {
       }
       this.activeDoc = null;
     },
-    /**
-     * TodoListPanel 顶部"项目文档"按钮入口：切到 list-detail 视图。
-     * 选中态保留 selectedListId，由 v-if 挂载 TodoListDetail。
-     */
-    handleOpenListDocs(listId) {
-      if (!listId) return;
-      // 同步 list 上下文（与 handleSelectList 共享清理逻辑，但不切到 item-tree）
-      this.selectedItemId = null;
-      this.activeDoc = null;
-      this.selectedLabelId = null;
-      this.selectedListId = listId;
-      const list = this.allTodoLists.find((l) => l.id === listId);
-      this.selectedCategoryId = list?.category_id ?? null;
-      this.rightPanelView = 'list-detail';
-    },
     /** 文档保存后刷新对应源详情（通过 :key 强制重渲染） */
     handleDocSaved() {
       this.detailKey += 1;
@@ -512,8 +528,8 @@ export default {
      * 搜索结果跳转（Phase 3）：根据命中类型切换视图 + 滚动 + 高亮。
      *
      * 设计文档 §7.5：
-     *   category   → 选中该 category + sidebar 闪烁高亮（category 无详情视图，右侧保持空）
-     *   todo_list  → 反查 list.category_id 后切换 list 视图
+     *   category   → 选中该 category + 切到 category-detail + sidebar 闪烁高亮
+     *   todo_list  → 反查 list.category_id 后切换 list-detail 视图（中间面板同时显示 item 树）
      *   todo_item  → 反查 item.todo_list_id → list.category_id 后切换 + 滚动到 item
      *   document   → 打开文档编辑器
      */
@@ -526,12 +542,12 @@ export default {
           this.selectedListId = null;
           this.activeDoc = null;
           this.selectedCategoryId = result.id;
-          // category 仅作为分组，无详情视图：右侧保持空
-          this.rightPanelView = 'empty';
+          // 切到 category-detail，展示分类元信息
+          this.rightPanelView = result.id ? 'category-detail' : 'empty';
           await this.$nextTick();
           this.$refs.sidebar?.highlightCategory(result.id);
         } else if (result.type === 'todo_list') {
-          // 直接切到 item-tree 视图，listPanel 由 v-if 挂载并 watch listId 自动 loadItemTree
+          // 直接切到 list-detail 视图，listPanel 由 selectedListId 驱动挂载并 watch listId 自动 loadItemTree
           this.handleSelectList(result.id);
           await this.$nextTick();
           await this.$refs.listPanel?.focusTarget?.(result.id, null);
@@ -541,7 +557,7 @@ export default {
             ElMessage.warning('该待办条目不存在或已删除');
             return;
           }
-          // 先切到 item-tree 让 listPanel 挂载、加载 item 树
+          // 先切到所属 list（中间面板挂载、加载 item 树），右侧暂为 list-detail
           this.handleSelectList(item.todo_list_id);
           await this.$nextTick();
           await this.$refs.listPanel?.focusTarget?.(item.todo_list_id, item.id);

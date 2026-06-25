@@ -1187,7 +1187,7 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 └──────────────────┴───────────────────────────────────┴───────────────────┘
 ```
 
-> 注：左栏的统一树中 `📁` 为 category（目录语义，可展开），`📄` 为 todo_list（文件语义，叶子）；点击 category 文字仅作侧栏分组定位（右侧保持空），点击 todo_list 文字切到中间 item 树；中间顶部"项目文档"按钮可切到右侧 TodoListDetail 查看项目级文档。中间顶部不再有「待办项目下拉」，list 名由父组件传入。
+> 注：左栏的统一树中 `📁` 为 category（目录语义，可展开），`📄` 为 todo_list（文件语义，叶子）；点击 category 文字切到右侧 `category-detail`（分类元信息 + 改名），点击 todo_list 文字切到右侧 `list-detail`（项目详情 + 文档列表），中间面板同时展示该 list 的 item 树；点击中间面板顶部的 list 名同样切到右侧 `list-detail`（item 树保留）。右侧详情区在三种选中态下都展示「总结信息 + 元素信息（可编辑）」结构，与 `TodoItemDetail` 的失焦自动保存体验一致。
 
 ### 9.2 组件清单
 
@@ -1201,6 +1201,8 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 | `TodoListPanel.vue` | 中间面板（受控）：list 名标题 + todo items 树 | props: `listId`, `listName`, `labelId` |
 | `TodoItemRow.vue` | 单行 todo item，支持复选框、缩进、手动进度切换 | emit `toggle`, `select`, `run-task` |
 | `TodoItemDetail.vue` | 右侧详情面板，可编辑 + 任务入口 | props: `itemId` |
+| `TodoCategoryDetail.vue` | 右侧分类详情面板：总结信息（创建/修改时间 + 直接子项目数）+ 名称可编辑（失焦自动保存） | props: `categoryId`；emit `updated` |
+| `TodoListDetail.vue` | 右侧待办项目详情面板：总结信息（创建/修改时间）+ 名称/描述可编辑（失焦自动保存）+ 项目文档列表 | props: `listId`；emit `updated`, `open-doc` |
 | `TodoDocumentEditor.vue` | Markdown 编辑器（建议 milkdown / vditor） | props: `docId` |
 | `TaskRunDialog.vue` | 任务运行前的 Agent / LLM 选择对话框 | emit `confirm({agentName, llmConfigName, extraPrompt})` |
 | `TaskPanel.vue` | 任务面板（嵌入详情区，展示对话流 + 历史 + 总结链接） | props: `taskId` |
@@ -1217,9 +1219,10 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 2. **复合 nodeKey（D2）**：category 与 todo_list 都用自增整数 id，必定冲突。用字符串前缀 `cat_${id}` / `list_${id}` 作为 el-tree `node-key` 与 `current-node-key`，避免 id 碰撞。
 3. **空分类占位（D3）**：el-tree 对无 children 的节点默认不渲染展开三角。category 节点即使为空也应保持「目录」视觉语义，因此在 `#default` slot 内为空 category 渲染一个透明占位 span（`.cat-leaf-arrow`，18×18px），与三角图标同尺寸保持缩进对齐。不用 `:has()` 是为了兼容性与可控性。
 4. **category ＋下拉（D4）**：原 category hover 的 ＋ 按钮只能新建子分类；现改为 `el-dropdown`，两项：「新建子分类」「新建待办项目」。todo_list 叶子节点 hover 只显示 ✎/🗑（不含 ＋）。根级 tree-header 的 ＋ 保留为「新建根分类」。
-5. **点击行为（D5）**：`expand-on-click-node=false` 不变（点文字不触发展开，点三角才展开）。点击 category 文字 → emit `select({type:'category'})` → 父组件仅作侧栏分组定位（右侧保持空）；点击 todo_list 文字 → emit `select({type:'list'})` → 父组件切到 `item-tree`。
-6. **TodoListPanel 受控化（D6）**：删除原 `panel-header`（el-select + 新建项目按钮）与 `todoLists`/`currentListId` 本地状态。props 改为 `listId` / `listName` / `labelId`，watch `listId` 触发 `loadItemTree`。顶部仅保留 `tree-toolbar`：list 名标题（prop 传入）+ 新建待办条目按钮。父组件 `TodoAppPage` 负责从 `allTodoLists` 解析 list 名。
+5. **点击行为（D5）**：`expand-on-click-node=false` 不变（点文字不触发展开，点三角才展开）。点击 category 文字 → emit `select({type:'category'})` → 父组件切到右侧 `category-detail`（展示分类元信息 + 改名入口）；点击 todo_list 文字 → emit `select({type:'list'})` → 父组件切到右侧 `list-detail`（中间面板同时加载该 list 的 item 树）。点击中间面板顶部的 list 名 → emit `select-list` → 同样切到 `list-detail`（item 树保留）。
+6. **TodoListPanel 受控化（D6）**：删除原 `panel-header`（el-select + 新建项目按钮）与 `todoLists`/`currentListId` 本地状态。props 改为 `listId` / `listName` / `labelId`，watch `listId` 触发 `loadItemTree`。顶部仅保留 `tree-toolbar`：list 名标题（prop 传入，点击触发 `select-list`）+ 新建待办条目按钮（原"项目文档"按钮已移除，文档入口收敛到右侧 `TodoListDetail`）。父组件 `TodoAppPage` 负责从 `allTodoLists` 解析 list 名。
 7. **selectedItemId 联动（D7）**：`handleSelectCategory` 与 `handleSelectList` 均在切换时清空 `selectedItemId`，避免上一个 list 的 item 高亮残留。
+8. **右侧详情统一化（D8）**：右侧详情区对三种选中态提供一致的「总结信息 + 元素信息」结构：`category-detail`（创建/修改时间 + 直接子项目数，仅名称可编辑）/ `list-detail`（创建/修改时间 + 名称/描述可编辑 + 项目文档列表）/ `item-detail`（沿用 TodoItemDetail 完整表单 + 文档 + AI 任务）。三类详情共用失焦自动保存 + 顶部状态条反馈模式。中间面板视图（item 树 / 标签条目列表）由 `selectedListId` / `selectedLabelId` 单独驱动，与 `rightPanelView` 状态机解耦，保证右侧切换详情时中间面板上下文不丢。
 
 ### 9.4 交互细节
 
@@ -1322,7 +1325,7 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 - `TodoCategoryTree.vue` 升级为混合树：复合 nodeKey、空分类占位箭头、category ＋下拉（新建子分类 / 新建待办项目）、list 节点 ✎/🗑
 - `TodoSidebar.vue` 透传 `tree-select` / `create-list` / `rename-list` / `delete-list` 事件
 - `TodoListPanel.vue` 改为纯受控组件：删除 panel-header el-select 与本地 todoLists/currentListId，props 改为 `listId` / `listName` / `labelId`
-- 选中行为：点 category 文字 → 仅作分组定位（右侧空）；点 list 文字 → item-tree；切换时清空 selectedItemId 防残留高亮；list 视图下点"项目文档"按钮 → list-detail
+- 选中行为：点 category 文字 → 右侧 `category-detail`（分类元信息 + 改名）；点 list 文字 → 右侧 `list-detail`（中间面板同时显示 item 树）；点中间面板顶部 list 名 → 右侧 `list-detail`（item 树保留）；切换时清空 selectedItemId 防残留高亮。原 list 视图下的"项目文档"按钮已移除，文档入口收敛到 `TodoListDetail` 内。
 
 > 复用：`listTodoLists()` / `createTodoList` / `updateTodoList` / `deleteTodoList` IPC 与 `el-dropdown` 组件均无需新依赖。
 > 主进程服务层无改动，所有 vitest 用例（199 个）保持不变。
