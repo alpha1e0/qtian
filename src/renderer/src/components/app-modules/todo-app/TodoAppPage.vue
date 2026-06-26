@@ -47,6 +47,7 @@
         @select-item="handleSelectItem"
         @toggle-status="handleToggleStatus"
         @select-list="handleSelectList"
+        @delete-item="handleDeleteItem"
       />
 
       <!-- 右侧详情：状态机路由 -->
@@ -57,9 +58,8 @@
         :item-id="selectedItemId"
         @updated="handleItemUpdated"
         @open-doc="openDoc"
-        @run-task="openRunDialog('run')"
+        @run-task="handleTaskConfirm"
         @view-task="openTaskPanel"
-        @rerun-task="openRunDialog('rerun')"
       />
       <TodoCategoryDetail
         v-else-if="rightPanelView === 'category-detail'"
@@ -108,14 +108,6 @@
       @purged="handleTrashChanged"
       @emptied="handleTrashChanged"
     />
-
-    <!-- 任务运行对话框（Phase 5） -->
-    <TaskRunDialog
-      v-model:visible="taskDialogVisible"
-      :mode="taskDialogMode"
-      :item-id="selectedItemId"
-      @confirm="handleTaskConfirm"
-    />
   </div>
 </template>
 
@@ -128,13 +120,12 @@ import TodoListDetail from './TodoListDetail.vue';
 import TodoDocumentEditor from './TodoDocumentEditor.vue';
 import TodoSearchBar from './TodoSearchBar.vue';
 import TrashDialog from './TrashDialog.vue';
-import TaskRunDialog from './TaskRunDialog.vue';
 import TaskPanel from './TaskPanel.vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
 export default {
   name: 'TodoAppPage',
-  components: { TodoSidebar, TodoListPanel, TodoItemDetail, TodoCategoryDetail, TodoListDetail, TodoDocumentEditor, TodoSearchBar, TrashDialog, TaskRunDialog, TaskPanel },
+  components: { TodoSidebar, TodoListPanel, TodoItemDetail, TodoCategoryDetail, TodoListDetail, TodoDocumentEditor, TodoSearchBar, TrashDialog, TaskPanel },
   data() {
     return {
       categoryTree: [],
@@ -155,9 +146,7 @@ export default {
       detailKey: 0,
       // 回收站对话框（Phase 4）
       trashDialogVisible: false,
-      // 任务运行对话框（Phase 5）
-      taskDialogVisible: false,
-      taskDialogMode: 'run',
+      // 任务面板（Phase 5）：当前查看的 agent_task_id
       taskPanelTaskId: null,
     };
   },
@@ -472,6 +461,37 @@ export default {
         ElMessage.error(err.message || '状态更新失败');
       }
     },
+    /**
+     * 删除单条 todo_item（行内删除按钮触发）。
+     * 软删除（递归子条目 + 关联文档），文案统一为"移至回收站"。
+     * 若删除的是当前选中条目，右侧详情回退到所属 list-detail，
+     * 避免详情面板继续指向已删除条目。
+     *
+     * @param {number} id - 待删除 todo_item id
+     */
+    async handleDeleteItem(id) {
+      try {
+        await ElMessageBox.confirm(
+          '将该待办条目及其子条目、关联文档移至回收站，确认删除？',
+          '移至回收站',
+          { type: 'warning', confirmButtonText: '移至回收站', cancelButtonText: '取消' },
+        );
+        await window.todoApp.deleteTodoItem(id);
+        // 刷新中间面板的 item 树（itemTree 由 TodoListPanel 持有）
+        await this.$refs.listPanel?.loadItemTree?.();
+        // 删除的是当前选中条目：清空选中并回退到所属 list-detail
+        if (this.selectedItemId === id) {
+          this.selectedItemId = null;
+          this.activeDoc = null;
+          this.rightPanelView = this.selectedListId ? 'list-detail' : 'empty';
+        }
+        ElMessage.success('已移至回收站');
+      } catch (err) {
+        if (err !== 'cancel') {
+          ElMessage.error(err?.message || '删除失败');
+        }
+      }
+    },
     handleItemUpdated() {
       // 表单字段（标题/状态等）变化后，强制中间面板刷新 itemTree，
       // 让列表项标题/状态等立即同步（否则用户改了标题，列表里还是旧值）。
@@ -611,12 +631,6 @@ export default {
     // Phase 5：Todo 驱动 AI 任务
     // ====================================================================
 
-    /** 打开运行 / 重跑任务对话框 */
-    openRunDialog(mode) {
-      this.taskDialogMode = mode;
-      this.taskDialogVisible = true;
-    },
-
     /** 打开任务面板：从 todo_item 取最新 agent_task_id */
     async openTaskPanel() {
       if (!this.selectedItemId) return;
@@ -633,7 +647,7 @@ export default {
       }
     },
 
-    /** 任务对话框确认：发起任务并切换到任务面板 */
+    /** TodoItemDetail「AI任务」tab 运行 / 重跑：发起任务并切换到任务面板 */
     async handleTaskConfirm({ agentName, llmConfigName, extraPrompt }) {
       if (!this.selectedItemId) return;
       try {

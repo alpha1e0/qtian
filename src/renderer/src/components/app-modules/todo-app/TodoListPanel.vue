@@ -53,6 +53,7 @@
           @toggle-status="handleToggleStatus"
           @select="$emit('select-item', $event)"
           @create-child="handleCreateChildItem"
+          @delete="$emit('delete-item', $event)"
         />
       </div>
 
@@ -74,7 +75,8 @@ export default {
   components: { Plus, Document, TodoItemRow },
   // select-list：顶部 list 名 / 标签视图下的 list 卡片被点击时触发，
   // 父组件切到右侧 list-detail 视图（中间 item 树保留或挂载）。
-  emits: ['select-item', 'toggle-status', 'select-list'],
+  // delete-item：行内删除按钮触发，交由父组件走确认 + IPC + 刷新流程。
+  emits: ['select-item', 'toggle-status', 'select-list', 'delete-item'],
   props: {
     // 受控：当前 todo_list id（由父组件 selectedListId 驱动）
     listId: { type: Number, default: null },

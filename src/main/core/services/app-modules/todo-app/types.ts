@@ -281,7 +281,7 @@ export interface TodoEmptyTrashResult {
  * createTaskFromItem 入参（运行任务 / 重跑共用）。
  *
  * 与 docs/specs/100_todo-app-design.md §8.2 对应：
- *   agentName / llmConfigName 由用户在 TaskRunDialog 选择；
+ *   agentName / llmConfigName 由用户在 TodoItemDetail「AI任务」tab 内联表单选择；
  *   extraPrompt 为运行时补充段落（§8.3 的 [运行时补充] 模板字段）。
  */
 export interface CreateTaskFromItemOptions {

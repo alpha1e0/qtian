@@ -13,8 +13,7 @@
         @click.stop
       />
       <span class="priority-dot" :class="priorityClass" />
-      <span class="item-title" :class="{ done: item.status === 'done' }">{{ item.title }}</span>
-      <span v-if="item.progress > 0 && item.status !== 'done'" class="item-progress">{{ item.progress }}%</span>
+      
       <el-button
         v-if="children && children.length > 0"
         size="small"
@@ -24,9 +23,24 @@
       >
         {{ expanded ? '▼' : '▶' }} {{ children.length }}
       </el-button>
-      <el-button size="small" text class="add-child-btn" @click.stop="$emit('create-child', item.id)">
-        <el-icon><Plus /></el-icon>
-      </el-button>
+
+      <span class="item-title" :class="{ done: item.status === 'done' }">{{ item.title }}</span>
+      <span v-if="item.progress > 0 && item.status !== 'done'" class="item-progress">{{ item.progress }}%</span>
+
+      <div class="item-actions">
+        <el-button size="small" title="新建子条目" text class="add-child-btn" @click.stop="$emit('create-child', item.id)">
+          <el-icon><Plus /></el-icon>
+        </el-button>
+        <el-button
+          size="small"
+          text
+          class="delete-item-btn"
+          title="移至回收站"
+          @click.stop="$emit('delete', item.id)"
+        >
+          <el-icon><Delete /></el-icon>
+        </el-button>
+      </div>
     </div>
 
     <div v-if="expanded && children && children.length > 0" class="item-children">
@@ -40,17 +54,20 @@
         @toggle-status="$emit('toggle-status', $event)"
         @select="$emit('select', $event)"
         @create-child="$emit('create-child', $event)"
+        @delete="$emit('delete', $event)"
       />
     </div>
   </div>
 </template>
 
 <script>
-import { Plus } from '@element-plus/icons-vue';
+import { Plus, Delete } from '@element-plus/icons-vue';
 
 export default {
   name: 'TodoItemRow',
-  components: { Plus },
+  components: { Plus, Delete },
+  // delete：行内删除按钮触发，由父组件走确认 + IPC + 刷新流程
+  emits: ['toggle-status', 'select', 'create-child', 'delete'],
   props: {
     item: { type: Object, required: true },
     depth: { type: Number, default: 0 },
@@ -195,13 +212,42 @@ export default {
   color: var(--text-on-dark-secondary, #8b8aa0);
 }
 
-.add-child-btn {
+/*
+ * 行内操作按钮组：新建子条目 + 移至回收站。
+ * 用更紧凑的内部 gap（2px）聚合两个图标按钮，避免外层 .item-row-main 的 8px gap
+ * 把它们撑成两个独立簇，浪费横向空间。
+ * hover 整行时统一显现（opacity 由 .item-actions 控制，子按钮只负责自身色彩）。
+ */
+.item-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
   opacity: 0;
   transition: opacity 0.18s ease;
 }
 
-.item-row-main:hover .add-child-btn {
+.item-row-main:hover .item-actions {
   opacity: 1;
+}
+
+.add-child-btn {
+  color: var(--text-on-dark-muted, #5c5b72);
+  transition: color 0.18s ease;
+}
+
+.add-child-btn:hover {
+  color: var(--accent, #6366f1);
+}
+
+/* 删除按钮：hover 自身变危险色，提示 destructive 语义 */
+.delete-item-btn {
+  color: var(--text-on-dark-muted, #5c5b72);
+  transition: color 0.18s ease;
+}
+
+.delete-item-btn:hover {
+  color: var(--color-danger, #ef4444);
 }
 
 /* 子项缩进引导线 */

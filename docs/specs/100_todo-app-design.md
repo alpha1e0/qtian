@@ -1211,13 +1211,12 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 | `TodoCategoryTree.vue` | 基于 el-tree 渲染 category（目录）+ todo_list（叶子）混合树 | props: `selectedNodeKey`；emit `select({type,id})`, `create`, `rename`, `delete`, `create-list`, `rename-list`, `delete-list` |
 | `TodoLabelCloud.vue` | 标签云 | emit `select-label` |
 | `TodoSearchBar.vue` | 顶部搜索框 + 历史下拉 + 结果跳转 | emit `search`, `jump-to-result`, `use-history` |
-| `TodoListPanel.vue` | 中间面板（受控）：list 名标题 + todo items 树 | props: `listId`, `listName`, `labelId` |
-| `TodoItemRow.vue` | 单行 todo item，支持复选框、缩进、手动进度切换 | emit `toggle`, `select`, `run-task` |
-| `TodoItemDetail.vue` | 右侧详情面板，可编辑 + 任务入口 | props: `itemId` |
+| `TodoListPanel.vue` | 中间面板（受控）：list 名标题 + todo items 树 | props: `listId`, `listName`, `labelId`；emit `select-item`, `select-list`, `toggle-status`, `delete-item` |
+| `TodoItemRow.vue` | 单行 todo item，支持复选框、缩进、手动进度切换、行内删除（移至回收站） | emit `toggle-status`, `select`, `create-child`, `delete` |
+| `TodoItemDetail.vue` | 右侧详情面板，分「基本信息 / AI任务」两个 tab（与 sidebar 同款 radio-button toggle）。基本信息含：标题/状态/优先级/截止时间/描述/进度/手动进度/关联文档；AI任务含 task_prompt + Agent/LLM/额外 prompt 内联表单 + 运行/重跑/查看面板 | props: `itemId`；emit `updated`, `open-doc`, `run-task({agentName,llmConfigName,extraPrompt})`, `view-task` |
 | `TodoCategoryDetail.vue` | 右侧分类详情面板：总结信息（创建/修改时间 + 直接子项目数）+ 名称可编辑（失焦自动保存） | props: `categoryId`；emit `updated` |
 | `TodoListDetail.vue` | 右侧待办项目详情面板：总结信息（创建/修改时间）+ 名称/描述/标签可编辑（失焦自动保存）+ 项目文档列表 | props: `listId`；emit `updated`, `open-doc` |
 | `TodoDocumentEditor.vue` | Markdown 编辑器（建议 milkdown / vditor） | props: `docId` |
-| `TaskRunDialog.vue` | 任务运行前的 Agent / LLM 选择对话框 | emit `confirm({agentName, llmConfigName, extraPrompt})` |
 | `TaskPanel.vue` | 任务面板（嵌入详情区，展示对话流 + 历史 + 总结链接） | props: `taskId` |
 | `TaskHistoryList.vue` | 历史 task 列表，可切换查看每次执行结果 | props: `itemId` |
 | `TrashDialog.vue` | 回收站统一入口，跨表列出软删除项，支持恢复/彻底删除 | — |
@@ -1242,9 +1241,10 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 - **递归层级提示**：创建 category / todo_item 时，若已达 4 层上限，禁用"新建子项"按钮并提示。
 - **状态切换**：todo item 行内复选框点击触发 `update-todo-item-status`，校验失败时弹窗提示原因。
 - **进度联动**：子 todo 完成时自动重算父进度；若父被标记 `is_manual_progress`（详情页有开关），跳过自动覆盖；同样，子项被标记 `is_manual_progress` 时不参与父进度平均计算。
-- **任务执行**：点击"运行任务" → 弹出 `TaskRunDialog` 选 Agent/LLM → 确认后右侧切换为 `TaskPanel`，流式展示对话；任务结束后自动生成总结文档（在面板底部展示链接）。
-- **任务重跑**：详情页根据 `agent_task_id` 是否为 null 切换按钮（运行 / 重跑）；重跑后历史任务可通过 `TaskHistoryList` 查看。
+- **任务执行**：在 todo_item 详情「AI任务」tab 内联填写 Agent / LLM 配置 / 额外 prompt → 点击「运行任务」直接发起，右侧切换为 `TaskPanel` 流式展示对话；任务结束后自动生成总结文档（在面板底部展示链接）。（原 `TaskRunDialog` 弹窗已移除，表单内联到 AI任务 tab）
+- **任务重跑**：「AI任务」tab 根据 `agent_task_id` 是否为 null 切换按钮（agent_task_id 为空显示「运行任务」，非空显示「查看任务面板」+「重跑」）；重跑后历史任务可通过 `TaskHistoryList` 查看。
 - **软删除体验**：所有"删除"按钮文案为"移至回收站"；回收站入口在左下角，支持单条恢复/彻底删除/清空。
+- **条目行内删除**：`TodoItemRow` hover 时显示删除图标按钮，点击后由 `TodoAppPage` 弹确认框（文案"移至回收站"），确认后调用 `deleteTodoItem` IPC（递归软删除子条目 + 关联文档），并在删除当前选中条目时回退右侧详情到所属 list-detail。
 - **搜索体验**：聚焦搜索框显示最近搜索；点击结果跳转到对应视图并高亮。
 
 ## 10 实现分期建议
@@ -1302,6 +1302,8 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 - 任务面板订阅 `qtian:task:event` 渲染 Agent 流
 - `TaskRunDialog.vue` + `TaskPanel.vue` + `TaskHistoryList.vue`
 - 重跑支持
+
+> 重构（2026-06-26）：`TaskRunDialog.vue` 弹窗已删除，Agent / LLM 配置 / 额外 prompt 表单内联进 `TodoItemDetail.vue` 新增的「AI任务」tab；`TodoItemDetail.vue` 同时新增「基本信息 / AI任务」双 tab（复用 sidebar 的 radio-button toggle），「基本信息」tab 收纳标题/状态/优先级/截止时间/描述/进度/手动进度/关联文档（描述输入框高度调整为 9 行），「AI任务」tab 收纳 task_prompt + 任务运行配置；`TodoAppPage.vue` 移除 `taskDialogVisible` / `taskDialogMode` / `openRunDialog`，`run-task` 事件改为直接携带 `{ agentName, llmConfigName, extraPrompt }` 负载交给 `handleTaskConfirm`。
 
 > 实施说明：
 > - 新增 `todo-task.service.ts`（~250 行）：`createTaskFromItem` / `rerun` / `listTasksByItem` + private `buildPrompt`（§8.3）+ `handleAgentTaskResult`（source result handler，§8.4）+ `generateSummary`（复用任务自身 agent_name + llm_config_name，调用 `AiAgentService.sendMessage` 单轮取最后一条 assistant content）
