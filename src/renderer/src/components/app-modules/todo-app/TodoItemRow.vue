@@ -5,45 +5,40 @@
       :style="{ paddingLeft: depth * 20 + 'px' }"
       :class="[priorityRowClass, { selected: item.id === selectedItemId }]"
       @click="$emit('select', item.id)"
+      @contextmenu="onContextMenu"
     >
+      <!-- 左侧左对齐：勾选框、优先级标记、下拉箭头、标题 -->
       <el-checkbox
         :model-value="item.status === 'done'"
         :checked="item.status === 'done'"
         @change="handleToggleDone"
         @click.stop
       />
-      <span class="priority-dot" :class="priorityClass" />
-      
-      <el-button
-        v-if="children && children.length > 0"
-        size="small"
-        text
-        class="expand-btn"
+      <span class="priority-dot" :class="priorityClass" :title="priorityLabel" />
+
+      <el-icon
+        v-if="hasChildren"
+        class="expand-arrow"
+        :class="{ 'is-expanded': expanded }"
+        :title="expanded ? '折叠' : '展开'"
         @click.stop="expanded = !expanded"
       >
-        {{ expanded ? '▼' : '▶' }} {{ children.length }}
-      </el-button>
+        <ArrowRight />
+      </el-icon>
+      <span v-else class="expand-arrow-placeholder" />
 
       <span class="item-title" :class="{ done: item.status === 'done' }">{{ item.title }}</span>
-      <span v-if="item.progress > 0 && item.status !== 'done'" class="item-progress">{{ item.progress }}%</span>
 
-      <div class="item-actions">
-        <el-button size="small" title="新建子条目" text class="add-child-btn" @click.stop="$emit('create-child', item.id)">
-          <el-icon><Plus /></el-icon>
-        </el-button>
-        <el-button
-          size="small"
-          text
-          class="delete-item-btn"
-          title="移至回收站"
-          @click.stop="$emit('delete', item.id)"
-        >
-          <el-icon><Delete /></el-icon>
-        </el-button>
+      <!-- 右侧右对齐：子条目数量、进度 -->
+      <div class="item-tail">
+        <span v-if="hasChildren" class="child-count" :title="`子条目数：${children.length}`">
+          {{ children.length }}
+        </span>
+        <span v-if="item.progress > 0 && item.status !== 'done'" class="item-progress">{{ item.progress }}%</span>
       </div>
     </div>
 
-    <div v-if="expanded && children && children.length > 0" class="item-children">
+    <div v-if="expanded && hasChildren" class="item-children">
       <TodoItemRow
         v-for="child in children"
         :key="child.id"
@@ -57,16 +52,28 @@
         @delete="$emit('delete', $event)"
       />
     </div>
+
+    <!-- 右键菜单：创建子条目 / 删除条目（复用 TodoContextMenu，与 sidebar 同款） -->
+    <TodoContextMenu
+      :visible="ctxMenu.visible"
+      :x="ctxMenu.x"
+      :y="ctxMenu.y"
+      :items="ctxMenuItems"
+      @command="onCtxCommand"
+      @close="ctxMenu.visible = false"
+    />
   </div>
 </template>
 
 <script>
-import { Plus, Delete } from '@element-plus/icons-vue';
+import { ArrowRight, Plus, Delete } from '@element-plus/icons-vue';
+import TodoContextMenu from './TodoContextMenu.vue';
+import { markRaw } from 'vue';
 
 export default {
   name: 'TodoItemRow',
-  components: { Plus, Delete },
-  // delete：行内删除按钮触发，由父组件走确认 + IPC + 刷新流程
+  components: { ArrowRight, TodoContextMenu },
+  // delete：右键菜单触发，由父组件走确认 + IPC + 刷新流程
   emits: ['toggle-status', 'select', 'create-child', 'delete'],
   props: {
     item: { type: Object, required: true },
@@ -77,22 +84,66 @@ export default {
   data() {
     return {
       expanded: true,
+      // 右键菜单状态：visible + 鼠标坐标
+      ctxMenu: {
+        visible: false,
+        x: 0,
+        y: 0,
+      },
+      // 菜单项图标（markRaw 避免组件进入响应式）
+      icons: {
+        add: markRaw(Plus),
+        delete: markRaw(Delete),
+      },
     };
   },
   computed: {
+    hasChildren() {
+      return Array.isArray(this.children) && this.children.length > 0;
+    },
     priorityClass() {
       const map = { urgent: 'dot-urgent', important: 'dot-important', normal: 'dot-normal', hint: 'dot-hint' };
       return map[this.item.priority] || 'dot-normal';
     },
+    priorityLabel() {
+      const map = { urgent: '紧急', important: '重要', normal: '普通', hint: '提示' };
+      return `优先级：${map[this.item.priority] || '普通'}`;
+    },
     /** 用于 item-row-main 左侧 2px 优先级强调条（选中态可见） */
     priorityRowClass() {
       return `${this.priorityClass}-row`;
+    },
+    /** 右键菜单项：创建子条目 / 删除条目（与 sidebar 同款 TodoContextMenu） */
+    ctxMenuItems() {
+      return [
+        { command: 'create-child', label: '创建子条目', icon: this.icons.add },
+        { command: 'delete', label: '删除条目', icon: this.icons.delete, divided: true },
+      ];
     },
   },
   methods: {
     handleToggleDone(checked) {
       const newStatus = checked ? 'done' : 'in_progress';
       this.$emit('toggle-status', { id: this.item.id, status: newStatus });
+    },
+    /**
+     * 行右键：阻止默认菜单，记录鼠标坐标后展开自封装菜单。
+     * 菜单实例随行存在，但 visible 仅在命中行上为 true，全局同时只有一个打开。
+     */
+    onContextMenu(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.ctxMenu.x = event.clientX;
+      this.ctxMenu.y = event.clientY;
+      this.ctxMenu.visible = true;
+    },
+    onCtxCommand({ command }) {
+      this.ctxMenu.visible = false;
+      if (command === 'create-child') {
+        this.$emit('create-child', this.item.id);
+      } else if (command === 'delete') {
+        this.$emit('delete', this.item.id);
+      }
     },
   },
 };
@@ -190,6 +241,29 @@ export default {
   opacity: 0.55;
 }
 
+/*
+ * 右侧 tail 区：子条目数量 + 进度，统一靠右对齐。
+ * 用 .item-tail 容器把右侧元素聚合，避免外层 .item-row-main 的 gap 把它们与标题隔远。
+ */
+.item-tail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.child-count {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-on-dark-muted, #8b8aa0);
+  font-feature-settings: 'tnum';
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.08);
+  letter-spacing: 0.04em;
+}
+
 .item-progress {
   font-size: 10px;
   font-weight: 600;
@@ -202,52 +276,30 @@ export default {
   letter-spacing: 0.04em;
 }
 
-.expand-btn {
-  font-size: 11px;
+/*
+ * 展开箭头：左侧图标化（ArrowRight 旋转 90° 表示展开）。
+ * 占位符保证无子项时标题与有子项行对齐。
+ */
+.expand-arrow {
+  font-size: 12px;
   color: var(--text-on-dark-muted, #5c5b72);
-  font-feature-settings: 'tnum';
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.18s ease, color 0.18s ease;
 }
 
-.expand-btn:hover {
+.expand-arrow:hover {
   color: var(--text-on-dark-secondary, #8b8aa0);
 }
 
-/*
- * 行内操作按钮组：新建子条目 + 移至回收站。
- * 用更紧凑的内部 gap（2px）聚合两个图标按钮，避免外层 .item-row-main 的 8px gap
- * 把它们撑成两个独立簇，浪费横向空间。
- * hover 整行时统一显现（opacity 由 .item-actions 控制，子按钮只负责自身色彩）。
- */
-.item-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
+.expand-arrow.is-expanded {
+  transform: rotate(90deg);
+}
+
+.expand-arrow-placeholder {
+  display: inline-block;
+  width: 12px;
   flex-shrink: 0;
-  opacity: 0;
-  transition: opacity 0.18s ease;
-}
-
-.item-row-main:hover .item-actions {
-  opacity: 1;
-}
-
-.add-child-btn {
-  color: var(--text-on-dark-muted, #5c5b72);
-  transition: color 0.18s ease;
-}
-
-.add-child-btn:hover {
-  color: var(--accent, #6366f1);
-}
-
-/* 删除按钮：hover 自身变危险色，提示 destructive 语义 */
-.delete-item-btn {
-  color: var(--text-on-dark-muted, #5c5b72);
-  transition: color 0.18s ease;
-}
-
-.delete-item-btn:hover {
-  color: var(--color-danger, #ef4444);
 }
 
 /* 子项缩进引导线 */
