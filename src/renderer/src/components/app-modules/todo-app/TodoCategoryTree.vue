@@ -31,7 +31,7 @@
             class="cat-leaf-arrow"
             aria-hidden="true"
           >
-            <CaretRight />
+            <ArrowRight />
           </el-icon>
 
           <span
@@ -65,6 +65,7 @@ import {
   Folder,
   Document,
   CaretRight,
+  ArrowRight,
   FolderAdd,
   DocumentAdd,
   Edit,
@@ -78,7 +79,7 @@ import TodoContextMenu from './TodoContextMenu.vue';
 
 export default {
   name: 'TodoCategoryTree',
-  components: { Plus, Folder, Document, CaretRight, TodoContextMenu },
+  components: { Plus, Folder, Document, CaretRight, ArrowRight, TodoContextMenu },
   props: {
     // 统一树（category + todo_list 叶子），由父组件 mergedTree 提供
     treeData: { type: Array, default: () => [] },
