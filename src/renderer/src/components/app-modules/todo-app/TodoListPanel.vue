@@ -96,8 +96,13 @@
     >
       <el-form label-width="72px" label-position="right" class="filter-form">
         <el-form-item label="优先级">
-          <el-select v-model="draftFilterPriority" placeholder="选择优先级">
-            <el-option label="所有" value="all" />
+          <el-select
+            v-model="draftFilterPriority"
+            multiple
+            collapse-tags
+            collapse-tags-tooltip
+            placeholder="所有"
+          >
             <el-option label="紧急" value="urgent" />
             <el-option label="重要" value="important" />
             <el-option label="普通" value="normal" />
@@ -105,8 +110,13 @@
           </el-select>
         </el-form-item>
         <el-form-item label="状态">
-          <el-select v-model="draftFilterStatus" placeholder="选择状态">
-            <el-option label="所有" value="all" />
+          <el-select
+            v-model="draftFilterStatus"
+            multiple
+            collapse-tags
+            collapse-tags-tooltip
+            placeholder="所有"
+          >
             <el-option label="初始" value="init" />
             <el-option label="进行中" value="in_progress" />
             <el-option label="已完成" value="done" />
@@ -152,18 +162,18 @@ export default {
       labelLists: [],
       // 筛选对话框可见性
       filterDialogVisible: false,
-      // 当前生效的筛选值：'all' 表示不限制
-      filterPriority: 'all',
-      filterStatus: 'all',
+      // 当前生效的筛选值：数组（多选取并集），空数组 = 不限制（"所有"）
+      filterPriority: [],
+      filterStatus: [],
       // 对话框草稿：编辑中尚未应用，确定时 copy 到生效值
-      draftFilterPriority: 'all',
-      draftFilterStatus: 'all',
+      draftFilterPriority: [],
+      draftFilterStatus: [],
     };
   },
   computed: {
-    /** 任一维度非 'all' 即视为筛选激活，用于按钮强调与 title 文案 */
+    /** 任一维度数组非空即视为筛选激活，用于按钮强调与 title 文案 */
     isFilterActive() {
-      return this.filterPriority !== 'all' || this.filterStatus !== 'all';
+      return this.filterPriority.length > 0 || this.filterStatus.length > 0;
     },
     /** 筛选按钮的悬浮提示：激活时附加（已启用） */
     filterButtonTitle() {
@@ -174,7 +184,7 @@ export default {
      *
      * 规则：节点自身匹配 或 任一后代匹配（递归）则保留，否则剔除。
      * 匹配后子树仅包含过滤后的子节点，避免显示不符合的子项。
-     * 无筛选时直接返回原树引用，避免无谓深拷贝。
+     * 无筛选时（两个维度数组均为空）直接返回原树引用，避免无谓深拷贝。
      */
     filteredItemTree() {
       if (!this.isFilterActive) return this.itemTree;
@@ -312,28 +322,31 @@ export default {
       this.$emit('toggle-status', payload);
       await this.loadItemTree();
     },
-    /** 打开筛选对话框：把当前生效值同步到草稿，编辑期间不影响已生效筛选 */
+    /** 打开筛选对话框：把当前生效值浅拷贝到草稿，避免编辑草稿时共享数组引用污染生效值 */
     openFilterDialog() {
-      this.draftFilterPriority = this.filterPriority;
-      this.draftFilterStatus = this.filterStatus;
+      this.draftFilterPriority = [...this.filterPriority];
+      this.draftFilterStatus = [...this.filterStatus];
       this.filterDialogVisible = true;
     },
-    /** 确定：把草稿写入生效值并关闭对话框 */
+    /** 确定：把草稿浅拷贝写入生效值并关闭对话框 */
     applyFilter() {
-      this.filterPriority = this.draftFilterPriority;
-      this.filterStatus = this.draftFilterStatus;
+      this.filterPriority = [...this.draftFilterPriority];
+      this.filterStatus = [...this.draftFilterStatus];
       this.filterDialogVisible = false;
     },
-    /** 重置：仅清空草稿，需要再点「确定」才生效 */
+    /** 重置：仅清空草稿为空数组（=所有），需要再点「确定」才生效 */
     resetFilterDraft() {
-      this.draftFilterPriority = 'all';
-      this.draftFilterStatus = 'all';
+      this.draftFilterPriority = [];
+      this.draftFilterStatus = [];
     },
-    /** 判断节点自身是否满足当前筛选条件 */
+    /**
+     * 判断节点自身是否满足当前筛选条件。
+     * 多选取并集：维度数组非空时，节点字段命中数组任一值即匹配。
+     */
     matchesFilter(node) {
       if (!node) return false;
-      if (this.filterPriority !== 'all' && node.priority !== this.filterPriority) return false;
-      if (this.filterStatus !== 'all' && node.status !== this.filterStatus) return false;
+      if (this.filterPriority.length > 0 && !this.filterPriority.includes(node.priority)) return false;
+      if (this.filterStatus.length > 0 && !this.filterStatus.includes(node.status)) return false;
       return true;
     },
     /**

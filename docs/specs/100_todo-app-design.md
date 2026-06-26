@@ -1246,7 +1246,7 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 - **软删除体验**：所有"删除"按钮文案为"移至回收站"；回收站入口在左下角，支持单条恢复/彻底删除/清空。
 - **条目行内删除**：`TodoItemRow` hover 时显示删除图标按钮，点击后由 `TodoAppPage` 弹确认框（文案"移至回收站"），确认后调用 `deleteTodoItem` IPC（递归软删除子条目 + 关联文档），并在删除当前选中条目时回退右侧详情到所属 list-detail。
 - **搜索体验**：聚焦搜索框显示最近搜索；点击结果跳转到对应视图并高亮。
-- **条目筛选**：tree-toolbar 右侧「筛选」图标按钮点击后弹出对话框，含优先级 el-select（选项：所有 / 紧急 urgent / 重要 important / 普通 normal / 提示 hint，默认"所有"）与状态 el-select（选项：所有 / 初始 init / 进行中 in_progress / 已完成 done / 已放弃 abandoned，默认"所有"）。点击「确定」应用筛选，「取消」放弃草稿，「重置」恢复默认（均为"所有"）。筛选以 `filteredItemTree` computed 在前端对 `itemTree` 递归过滤：节点自身匹配或任一后代匹配则保留，匹配后子树按过滤后的结构渲染；任一维度非"所有"即视为筛选激活，筛选按钮显示 accent 强调并以 title="筛选（已启用）" 提示。筛选为前端本地过滤，不调用新 IPC，`listId` 切换不清空筛选状态（便于跨项目比对同类条目）。
+- **条目筛选**：tree-toolbar 右侧「筛选」图标按钮点击后弹出对话框，含优先级 el-select（`multiple`，选项：紧急 urgent / 重要 important / 普通 normal / 提示 hint）与状态 el-select（`multiple`，选项：初始 init / 进行中 in_progress / 已完成 done / 已放弃 abandoned）。每个维度默认空数组 = "所有"（不限制）；勾选多个值时取并集（节点 priority/status 命中任一所选值即视为匹配）。点击「确定」应用筛选，「取消」放弃草稿，「重置」清空草稿为空数组（即"所有"）。两个 select 均启用 `collapse-tags` + `collapse-tags-tooltip`，避免 tag 撑爆对话框。筛选以 `filteredItemTree` computed 在前端对 `itemTree` 递归过滤：节点自身匹配或任一后代匹配则保留，匹配后子树按过滤后的结构渲染；任一维度数组非空即视为筛选激活，筛选按钮显示 accent 强调并以 title="筛选（已启用）" 提示。筛选为前端本地过滤，不调用新 IPC，`listId` 切换不清空筛选状态（便于跨项目比对同类条目）。
 
 ## 10 实现分期建议
 
