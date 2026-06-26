@@ -361,6 +361,8 @@ export default {
     },
     async handleSave() {
       if (!this.formData) return;
+      // 编辑即激活：标题/描述等变化触发保存时，若仍处「初始」态，先推进到「进行中」
+      await this.ensureActivatedFromInit();
       const ok = await this.runSave(() => window.todoApp.updateTodoItem(this.itemId, {
         title: this.formData.title,
         description: this.formData.description,
@@ -369,6 +371,23 @@ export default {
         due_at: this.formData.dueAt ? parseInt(this.formData.dueAt, 10) : null,
       }));
       if (ok) this.$emit('updated');
+    },
+    /**
+     * 编辑自动激活：详情页内编辑可写字段（标题 / 描述 / 进度等）时，
+     * 若 todo_item 仍为「初始」状态，先调用状态机推进到「进行中」，
+     * 避免「初始」态被无声长期保留。仅在 init 时触发，其他状态不动。
+     * 失败时不阻塞主保存流程（状态推进是辅助行为），仅记日志。
+     */
+    async ensureActivatedFromInit() {
+      if (!this.formData || this.formData.status !== 'init') return;
+      try {
+        await window.todoApp.updateTodoItemStatus(this.itemId, 'in_progress');
+        this.formData.status = 'in_progress';
+        this.$emit('updated');
+      } catch (err) {
+        // 状态机校验失败等情况不阻塞主流程，仅记录便于排查
+        console.warn('auto activate from init failed', err);
+      }
     },
     async handleStatusChange(status) {
       const ok = await this.runSave(() => window.todoApp.updateTodoItemStatus(this.itemId, status));

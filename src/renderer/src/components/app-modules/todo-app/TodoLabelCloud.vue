@@ -1,8 +1,5 @@
 <template>
   <div class="todo-label-cloud">
-    <div class="cloud-header">
-      <span class="header-title">标签</span>
-    </div>
     <div v-if="labels.length === 0" class="empty-hint">暂无标签</div>
     <div class="tag-list">
       <el-tag
@@ -32,34 +29,6 @@ export default {
 <style scoped>
 .todo-label-cloud {
   padding: 4px 8px;
-}
-
-.cloud-header {
-  position: relative;
-  padding: 4px 8px 6px;
-  margin-bottom: 12px;
-}
-
-.cloud-header::after {
-  content: '';
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: 0;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    rgba(99, 102, 241, 0.24),
-    transparent
-  );
-}
-
-.header-title {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--text-on-dark-muted, #5c5b72);
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
 }
 
 .empty-hint {

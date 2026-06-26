@@ -25,6 +25,7 @@
         @import-list="handleImportList"
         @export-list="handleExportList"
         @select-label="handleSelectLabel"
+        @select-list="handleSelectList"
         @open-trash="trashDialogVisible = true"
       />
 
@@ -42,7 +43,6 @@
         class="todo-list-panel"
         :list-id="selectedListId"
         :list-name="selectedListName"
-        :label-id="selectedLabelId"
         :selected-item-id="selectedItemId"
         @select-item="handleSelectItem"
         @toggle-status="handleToggleStatus"
@@ -314,7 +314,8 @@ export default {
       // D7：切换 list 时清空 item，避免上一个 list 的 item 高亮残留
       this.selectedItemId = null;
       this.activeDoc = null;
-      this.selectedLabelId = null;
+      // 不清空 selectedLabelId：标签 tab 选中态属独立上下文，从标签下项目卡片点击切换 list
+      // 时需要保留选中标签，否则 sidebar 标签 tab 下段会立刻消失，破坏分栏视图。
       // 同步 category 上下文（编辑器/详情回退要用）
       this.selectedCategoryId = list?.category_id ?? null;
       this.rightPanelView = listId ? 'list-detail' : 'empty';
@@ -396,6 +397,8 @@ export default {
       try {
         await window.todoApp.updateTodoList(id, { name });
         await this.loadAllTodoLists();
+        // 标签 tab 下段的项目名来自独立查询，重命名后需要手动刷新才能同步
+        await this.$refs.sidebar?.refreshLabelLists?.();
         ElMessage.success('已重命名');
       } catch (err) {
         ElMessage.error(err.message || '重命名失败');
@@ -408,6 +411,8 @@ export default {
         });
         await window.todoApp.deleteTodoList(id);
         await this.loadAllTodoLists();
+        // 删除后同步刷新标签 tab 下段（被删项目不再属于任何标签关联）
+        await this.$refs.sidebar?.refreshLabelLists?.();
         if (this.selectedListId === id) {
           this.selectedListId = null;
           this.selectedItemId = null;
@@ -512,6 +517,8 @@ export default {
      */
     async handleListUpdated() {
       await Promise.all([this.loadAllTodoLists(), this.loadLabels()]);
+      // list 的标签关联可能变化（增/删标签），同步刷新 sidebar 标签 tab 下段
+      await this.$refs.sidebar?.refreshLabelLists?.();
     },
     /**
      * 子组件请求打开文档：切换到编辑器视图。

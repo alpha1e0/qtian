@@ -7,27 +7,8 @@
       这里再分一层 .list-panel-scroll 专门承担滚动，与 TodoSidebar 的 .sidebar-scroll 同款。
     -->
     <div class="list-panel-scroll">
-      <!-- 标签视图模式：显示标签关联的待办项目（todo_list）列表 -->
-      <div v-if="labelId" class="label-items">
-        <div class="section-title">标签关联待办项目</div>
-        <div v-if="labelLists.length === 0" class="empty-hint">该标签暂无关联待办项目</div>
-        <div
-          v-for="list in labelLists"
-          :key="list.id"
-          class="label-list-card"
-          :title="`查看「${list.name}」`"
-          @click="$emit('select-list', list.id)"
-        >
-          <el-icon><Document /></el-icon>
-          <div class="label-list-meta">
-            <div class="label-list-name">{{ list.name }}</div>
-            <div v-if="list.description" class="label-list-desc">{{ list.description }}</div>
-          </div>
-        </div>
-      </div>
-
       <!-- 正常模式：选中 list 后展示 items 树 -->
-      <div v-else-if="listId" class="item-tree-container">
+      <div v-if="listId" class="item-tree-container">
         <div class="tree-toolbar">
           <!--
             list 名作为可点击入口：触发 select-list，让父组件切到右侧 list-detail。
@@ -136,14 +117,14 @@
 </template>
 
 <script>
-import { Plus, Document, Filter } from '@element-plus/icons-vue';
+import { Plus, Filter } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import TodoItemRow from './TodoItemRow.vue';
 
 export default {
   name: 'TodoListPanel',
-  components: { Plus, Document, Filter, TodoItemRow },
-  // select-list：顶部 list 名 / 标签视图下的 list 卡片被点击时触发，
+  components: { Plus, Filter, TodoItemRow },
+  // select-list：顶部 list 名被点击时触发，
   // 父组件切到右侧 list-detail 视图（中间 item 树保留或挂载）。
   // delete-item：行内删除按钮触发，交由父组件走确认 + IPC + 刷新流程。
   emits: ['select-item', 'toggle-status', 'select-list', 'delete-item'],
@@ -152,14 +133,11 @@ export default {
     listId: { type: Number, default: null },
     // 受控：list 名（由父组件从 allTodoLists 解析，避免本组件再持有 todoLists）
     listName: { type: String, default: '' },
-    // 标签视图模式：传入 labelId 后切换到标签关联待办项目展示
-    labelId: { type: Number, default: null },
     selectedItemId: { type: Number, default: null },
   },
   data() {
     return {
       itemTree: [],
-      labelLists: [],
       // 筛选对话框可见性
       filterDialogVisible: false,
       // 当前生效的筛选值：数组（多选取并集），空数组 = 不限制（"所有"）
@@ -198,20 +176,11 @@ export default {
     listId() {
       this.loadItemTree();
     },
-    labelId() {
-      if (this.labelId) {
-        this.loadLabelLists();
-      } else {
-        this.labelLists = [];
-      }
-    },
   },
   async mounted() {
     // 初次挂载若已有 listId（搜索跳转直达），立即加载 item 树
     if (this.listId) {
       await this.loadItemTree();
-    } else if (this.labelId) {
-      await this.loadLabelLists();
     }
   },
   methods: {
@@ -272,14 +241,6 @@ export default {
           target.classList.remove('flash-highlight');
         }, 1500);
       });
-    },
-    async loadLabelLists() {
-      try {
-        this.labelLists = await window.todoApp.listTodoListsByLabel(this.labelId);
-      } catch (err) {
-        ElMessage.error('加载标签待办项目失败');
-        console.error(err);
-      }
     },
     async handleCreateRootItem() {
       await this.promptCreateItem(null);
@@ -471,72 +432,6 @@ export default {
 .empty-state :deep(.el-empty__description) {
   color: var(--text-on-dark-secondary, #8b8aa0);
   letter-spacing: 0.02em;
-}
-
-/* 标签视图区域标题：保持与列表名一致的子标题权重 */
-.label-items .section-title {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-on-dark, #e4e4ed);
-  text-transform: none;
-  letter-spacing: 0.02em;
-  padding: 0 2px;
-  margin-bottom: 10px;
-}
-
-/* 标签视图下的待办项目卡片：点击切到右侧 list-detail */
-.label-list-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  cursor: pointer;
-  background: rgba(99, 102, 241, 0.04);
-  border: 1px solid rgba(99, 102, 241, 0.08);
-  transition: all 0.18s ease;
-  margin-bottom: 8px;
-}
-
-.label-list-card:hover {
-  background: rgba(99, 102, 241, 0.10);
-  border-color: rgba(99, 102, 241, 0.22);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.10);
-}
-
-.label-list-card :deep(.el-icon) {
-  color: var(--accent);
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.label-list-meta {
-  flex: 1;
-  min-width: 0;
-}
-
-.label-list-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-on-dark, #e4e4ed);
-  letter-spacing: 0.01em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.label-list-desc {
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--text-on-dark-muted, #5c5b72);
-  letter-spacing: 0.01em;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
 
 /* 筛选对话框：表单宽度收敛 + footer 三按钮右对齐（重置/取消/确定） */

@@ -1207,11 +1207,11 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 | 组件 | 职责 | 主要 props/事件 |
 | :--- | :--- | :--- |
 | `TodoAppPage.vue` | 三栏布局容器，持有 categoryTree + allTodoLists，computed 合并 mergedTree，管理选中 category/label/list/item | — |
-| `TodoSidebar.vue` | 左侧导航，category+todo_list 统一树 / label 云切换 | `view: 'category'\|'label'` |
+| `TodoSidebar.vue` | 左侧导航，category+todo_list 统一树 / label 云+标签关联项目列表切换 | `view: 'category'\|'label'` |
 | `TodoCategoryTree.vue` | 基于 el-tree 渲染 category（目录）+ todo_list（叶子）混合树 | props: `selectedNodeKey`；emit `select({type,id})`, `create`, `rename`, `delete`, `create-list`, `rename-list`, `delete-list` |
-| `TodoLabelCloud.vue` | 标签云 | emit `select-label` |
+| `TodoLabelCloud.vue` | 标签云（仅渲染云本身，选中态由 selectedId 高亮） | emit `select-label` |
 | `TodoSearchBar.vue` | 顶部搜索框 + 历史下拉 + 结果跳转 | emit `search`, `jump-to-result`, `use-history` |
-| `TodoListPanel.vue` | 中间面板（受控）：list 名标题 + todo items 树；tree-toolbar 右侧图标按钮组（新建/筛选） | props: `listId`, `listName`, `labelId`；emit `select-item`, `select-list`, `toggle-status`, `delete-item` |
+| `TodoListPanel.vue` | 中间面板（受控）：list 名标题 + todo items 树；tree-toolbar 右侧图标按钮组（新建/筛选） | props: `listId`, `listName`；emit `select-item`, `select-list`, `toggle-status`, `delete-item` |
 | `TodoItemRow.vue` | 单行 todo item，支持复选框、缩进、手动进度切换、行内删除（移至回收站） | emit `toggle-status`, `select`, `create-child`, `delete` |
 | `TodoItemDetail.vue` | 右侧详情面板，分「基本信息 / AI任务」两个 tab（与 sidebar 同款 radio-button toggle）。基本信息含：标题/状态/优先级/截止时间/描述/进度/手动进度/关联文档；AI任务含 task_prompt + Agent/LLM/额外 prompt 内联表单 + 运行/重跑/查看面板 | props: `itemId`；emit `updated`, `open-doc`, `run-task({agentName,llmConfigName,extraPrompt})`, `view-task` |
 | `TodoCategoryDetail.vue` | 右侧分类详情面板：总结信息（创建/修改时间 + 直接子项目数）+ 名称可编辑（失焦自动保存） | props: `categoryId`；emit `updated` |
@@ -1240,6 +1240,7 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 
 - **递归层级提示**：创建 category / todo_item 时，若已达 4 层上限，禁用"新建子项"按钮并提示。
 - **状态切换**：todo item 行内复选框点击触发 `update-todo-item-status`，校验失败时弹窗提示原因。
+- **编辑自动激活**：在 `TodoItemDetail` 编辑标题、描述（失焦保存）或拖动进度滑块（`@change` 保存）时，若当前 `status === 'init'`，保存前先将状态自动推进为 `in_progress`（调用 `updateTodoItemStatus`），再继续原保存流程；状态条目视觉同步更新，避免"初始"态被无声长期保留。
 - **进度联动**：子 todo 完成时自动重算父进度；若父被标记 `is_manual_progress`（详情页有开关），跳过自动覆盖；同样，子项被标记 `is_manual_progress` 时不参与父进度平均计算。
 - **任务执行**：在 todo_item 详情「AI任务」tab 内联填写 Agent / LLM 配置 / 额外 prompt → 点击「运行任务」直接发起，右侧切换为 `TaskPanel` 流式展示对话；任务结束后自动生成总结文档（在面板底部展示链接）。（原 `TaskRunDialog` 弹窗已移除，表单内联到 AI任务 tab）
 - **任务重跑**：「AI任务」tab 根据 `agent_task_id` 是否为 null 切换按钮（agent_task_id 为空显示「运行任务」，非空显示「查看任务面板」+「重跑」）；重跑后历史任务可通过 `TaskHistoryList` 查看。
@@ -1247,6 +1248,7 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 - **条目行内删除**：`TodoItemRow` hover 时显示删除图标按钮，点击后由 `TodoAppPage` 弹确认框（文案"移至回收站"），确认后调用 `deleteTodoItem` IPC（递归软删除子条目 + 关联文档），并在删除当前选中条目时回退右侧详情到所属 list-detail。
 - **搜索体验**：聚焦搜索框显示最近搜索；点击结果跳转到对应视图并高亮。
 - **条目筛选**：tree-toolbar 右侧「筛选」图标按钮点击后弹出对话框，含优先级 el-select（`multiple`，选项：紧急 urgent / 重要 important / 普通 normal / 提示 hint）与状态 el-select（`multiple`，选项：初始 init / 进行中 in_progress / 已完成 done / 已放弃 abandoned）。每个维度默认空数组 = "所有"（不限制）；勾选多个值时取并集（节点 priority/status 命中任一所选值即视为匹配）。点击「确定」应用筛选，「取消」放弃草稿，「重置」清空草稿为空数组（即"所有"）。两个 select 均启用 `collapse-tags` + `collapse-tags-tooltip`，避免 tag 撑爆对话框。筛选以 `filteredItemTree` computed 在前端对 `itemTree` 递归过滤：节点自身匹配或任一后代匹配则保留，匹配后子树按过滤后的结构渲染；任一维度数组非空即视为筛选激活，筛选按钮显示 accent 强调并以 title="筛选（已启用）" 提示。筛选为前端本地过滤，不调用新 IPC，`listId` 切换不清空筛选状态（便于跨项目比对同类条目）。
+- **标签 tab 分栏视图**：标签 tab 默认仅显示标签云（无标题文案）；点击某个标签后，tab 内垂直分栏为上下两段——上段为标签云（自然高度，上限为侧栏可视区一半，超出时内部滚动；不足则剩余空间全部让给下段），下段列出该标签关联的待办项目卡片（来自 `listTodoListsByLabel(labelId)`，无章节标题，溢出时仅下段内部滚动）。卡片左键点击 → 切换到该 list（中间面板加载 item 树，右侧切到 list-detail）；卡片右键弹出与分类 tab 中 todo_list 节点一致的菜单（导出待办项目 / 重命名待办项目 / 删除待办项目），命令路由经 sidebar emit 到父组件复用既有 handler。中间面板不再承担"标签关联项目"展示（移除 TodoListPanel 的 `labelId` prop 与对应分支）。
 
 ## 10 实现分期建议
 
