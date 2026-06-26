@@ -90,12 +90,6 @@ qtian.db
 # ================================
 # Temporary files
 # ================================
-.tmp/
-!.tmp/README.md
-
-tmp/
-!tmp/README.md
-
 temp/
 *.tmp
 *.bak
@@ -104,12 +98,26 @@ temp/
 __pycache__/
 *.pyc
 
+# 临时目录（保留 README.md）
+# 注意：*.tmp 规则会匹配到 .tmp 目录名，需先取消忽略 .tmp/ 本身，
+# 否则父目录被忽略后，子文件无法被取反规则重新包含。
+!.tmp/
+.tmp/*
+!.tmp/README.md
+
+tmp/*
+!tmp/README.md
+
 # ================================
 # Project specific
 # ================================
 qtian.json
 todo.md
 vue.config.js.web
+
+# 第三方便携工具（如 PortableGit），只跟踪 README.md
+bin-vendor/*
+!bin-vendor/README.md
 
 # ================================
 # Claude Code
