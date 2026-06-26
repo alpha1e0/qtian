@@ -2,8 +2,8 @@
   <div class="todo-category-tree">
     <div class="tree-header">
       <span class="header-title">分类</span>
-      <el-button size="small" text @click="handleCreateRoot">
-        <el-icon><Plus /></el-icon>
+      <el-button text @click="handleCreateRoot" title="新建根分类">
+        <el-icon><FolderAdd /></el-icon>
       </el-button>
     </div>
 
@@ -31,7 +31,7 @@
             class="cat-leaf-arrow"
             aria-hidden="true"
           >
-            <ArrowRight />
+            <CaretRight />
           </el-icon>
 
           <span
@@ -306,7 +306,7 @@ export default {
 }
 
 .header-title {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--text-on-dark-muted, #5c5b72);
   text-transform: uppercase;
@@ -325,6 +325,10 @@ export default {
    这样空/非空分类 .tree-node 之前的宽度都是 24px，标签起点一致，无突变。 */
 .todo-category-tree :deep(.el-tree-node__expand-icon.is-leaf) {
   display: none;
+}
+
+.todo-category-tree :deep(.el-tree-node__expand-icon) {
+  padding: 3px;
 }
 
 .todo-category-tree :deep(.el-tree-node__content) {
@@ -379,7 +383,7 @@ export default {
 .cat-leaf-arrow {
   flex-shrink: 0;
   font-size: 12px;
-  padding: 6px;
+  padding: 3px;
   box-sizing: content-box;
   color: var(--text-on-dark-muted, #8b8aa0);
 }
