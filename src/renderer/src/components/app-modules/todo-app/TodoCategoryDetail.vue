@@ -27,21 +27,27 @@
       <div v-if="loading" class="loading-hint">加载中...</div>
       <div v-else-if="!formData" class="empty-hint">分类不存在</div>
       <div v-else class="detail-content">
-        <!-- 总结信息（只读） -->
-        <div class="summary-section">
-          <div class="summary-row">
-            <span class="summary-label">创建时间</span>
-            <span class="summary-value">{{ formatTime(formData.createdAt) }}</span>
-          </div>
-          <div class="summary-row">
-            <span class="summary-label">最后修改</span>
-            <span class="summary-value">{{ formatTime(formData.updatedAt) }}</span>
-          </div>
-          <div class="summary-row">
-            <span class="summary-label">直接子项目数</span>
-            <span class="summary-value">{{ directChildListCount }}</span>
-          </div>
-        </div>
+        <!--
+          总结信息（只读）：用带 border 的 el-descriptions 替代手工平铺的
+          summary-row，获得对齐良好的 label/value 表格结构与可见边框。
+          column=1 → 每行一个字段；size=small → 紧凑 padding。
+        -->
+        <el-descriptions
+          :column="1"
+          size="small"
+          border
+          class="summary-desc"
+        >
+          <el-descriptions-item label="创建时间">
+            {{ formatTime(formData.createdAt) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="最后修改">
+            {{ formatTime(formData.updatedAt) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="直接子项目数">
+            {{ directChildListCount }}
+          </el-descriptions-item>
+        </el-descriptions>
 
         <!-- 元素信息（可编辑） -->
         <div class="form-section">
@@ -294,33 +300,53 @@ export default {
   to { transform: rotate(360deg); }
 }
 
-/* 总结信息区 */
-.summary-section {
-  padding: 4px 2px 18px;
-  border-bottom: 1px solid rgba(99, 102, 241, 0.08);
-  margin-bottom: 18px;
+/*
+ * 总结信息区：el-descriptions（带 border）
+ *
+ * 覆盖 Element Plus 默认白底样式以贴合深色 Aurora 基底：
+ *   - label 单元格：复用下方表单 label 的 eyebrow 风格（小号大写、letter-spacing）
+ *   - content 单元格：透明背景、tnum 数字字体、主文字色
+ *   - 单元格边框：低饱和靛蓝细线，避免视觉割裂
+ *   - 整体圆角 + 微底色形成一张"信息卡片"
+ */
+.summary-desc {
+  margin-bottom: 20px;
 }
 
-.summary-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 6px 0;
-  font-size: 13px;
+.summary-desc :deep(.el-descriptions__body) {
+  background: rgba(99, 102, 241, 0.03);
+  border: 1px solid rgba(99, 102, 241, 0.12);
+  border-radius: 10px;
+  overflow: hidden;
 }
 
-.summary-label {
+.summary-desc :deep(.el-descriptions__table) {
+  table-layout: fixed;
+}
+
+/* 带 border 的 label 单元格：eyebrow 风格（与 .el-form-item__label 对齐） */
+.summary-desc :deep(.el-descriptions__label.is-bordered-label) {
+  background: rgba(99, 102, 241, 0.06);
   color: var(--text-on-dark-muted, #5c5b72);
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.16em;
+  width: 38%; /* 给中文 label 留够宽度，避免换行 */
+  white-space: nowrap;
 }
 
-.summary-value {
+.summary-desc :deep(.el-descriptions__content) {
+  background: transparent;
   color: var(--text-on-dark, #e4e4ed);
+  font-size: 13px;
   font-feature-settings: 'tnum';
   letter-spacing: 0.01em;
+}
+
+/* 单元格通用：边框颜色统一为低饱和靛蓝细线 */
+.summary-desc :deep(.el-descriptions__cell) {
+  border-color: rgba(99, 102, 241, 0.12) !important;
 }
 
 /* 元素信息区（表单）— 沿用 TodoItemDetail 的深色 Aurora 样式 */

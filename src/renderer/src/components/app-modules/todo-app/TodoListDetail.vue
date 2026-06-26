@@ -27,17 +27,23 @@
       <div v-if="loading" class="loading-hint">加载中...</div>
       <div v-else-if="!formData" class="empty-hint">待办项目不存在</div>
       <div v-else class="detail-content">
-        <!-- 总结信息（只读） -->
-        <div class="summary-section">
-          <div class="summary-row">
-            <span class="summary-label">创建时间</span>
-            <span class="summary-value">{{ formatTime(formData.createdAt) }}</span>
-          </div>
-          <div class="summary-row">
-            <span class="summary-label">最后修改</span>
-            <span class="summary-value">{{ formatTime(formData.updatedAt) }}</span>
-          </div>
-        </div>
+        <!--
+          总结信息（只读）：用带 border 的 el-descriptions 替代手工平铺的
+          summary-row，与 TodoCategoryDetail 保持同一套展示语言。
+        -->
+        <el-descriptions
+          :column="1"
+          size="small"
+          border
+          class="summary-desc"
+        >
+          <el-descriptions-item label="创建时间">
+            {{ formatTime(formData.createdAt) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="最后修改">
+            {{ formatTime(formData.updatedAt) }}
+          </el-descriptions-item>
+        </el-descriptions>
 
         <!-- 元素信息（可编辑：名称 / 描述，失焦自动保存） -->
         <div class="form-section">
@@ -49,7 +55,7 @@
               <el-input
                 v-model="formData.description"
                 type="textarea"
-                :rows="3"
+                :rows="9"
                 @blur="handleSave"
               />
             </el-form-item>
@@ -437,33 +443,48 @@ export default {
   to { transform: rotate(360deg); }
 }
 
-/* 总结信息区 */
-.summary-section {
-  padding: 4px 2px 18px;
-  border-bottom: 1px solid rgba(99, 102, 241, 0.08);
-  margin-bottom: 18px;
+/*
+ * 总结信息区：el-descriptions（带 border）
+ *
+ * 覆盖 Element Plus 默认白底样式以贴合深色 Aurora 基底；
+ * 样式语言与 TodoCategoryDetail 保持一致（同一套"信息卡片"观感）。
+ */
+.summary-desc {
+  margin-bottom: 20px;
 }
 
-.summary-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 6px 0;
-  font-size: 13px;
+.summary-desc :deep(.el-descriptions__body) {
+  background: rgba(99, 102, 241, 0.03);
+  border: 1px solid rgba(99, 102, 241, 0.12);
+  border-radius: 10px;
+  overflow: hidden;
 }
 
-.summary-label {
+.summary-desc :deep(.el-descriptions__table) {
+  table-layout: fixed;
+}
+
+.summary-desc :deep(.el-descriptions__label.is-bordered-label) {
+  background: rgba(99, 102, 241, 0.06);
   color: var(--text-on-dark-muted, #5c5b72);
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.16em;
+  width: 38%;
+  white-space: nowrap;
 }
 
-.summary-value {
+.summary-desc :deep(.el-descriptions__content) {
+  background: transparent;
   color: var(--text-on-dark, #e4e4ed);
+  font-size: 13px;
   font-feature-settings: 'tnum';
   letter-spacing: 0.01em;
+}
+
+.summary-desc :deep(.el-descriptions__cell) {
+  border-color: rgba(99, 102, 241, 0.12) !important;
 }
 
 /* 元素信息区（表单）— 沿用 TodoItemDetail 的深色 Aurora 样式 */
