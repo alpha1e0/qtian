@@ -1211,7 +1211,7 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 | `TodoCategoryTree.vue` | 基于 el-tree 渲染 category（目录）+ todo_list（叶子）混合树 | props: `selectedNodeKey`；emit `select({type,id})`, `create`, `rename`, `delete`, `create-list`, `rename-list`, `delete-list` |
 | `TodoLabelCloud.vue` | 标签云 | emit `select-label` |
 | `TodoSearchBar.vue` | 顶部搜索框 + 历史下拉 + 结果跳转 | emit `search`, `jump-to-result`, `use-history` |
-| `TodoListPanel.vue` | 中间面板（受控）：list 名标题 + todo items 树 | props: `listId`, `listName`, `labelId`；emit `select-item`, `select-list`, `toggle-status`, `delete-item` |
+| `TodoListPanel.vue` | 中间面板（受控）：list 名标题 + todo items 树；tree-toolbar 右侧图标按钮组（新建/筛选） | props: `listId`, `listName`, `labelId`；emit `select-item`, `select-list`, `toggle-status`, `delete-item` |
 | `TodoItemRow.vue` | 单行 todo item，支持复选框、缩进、手动进度切换、行内删除（移至回收站） | emit `toggle-status`, `select`, `create-child`, `delete` |
 | `TodoItemDetail.vue` | 右侧详情面板，分「基本信息 / AI任务」两个 tab（与 sidebar 同款 radio-button toggle）。基本信息含：标题/状态/优先级/截止时间/描述/进度/手动进度/关联文档；AI任务含 task_prompt + Agent/LLM/额外 prompt 内联表单 + 运行/重跑/查看面板 | props: `itemId`；emit `updated`, `open-doc`, `run-task({agentName,llmConfigName,extraPrompt})`, `view-task` |
 | `TodoCategoryDetail.vue` | 右侧分类详情面板：总结信息（创建/修改时间 + 直接子项目数）+ 名称可编辑（失焦自动保存） | props: `categoryId`；emit `updated` |
@@ -1232,7 +1232,7 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 3. **空分类占位（D3）**：el-tree 对无 children 的节点默认不渲染展开三角。category 节点即使为空也应保持「目录」视觉语义，因此在 `#default` slot 内为空 category 渲染一个透明占位 span（`.cat-leaf-arrow`，18×18px），与三角图标同尺寸保持缩进对齐。不用 `:has()` 是为了兼容性与可控性。
 4. **category ＋下拉（D4）**：原 category hover 的 ＋ 按钮只能新建子分类；现改为 `el-dropdown`，两项：「新建子分类」「新建待办项目」。todo_list 叶子节点 hover 只显示 ✎/🗑（不含 ＋）。根级 tree-header 的 ＋ 保留为「新建根分类」。
 5. **点击行为（D5）**：`expand-on-click-node=false` 不变（点文字不触发展开，点三角才展开）。点击 category 文字 → emit `select({type:'category'})` → 父组件切到右侧 `category-detail`（展示分类元信息 + 改名入口）；点击 todo_list 文字 → emit `select({type:'list'})` → 父组件切到右侧 `list-detail`（中间面板同时加载该 list 的 item 树）。点击中间面板顶部的 list 名 → emit `select-list` → 同样切到 `list-detail`（item 树保留）。
-6. **TodoListPanel 受控化（D6）**：删除原 `panel-header`（el-select + 新建项目按钮）与 `todoLists`/`currentListId` 本地状态。props 改为 `listId` / `listName` / `labelId`，watch `listId` 触发 `loadItemTree`。顶部仅保留 `tree-toolbar`：list 名标题（prop 传入，点击触发 `select-list`）+ 新建待办条目按钮（原"项目文档"按钮已移除，文档入口收敛到右侧 `TodoListDetail`）。父组件 `TodoAppPage` 负责从 `allTodoLists` 解析 list 名。
+6. **TodoListPanel 受控化（D6）**：删除原 `panel-header`（el-select + 新建项目按钮）与 `todoLists`/`currentListId` 本地状态。props 改为 `listId` / `listName` / `labelId`，watch `listId` 触发 `loadItemTree`。顶部仅保留 `tree-toolbar`：左侧 list 名标题（prop 传入，点击触发 `select-list`），右侧为图标按钮组（不含文字）：「新建待办条目」（Plus，title 提示）、「筛选」（Filter，title 提示，筛选激活时 accent 强调）。原"项目文档"按钮已移除，文档入口收敛到右侧 `TodoListDetail`。父组件 `TodoAppPage` 负责从 `allTodoLists` 解析 list 名。
 7. **selectedItemId 联动（D7）**：`handleSelectCategory` 与 `handleSelectList` 均在切换时清空 `selectedItemId`，避免上一个 list 的 item 高亮残留。
 8. **右侧详情统一化（D8）**：右侧详情区对三种选中态提供一致的「总结信息 + 元素信息」结构：`category-detail`（创建/修改时间 + 直接子项目数，仅名称可编辑）/ `list-detail`（创建/修改时间 + 名称/描述可编辑 + 项目文档列表）/ `item-detail`（沿用 TodoItemDetail 完整表单 + 文档 + AI 任务）。三类详情共用失焦自动保存 + 顶部状态条反馈模式。中间面板视图（item 树 / 标签条目列表）由 `selectedListId` / `selectedLabelId` 单独驱动，与 `rightPanelView` 状态机解耦，保证右侧切换详情时中间面板上下文不丢。
 
@@ -1246,6 +1246,7 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 - **软删除体验**：所有"删除"按钮文案为"移至回收站"；回收站入口在左下角，支持单条恢复/彻底删除/清空。
 - **条目行内删除**：`TodoItemRow` hover 时显示删除图标按钮，点击后由 `TodoAppPage` 弹确认框（文案"移至回收站"），确认后调用 `deleteTodoItem` IPC（递归软删除子条目 + 关联文档），并在删除当前选中条目时回退右侧详情到所属 list-detail。
 - **搜索体验**：聚焦搜索框显示最近搜索；点击结果跳转到对应视图并高亮。
+- **条目筛选**：tree-toolbar 右侧「筛选」图标按钮点击后弹出对话框，含优先级 el-select（选项：所有 / 紧急 urgent / 重要 important / 普通 normal / 提示 hint，默认"所有"）与状态 el-select（选项：所有 / 初始 init / 进行中 in_progress / 已完成 done / 已放弃 abandoned，默认"所有"）。点击「确定」应用筛选，「取消」放弃草稿，「重置」恢复默认（均为"所有"）。筛选以 `filteredItemTree` computed 在前端对 `itemTree` 递归过滤：节点自身匹配或任一后代匹配则保留，匹配后子树按过滤后的结构渲染；任一维度非"所有"即视为筛选激活，筛选按钮显示 accent 强调并以 title="筛选（已启用）" 提示。筛选为前端本地过滤，不调用新 IPC，`listId` 切换不清空筛选状态（便于跨项目比对同类条目）。
 
 ## 10 实现分期建议
 

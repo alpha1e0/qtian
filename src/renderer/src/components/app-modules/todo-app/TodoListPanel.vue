@@ -38,13 +38,33 @@
             :title="`查看「${listName}」项目详情`"
             @click="$emit('select-list', listId)"
           >{{ listName }}</span>
-          <el-button size="small" text @click="handleCreateRootItem">
-            <el-icon><Plus /></el-icon> 新建待办条目
-          </el-button>
+          <!-- 右侧图标按钮组：纯图标（无文字），title 提供语义 -->
+          <div class="toolbar-actions">
+            <el-button
+              size="small"
+              text
+              class="toolbar-icon-btn"
+              title="新建待办条目"
+              @click="handleCreateRootItem"
+            >
+              <el-icon><Plus /></el-icon>
+            </el-button>
+            <el-button
+              size="small"
+              text
+              class="toolbar-icon-btn"
+              :class="{ 'is-active': isFilterActive }"
+              :title="filterButtonTitle"
+              @click="openFilterDialog"
+            >
+              <el-icon><Filter /></el-icon>
+            </el-button>
+          </div>
         </div>
-        <div v-if="itemTree.length === 0" class="empty-hint">暂无待办条目，点击"新建待办条目"开始</div>
+        <div v-if="itemTree.length === 0" class="empty-hint">暂无待办条目，点击"新建"开始</div>
+        <div v-else-if="filteredItemTree.length === 0" class="empty-hint">没有符合筛选条件的待办条目</div>
         <TodoItemRow
-          v-for="node in itemTree"
+          v-for="node in filteredItemTree"
           :key="node.id"
           :item="node"
           :depth="node.depth"
@@ -62,17 +82,57 @@
         <el-empty description="请在左侧选择待办项目" />
       </div>
     </div>
+
+    <!--
+      筛选对话框：优先级 + 状态 select。
+      草稿（draftFilter*）独立于生效值（filter*），「确定」应用、「取消」丢弃、「重置」清空草稿。
+    -->
+    <el-dialog
+      v-model="filterDialogVisible"
+      title="筛选"
+      width="420px"
+      :close-on-click-modal="false"
+      append-to-body
+    >
+      <el-form label-width="72px" label-position="right" class="filter-form">
+        <el-form-item label="优先级">
+          <el-select v-model="draftFilterPriority" placeholder="选择优先级">
+            <el-option label="所有" value="all" />
+            <el-option label="紧急" value="urgent" />
+            <el-option label="重要" value="important" />
+            <el-option label="普通" value="normal" />
+            <el-option label="提示" value="hint" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="draftFilterStatus" placeholder="选择状态">
+            <el-option label="所有" value="all" />
+            <el-option label="初始" value="init" />
+            <el-option label="进行中" value="in_progress" />
+            <el-option label="已完成" value="done" />
+            <el-option label="已放弃" value="abandoned" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="filter-dialog-footer">
+          <el-button @click="resetFilterDraft">重置</el-button>
+          <el-button @click="filterDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="applyFilter">确定</el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script>
-import { Plus, Document } from '@element-plus/icons-vue';
+import { Plus, Document, Filter } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import TodoItemRow from './TodoItemRow.vue';
 
 export default {
   name: 'TodoListPanel',
-  components: { Plus, Document, TodoItemRow },
+  components: { Plus, Document, Filter, TodoItemRow },
   // select-list：顶部 list 名 / 标签视图下的 list 卡片被点击时触发，
   // 父组件切到右侧 list-detail 视图（中间 item 树保留或挂载）。
   // delete-item：行内删除按钮触发，交由父组件走确认 + IPC + 刷新流程。
@@ -90,7 +150,38 @@ export default {
     return {
       itemTree: [],
       labelLists: [],
+      // 筛选对话框可见性
+      filterDialogVisible: false,
+      // 当前生效的筛选值：'all' 表示不限制
+      filterPriority: 'all',
+      filterStatus: 'all',
+      // 对话框草稿：编辑中尚未应用，确定时 copy 到生效值
+      draftFilterPriority: 'all',
+      draftFilterStatus: 'all',
     };
+  },
+  computed: {
+    /** 任一维度非 'all' 即视为筛选激活，用于按钮强调与 title 文案 */
+    isFilterActive() {
+      return this.filterPriority !== 'all' || this.filterStatus !== 'all';
+    },
+    /** 筛选按钮的悬浮提示：激活时附加（已启用） */
+    filterButtonTitle() {
+      return this.isFilterActive ? '筛选（已启用）' : '筛选';
+    },
+    /**
+     * 按当前筛选对 itemTree 递归过滤后的视图。
+     *
+     * 规则：节点自身匹配 或 任一后代匹配（递归）则保留，否则剔除。
+     * 匹配后子树仅包含过滤后的子节点，避免显示不符合的子项。
+     * 无筛选时直接返回原树引用，避免无谓深拷贝。
+     */
+    filteredItemTree() {
+      if (!this.isFilterActive) return this.itemTree;
+      return this.itemTree
+        .map((node) => this.buildFilteredNode(node))
+        .filter(Boolean);
+    },
   },
   watch: {
     // 切换 list 时重新加载 item 树（D6 受控模式核心入口）
@@ -221,6 +312,45 @@ export default {
       this.$emit('toggle-status', payload);
       await this.loadItemTree();
     },
+    /** 打开筛选对话框：把当前生效值同步到草稿，编辑期间不影响已生效筛选 */
+    openFilterDialog() {
+      this.draftFilterPriority = this.filterPriority;
+      this.draftFilterStatus = this.filterStatus;
+      this.filterDialogVisible = true;
+    },
+    /** 确定：把草稿写入生效值并关闭对话框 */
+    applyFilter() {
+      this.filterPriority = this.draftFilterPriority;
+      this.filterStatus = this.draftFilterStatus;
+      this.filterDialogVisible = false;
+    },
+    /** 重置：仅清空草稿，需要再点「确定」才生效 */
+    resetFilterDraft() {
+      this.draftFilterPriority = 'all';
+      this.draftFilterStatus = 'all';
+    },
+    /** 判断节点自身是否满足当前筛选条件 */
+    matchesFilter(node) {
+      if (!node) return false;
+      if (this.filterPriority !== 'all' && node.priority !== this.filterPriority) return false;
+      if (this.filterStatus !== 'all' && node.status !== this.filterStatus) return false;
+      return true;
+    },
+    /**
+     * 递归构造过滤后的节点副本。
+     * 自身匹配或任一后代（递归过滤后）存在则返回新节点（children 为过滤后子树），否则返回 null。
+     */
+    buildFilteredNode(node) {
+      if (!node) return null;
+      const rawChildren = Array.isArray(node.children) ? node.children : [];
+      const filteredChildren = rawChildren
+        .map((child) => this.buildFilteredNode(child))
+        .filter(Boolean);
+      if (this.matchesFilter(node) || filteredChildren.length > 0) {
+        return { ...node, children: filteredChildren };
+      }
+      return null;
+    },
   },
 };
 </script>
@@ -272,6 +402,27 @@ export default {
   color: var(--text-on-dark, #e4e4ed);
   letter-spacing: 0.02em;
   text-transform: none;
+}
+
+/* 右侧图标按钮组：纯图标（无文字），title 提供语义 */
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.toolbar-icon-btn {
+  color: var(--text-on-dark-muted, #5c5b72);
+  transition: color 0.18s ease, background 0.18s ease;
+}
+
+.toolbar-icon-btn:hover {
+  color: var(--accent, #6366f1);
+}
+
+/* 筛选激活：按钮 accent 强调，提示用户当前视图处于过滤状态 */
+.toolbar-icon-btn.is-active {
+  color: var(--accent, #6366f1);
 }
 
 /*
@@ -373,5 +524,21 @@ export default {
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* 筛选对话框：表单宽度收敛 + footer 三按钮右对齐（重置/取消/确定） */
+.filter-form {
+  padding: 4px 4px 0;
+}
+
+.filter-form :deep(.el-select) {
+  width: 100%;
+}
+
+.filter-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
 }
 </style>
