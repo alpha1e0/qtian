@@ -13,6 +13,7 @@
           v-if="view === 'category'"
           :tree-data="categoryTree"
           :selected-node-key="selectedNodeKey"
+          :labels="labels"
           @select="$emit('tree-select', $event)"
           @create="$emit('create-category', $event)"
           @rename="$emit('rename-category', $event)"
@@ -91,6 +92,17 @@
       @command="onContextMenuCommand"
       @close="ctxMenu.visible = false"
     />
+
+    <!--
+      重命名待办项目对话框：与 TodoCategoryTree.handleRename 共用同一个 TodoCreateDialog
+      （mode="rename-list"），保持标签 tab 与分类 tab 的重命名体验完全一致。
+    -->
+    <TodoCreateDialog
+      v-model:visible="renameDialog.visible"
+      mode="rename-list"
+      :initial-name="renameDialog.targetList?.name || ''"
+      @confirm="onRenameDialogConfirm"
+    />
   </div>
 </template>
 
@@ -98,13 +110,14 @@
 import TodoCategoryTree from './TodoCategoryTree.vue';
 import TodoLabelCloud from './TodoLabelCloud.vue';
 import TodoContextMenu from './TodoContextMenu.vue';
+import TodoCreateDialog from './TodoCreateDialog.vue';
 import { Delete, Document, Edit, Download, Upload } from '@element-plus/icons-vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessage } from 'element-plus';
 import { markRaw } from 'vue';
 
 export default {
   name: 'TodoSidebar',
-  components: { TodoCategoryTree, TodoLabelCloud, TodoContextMenu, Delete, Document },
+  components: { TodoCategoryTree, TodoLabelCloud, TodoContextMenu, TodoCreateDialog, Delete, Document },
   // 标签下项目列表的右键命令复用父组件既有 handler：
   //   rename-list / delete-list / export-list（与分类 tab 中 todo_list 节点同款）
   emits: [
@@ -140,6 +153,11 @@ export default {
         delete: markRaw(Delete),
         download: markRaw(Download),
         upload: markRaw(Upload),
+      },
+      // 重命名待办项目对话框：visible + 当前命中的 list（其 name 用于预填、id 用于 emit）
+      renameDialog: {
+        visible: false,
+        targetList: null,
       },
     };
   },
@@ -199,7 +217,8 @@ export default {
     },
     /**
      * 右键菜单命令路由：与分类 tab 中 todo_list 节点命令一致，复用父组件 handler。
-     * 重命名走本地 prompt（与 TodoCategoryTree.handleRename 行为对齐），其余事件直接透传。
+     * 重命名走统一 TodoCreateDialog（与 TodoCategoryTree.handleRename 行为对齐），
+     * 其余事件直接透传。
      */
     async onContextMenuCommand({ command }) {
       const list = this.ctxMenu.targetList;
@@ -210,7 +229,7 @@ export default {
           this.$emit('export-list', { listId: list.id, name: list.name });
           break;
         case 'rename-list':
-          await this.promptRenameList(list);
+          this.promptRenameList(list);
           break;
         case 'delete-list':
           this.$emit('delete-list', list.id);
@@ -220,22 +239,22 @@ export default {
       }
     },
     /**
-     * 重命名待办项目：弹 prompt 收集新名称，emit 给父组件走 IPC + 刷新。
-     * 与 TodoCategoryTree.handleRename 的 list 分支行为对齐（inputValue 预填当前名）。
+     * 打开"重命名待办项目"对话框（mode="rename-list"）。
+     * 与 TodoCategoryTree.handleRename 的 list 分支行为对齐：targetList.name 预填原名称、
+     * 对话框内全选便于覆盖或局部修改；用户点"保存"后 onRenameDialogConfirm emit 给父组件。
      */
-    async promptRenameList(list) {
-      try {
-        const { value } = await ElMessageBox.prompt('请输入新名称', '重命名待办项目', {
-          confirmButtonText: '保存',
-          cancelButtonText: '取消',
-          inputValue: list.name,
-        });
-        if (value && value.trim()) {
-          this.$emit('rename-list', { id: list.id, name: value.trim() });
-        }
-      } catch {
-        // cancel
-      }
+    promptRenameList(list) {
+      this.renameDialog = { visible: true, targetList: list };
+    },
+    /**
+     * TodoCreateDialog confirm 回调：emit rename-list 给父组件走 IPC + 刷新。
+     *
+     * @param payload - { name }，name 已由对话框 trim
+     */
+    onRenameDialogConfirm({ name }) {
+      const list = this.renameDialog.targetList;
+      if (!list) return;
+      this.$emit('rename-list', { id: list.id, name });
     },
     /**
      * 闪烁高亮分类节点（搜索跳转用，Phase 3）。

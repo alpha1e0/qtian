@@ -56,6 +56,21 @@
       @command="onContextMenuCommand"
       @close="ctxMenu.visible = false"
     />
+
+    <!--
+      统一新建 / 重命名对话框（替换原 3 处新建 + 重命名 ElMessageBox.prompt）：
+      root-category / child-category / list / rename-category / rename-list
+      五种 mode 共用同一个组件，用户点"创建 / 保存"后在 onCreateDialogConfirm
+      按 mode 分流 emit。
+    -->
+    <TodoCreateDialog
+      v-model:visible="createDialog.visible"
+      :mode="createDialog.mode"
+      :parent-name="createDialog.parentData?.name || ''"
+      :initial-name="dialogInitialName"
+      :all-labels="labels"
+      @confirm="onCreateDialogConfirm"
+    />
   </div>
 </template>
 
@@ -73,18 +88,21 @@ import {
   Upload,
   Download,
 } from '@element-plus/icons-vue';
-import { ElMessageBox } from 'element-plus';
 import { markRaw } from 'vue';
 import TodoContextMenu from './TodoContextMenu.vue';
+import TodoCreateDialog from './TodoCreateDialog.vue';
 
 export default {
   name: 'TodoCategoryTree',
-  components: { Plus, Folder, Document, CaretRight, ArrowRight, TodoContextMenu },
+  components: { Plus, Folder, Document, CaretRight, ArrowRight, TodoContextMenu, TodoCreateDialog },
   props: {
     // 统一树（category + todo_list 叶子），由父组件 mergedTree 提供
     treeData: { type: Array, default: () => [] },
     // 复合 nodeKey（`cat_<id>` / `list_<id>`），用于 el-tree current-node-key
     selectedNodeKey: { type: String, default: null },
+    // 全量标签列表，透传给 TodoCreateDialog 的 list 模式作为下拉选项。
+    // 由 TodoSidebar 从 TodoAppPage.labels 传入。
+    labels: { type: Array, default: () => [] },
   },
   data() {
     return {
@@ -107,7 +125,30 @@ export default {
         upload: markRaw(Upload),
         download: markRaw(Download),
       },
+      // 统一新建 / 重命名对话框状态：visible + 当前 mode + 命中的节点 data
+      // - child-category / list：parentData 即父 category，取 id 与 name
+      // - rename-category / rename-list：parentData 即被重命名的节点本身，
+      //   其 id / name 分别用于 emit rename 事件与预填输入框（见 dialogInitialName）
+      createDialog: {
+        visible: false,
+        mode: 'root-category',
+        parentData: null,
+      },
     };
+  },
+  computed: {
+    /**
+     * 重命名 mode 打开对话框时预填的当前名称。
+     * 新建 mode 返回空串（输入框从空白开始）。
+     * parentData 在重命名 mode 下即被重命名的节点本身，其 name 即原名称。
+     */
+    dialogInitialName() {
+      const { mode, parentData } = this.createDialog;
+      if ((mode === 'rename-category' || mode === 'rename-list') && parentData) {
+        return parentData.name || '';
+      }
+      return '';
+    },
   },
   methods: {
     /**
@@ -198,70 +239,62 @@ export default {
           break;
       }
     },
-    async handleCreateRoot() {
-      try {
-        const { value } = await ElMessageBox.prompt('请输入分类名称', '新建根分类', {
-          confirmButtonText: '创建',
-          cancelButtonText: '取消',
-        });
-        if (value && value.trim()) {
-          this.$emit('create', { name: value.trim(), parentId: null });
-        }
-      } catch {
-        // cancel
-      }
+    /**
+     * 打开"新建根分类"对话框（原 ElMessageBox.prompt 已替换为统一 TodoCreateDialog）。
+     */
+    handleCreateRoot() {
+      this.createDialog = { visible: true, mode: 'root-category', parentData: null };
     },
-    async handleCreateChild(data) {
-      try {
-        const { value } = await ElMessageBox.prompt('请输入分类名称', `在"${data.name}"下新建`, {
-          confirmButtonText: '创建',
-          cancelButtonText: '取消',
+    /**
+     * 打开"新建子分类"对话框，parentData 提供副标题所需父分类名 + 创建所需 parentId。
+     */
+    handleCreateChild(data) {
+      this.createDialog = { visible: true, mode: 'child-category', parentData: data };
+    },
+    /**
+     * 打开"新建待办项目"对话框（list 模式含标签字段）。
+     * parentData.id 即待办项目归属的 categoryId。
+     */
+    handleCreateList(data) {
+      this.createDialog = { visible: true, mode: 'list', parentData: data };
+    },
+    /**
+     * TodoCreateDialog confirm 回调：按当前 mode 组装 payload 并 emit 给父组件。
+     *
+     * - root-category / child-category → emit create({ name, parentId })
+     * - list                           → emit create-list({ categoryId, name, labelIds })
+     * - rename-category                → emit rename({ id, name })
+     * - rename-list                    → emit rename-list({ id, name })
+     *
+     * labelIds 含 allow-create 字符串新标签名，由父组件 TodoAppPage 通过共享
+     * resolveLabelIds 解析为真实 id（与 TodoListDetail.handleLabelChange 一致）。
+     */
+    onCreateDialogConfirm(payload) {
+      const { mode, parentData } = this.createDialog;
+      if (mode === 'list') {
+        this.$emit('create-list', {
+          categoryId: parentData?.id,
+          name: payload.name,
+          labelIds: payload.labelIds || [],
         });
-        if (value && value.trim()) {
-          this.$emit('create', { name: value.trim(), parentId: data.id });
-        }
-      } catch {
-        // cancel
+      } else if (mode === 'rename-list') {
+        this.$emit('rename-list', { id: parentData?.id, name: payload.name });
+      } else if (mode === 'rename-category') {
+        this.$emit('rename', { id: parentData?.id, name: payload.name });
+      } else {
+        this.$emit('create', {
+          name: payload.name,
+          parentId: mode === 'child-category' ? parentData?.id : null,
+        });
       }
     },
     /**
-     * 在 category 下新建待办项目（D4）。
-     * 仅 emit 事件，prompt 与 IPC 由父组件统一处理（避免子组件持有 IPC 逻辑）。
+     * 打开"重命名"对话框：按节点类型分流到 rename-category / rename-list mode。
+     * parentData 即被重命名的节点本身（dialogInitialName 据此预填原名称）。
      */
-    async handleCreateList(data) {
-      try {
-        const { value } = await ElMessageBox.prompt('请输入待办项目名称', '新建待办项目', {
-          confirmButtonText: '创建',
-          cancelButtonText: '取消',
-        });
-        if (value && value.trim()) {
-          this.$emit('create-list', { categoryId: data.id, name: value.trim() });
-        }
-      } catch {
-        // cancel
-      }
-    },
-    /**
-     * 重命名：按节点类型分流到 category / list 事件。
-     */
-    async handleRename(data) {
-      try {
-        const title = data.__type === 'list' ? '重命名待办项目' : '重命名分类';
-        const { value } = await ElMessageBox.prompt('请输入新名称', title, {
-          confirmButtonText: '保存',
-          cancelButtonText: '取消',
-          inputValue: data.name,
-        });
-        if (value && value.trim()) {
-          if (data.__type === 'list') {
-            this.$emit('rename-list', { id: data.id, name: value.trim() });
-          } else {
-            this.$emit('rename', { id: data.id, name: value.trim() });
-          }
-        }
-      } catch {
-        // cancel
-      }
+    handleRename(data) {
+      const mode = data.__type === 'list' ? 'rename-list' : 'rename-category';
+      this.createDialog = { visible: true, mode, parentData: data };
     },
     /**
      * 删除：按节点类型分流。list 删除前由父组件弹二次确认。

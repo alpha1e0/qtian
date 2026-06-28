@@ -1208,7 +1208,8 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 | :--- | :--- | :--- |
 | `TodoAppPage.vue` | 三栏布局容器，持有 categoryTree + allTodoLists，computed 合并 mergedTree，管理选中 category/label/list/item | — |
 | `TodoSidebar.vue` | 左侧导航，category+todo_list 统一树 / label 云+标签关联项目列表切换 | `view: 'category'\|'label'` |
-| `TodoCategoryTree.vue` | 基于 el-tree 渲染 category（目录）+ todo_list（叶子）混合树 | props: `selectedNodeKey`；emit `select({type,id})`, `create`, `rename`, `delete`, `create-list`, `rename-list`, `delete-list` |
+| `TodoCategoryTree.vue` | 基于 el-tree 渲染 category（目录）+ todo_list（叶子）混合树 | props: `selectedNodeKey`, `labels`；emit `select({type,id})`, `create`, `rename`, `delete`, `create-list`, `rename-list`, `delete-list` |
+| `TodoCreateDialog.vue` | 统一新建 / 重命名对话框：根分类 / 子分类 / 待办项目（含标签）/ 待办条目（含优先级 + 截止时间）/ 重命名分类 / 重命名待办项目。替换原 4 处新建 + 2 处重命名的 `ElMessageBox.prompt`，沿用 Aurora 浅色基调与 TodoItemDetail / TodoListDetail 表单样式 | props: `visible`(v-model), `mode`, `parentName`, `initialName`, `allLabels`；emit `update:visible`, `confirm(payload)` |
 | `TodoLabelCloud.vue` | 标签云（仅渲染云本身，选中态由 selectedId 高亮） | emit `select-label` |
 | `TodoSearchBar.vue` | 顶部搜索框 + 历史下拉 + 结果跳转 | emit `search`, `jump-to-result`, `use-history` |
 | `TodoListPanel.vue` | 中间面板（受控）：list 名标题 + todo items 树；tree-toolbar 右侧图标按钮组（新建/筛选） | props: `listId`, `listName`；emit `select-item`, `select-list`, `toggle-status`, `delete-item` |
@@ -1249,6 +1250,13 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 - **搜索体验**：聚焦搜索框显示最近搜索；点击结果跳转到对应视图并高亮。
 - **条目筛选**：tree-toolbar 右侧「筛选」图标按钮点击后弹出对话框，含优先级 el-select（`multiple`，选项：紧急 urgent / 重要 important / 普通 normal / 提示 hint）与状态 el-select（`multiple`，选项：初始 init / 进行中 in_progress / 已完成 done / 已放弃 abandoned）。每个维度默认空数组 = "所有"（不限制）；勾选多个值时取并集（节点 priority/status 命中任一所选值即视为匹配）。点击「确定」应用筛选，「取消」放弃草稿，「重置」清空草稿为空数组（即"所有"）。两个 select 均启用 `collapse-tags` + `collapse-tags-tooltip`，避免 tag 撑爆对话框。筛选以 `filteredItemTree` computed 在前端对 `itemTree` 递归过滤：节点自身匹配或任一后代匹配则保留，匹配后子树按过滤后的结构渲染；任一维度数组非空即视为筛选激活，筛选按钮显示 accent 强调并以 title="筛选（已启用）" 提示。筛选为前端本地过滤，不调用新 IPC，`listId` 切换不清空筛选状态（便于跨项目比对同类条目）。
 - **标签 tab 分栏视图**：标签 tab 默认仅显示标签云（无标题文案）；点击某个标签后，tab 内垂直分栏为上下两段——上段为标签云（自然高度，上限为侧栏可视区一半，超出时内部滚动；不足则剩余空间全部让给下段），下段列出该标签关联的待办项目卡片（来自 `listTodoListsByLabel(labelId)`，无章节标题，溢出时仅下段内部滚动）。卡片左键点击 → 切换到该 list（中间面板加载 item 树，右侧切到 list-detail）；卡片右键弹出与分类 tab 中 todo_list 节点一致的菜单（导出待办项目 / 重命名待办项目 / 删除待办项目），命令路由经 sidebar emit 到父组件复用既有 handler。中间面板不再承担"标签关联项目"展示（移除 TodoListPanel 的 `labelId` prop 与对应分支）。
+- **新建 / 重命名对话框统一化**：4 种新建 + 2 种重命名入口（根分类 / 子分类 / 待办项目 / 待办条目 / 重命名分类 / 重命名待办项目）共享同一个模态对话框组件 `TodoCreateDialog.vue`，替换原 `ElMessageBox.prompt` 单行输入弹框。对话框按 `mode` 渲染不同字段集合：
+    - `root-category` / `child-category`：仅名称；`child-category` 模式标题区显示副标题"在 \<parentName\> 下新建"。
+    - `list`：名称 + 标签（多选 + `allow-create`，沿用 `TodoListDetail` 的标签解析模式；创建时一并打标签，省去创建后到 `TodoListDetail` 二次编辑）。新建待办项目落地为两步：先 `createTodoList`，再 `updateTodoList({ label_ids })`（与 `TodoListDetail.handleLabelChange` 一致）。标签 id 解析（字符串新标签名 → 真实 id）抽到共享 utils `src/renderer/src/utils/todo-labels.ts` 的 `resolveLabelIds()`，避免与 `TodoListDetail` 重复。
+    - `item`：名称 + 优先级（radio，默认 `normal`，沿用 `TodoItemDetail` 的 `.priority-group` / `.prio-*` 配色）+ 截止时间（`el-date-picker type="datetime"`，`value-format="x"`，可选）。创建时直接携带 `priority` + `due_at` 落库（`TodoItemService.create` 已原生支持），省去创建后到 `TodoItemDetail` 调整。
+    - `rename-category` / `rename-list`：仅名称字段，标题图标切换为 `Edit`，主按钮文案为"保存"。打开时通过 `initialName` prop 预填当前名称并全选（`ref.input.select()`），用户可在原名基础上直接覆盖或局部修改；调用方（`TodoCategoryTree.handleRename`）把被重命名节点作为 `parentData` 传入，`dialogInitialName` computed 据此取原名称预填，`onCreateDialogConfirm` 按 mode 分流 emit `rename({ id, name })` / `rename-list({ id, name })`。
+    - 对话框组件本身不调 IPC：用户点"创建 / 保存"且名称非空时 emit `confirm(payload)`，由调用方（`TodoCategoryTree` / `TodoListPanel`）按 mode 分流到对应 IPC。打开对话框时（`watch visible` 由 false → true）重置表单到默认值（重命名 mode 额外预填 `initialName`），避免上次输入残留。
+    - 视觉上延续 todo-app Aurora 浅色基调（白底 + indigo 细描边 + 柔和投影），复用 `TodoItemDetail` / `TodoListDetail` 的 `:deep(.el-input__wrapper)` / `.priority-group` / `el-select` 浅色样式（`rgba(99,102,241,0.04)` 晕染），让对话框与详情面板观感一致。
 
 ## 10 实现分期建议
 
@@ -1403,6 +1411,7 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 | Q-PHASE5-6 | 流式渲染策略 | TaskPanel 内部累积 text_delta/tool_start/tool_result（不复用 ChatMessage.vue），避免 markdown 渲染依赖；最终对话全文留在 chat_history 文件中可查 | §8.7 / §10 Phase 5 |
 | Q-MISC-6 | `todo_list` UI 显示术语 | 界面文案统一称"待办项目"（原"列表"与通用列表概念歧义）；仅影响 UI 文案、prompt 模板标签、搜索结果类型标签；DB 表名 `todo_list` / TS 类型 `TodoList` / IPC channel `*-todo-list` 等代码层标识不变 | §3.2 / §7.5 / §8.3 / §9.1 |
 | Q-MISC-7 | `todo_item` UI 显示术语 | 界面文案统一称"待办条目"（原"条目"在搜索/回收站/标签上下文中存在歧义）；仅影响 UI 文案、搜索结果类型标签、回收站类型标签；DB 表名 `todo_item` / TS 类型 `TodoItem` / IPC channel `*-todo-item` 等代码层标识不变 | §3.3 / §7.5 / §9.1 |
+| Q-MISC-8 | 4 种"新建"+ 2 种"重命名"入口的弹框形式 | 统一升级为可复用模态对话框 `TodoCreateDialog.vue`（替换 `ElMessageBox.prompt`）。理由：(1) `ElMessageBox.prompt` 仅单行输入，"新建待办项目"无法在创建时打标签、"新建待办条目"无法设定优先级/截止时间，均需事后到详情面板二次编辑；(2) "重命名分类 / 待办项目"原也只用简陋的 `ElMessageBox.prompt`，与新建入口视觉割裂；(3) `ElMessageBox.prompt` 样式固定，无法与 todo-app Aurora 浅色基调及表单视觉语言（输入框晕染、优先级配色）统一。统一 dialog 按 `mode` 渲染字段集合（含 `rename-category` / `rename-list`），沿用 TodoItemDetail / TodoListDetail 表单样式；重命名 mode 通过 `initialName` prop 预填并全选原名；标签解析逻辑抽到 `src/renderer/src/utils/todo-labels.ts` 共享，避免与 TodoListDetail 重复 | §9.2 / §9.4 |
 
 ## 12 仍需协商的待办（依赖现有 AI 助手模块）
 

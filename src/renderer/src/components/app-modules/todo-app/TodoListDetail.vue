@@ -109,6 +109,7 @@
 <script>
 import { Plus, Document, Loading, Check, Close } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { resolveLabelIds } from '@/utils/todo-labels';
 
 /**
  * TodoListDetail — 待办项目详情面板（spec §9.1）。
@@ -210,11 +211,18 @@ export default {
      * 这里先把字符串解析为真实 label id（同名已存在复用 → 否则 createLabel 新建），
      * 再走 runSave 管线调 updateTodoList。
      * 保存成功后 emit 'updated'，让父组件刷新 labels / sidebar 标签云。
+     *
+     * 标签解析逻辑已抽到共享 utils `@/utils/todo-labels` 的 `resolveLabelIds`，
+     * 与 TodoAppPage.handleCreateListUnderCategory 共用，避免重复。
      */
     async handleLabelChange(labelIds) {
       let resolvedIds;
       try {
-        resolvedIds = await this.resolveLabelIds(labelIds);
+        resolvedIds = await resolveLabelIds(
+          this.allLabels,
+          labelIds,
+          window.todoApp.createLabel,
+        );
       } catch (err) {
         this.setSaveStatus('error');
         ElMessage.error(err?.message || '创建标签失败');
@@ -230,32 +238,6 @@ export default {
         await this.loadLabels();
         this.$emit('updated');
       }
-    },
-    /**
-     * 把 labelIds 中的字符串值（el-select allow-create 输入的新标签名）
-     * 解析为真实 label id：
-     *   - number：原样返回
-     *   - string：先在 allLabels 中按 name 精确匹配（避免重名触发唯一索引冲突），
-     *             找不到则调 createLabel 新建并返回新 id
-     */
-    async resolveLabelIds(labelIds) {
-      const resolved = [];
-      for (const id of labelIds) {
-        if (typeof id === 'number') {
-          resolved.push(id);
-          continue;
-        }
-        const name = String(id).trim();
-        if (!name) continue;
-        const existing = this.allLabels.find((l) => l.name === name);
-        if (existing) {
-          resolved.push(existing.id);
-          continue;
-        }
-        const created = await window.todoApp.createLabel({ name });
-        resolved.push(created.id);
-      }
-      return resolved;
     },
     /**
      * 失焦保存：name 非空才发请求，description 一并提交。

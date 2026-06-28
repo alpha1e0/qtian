@@ -122,6 +122,7 @@ import TodoSearchBar from './TodoSearchBar.vue';
 import TrashDialog from './TrashDialog.vue';
 import TaskPanel from './TaskPanel.vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { resolveLabelIds } from '@/utils/todo-labels';
 
 export default {
   name: 'TodoAppPage',
@@ -359,8 +360,13 @@ export default {
     },
     /**
      * 在指定 category 下新建 todo_list（取代原 TodoListPanel.handleCreateList）。
-     * payload: { categoryId, name? } —— name 省略时弹 prompt 询问。
+     * payload 由 TodoCategoryTree.onCreateDialogConfirm 组装：
+     *   { categoryId, name, labelIds? }
+     * name 现由 TodoCreateDialog 总是提供（替换原 ElMessageBox.prompt 后备分支）。
      * 创建成功后刷新 allTodoLists 并自动选中新建的 list。
+     *
+     * 标签解析：labelIds 可能含 allow-create 的字符串新标签名，需先解析为真实 id
+     * 再 updateTodoList（与 TodoListDetail.handleLabelChange 一致，共享 resolveLabelIds）。
      */
     async handleCreateListUnderCategory(payload) {
       const categoryId = payload?.categoryId;
@@ -368,29 +374,31 @@ export default {
         ElMessage.warning('请先选择分类');
         return;
       }
-      let name = payload?.name;
+      const name = payload?.name;
+      if (!name || !name.trim()) return;
       try {
-        if (!name) {
-          const res = await ElMessageBox.prompt('请输入待办项目名称', '新建待办项目', {
-            confirmButtonText: '创建',
-            cancelButtonText: '取消',
-          });
-          name = res.value;
+        const created = await window.todoApp.createTodoList({
+          name: name.trim(),
+          category_id: categoryId,
+        });
+        // 创建时一并打标签：先解析（字符串新标签名 → 真实 id），再 updateTodoList
+        const labelIds = payload.labelIds;
+        if (Array.isArray(labelIds) && labelIds.length > 0) {
+          const resolvedIds = await resolveLabelIds(
+            this.labels,
+            labelIds,
+            window.todoApp.createLabel,
+          );
+          await window.todoApp.updateTodoList(created.id, { label_ids: resolvedIds });
+          // 新建了标签时刷新 labels，让 sidebar 标签云同步
+          await this.loadLabels();
         }
-        if (name && name.trim()) {
-          const created = await window.todoApp.createTodoList({
-            name: name.trim(),
-            category_id: categoryId,
-          });
-          await this.loadAllTodoLists();
-          // 自动选中并切到 list-detail 视图（中间面板同时加载 item 树）
-          this.handleSelectList(created.id);
-          ElMessage.success('待办项目已创建');
-        }
+        await this.loadAllTodoLists();
+        // 自动选中并切到 list-detail 视图（中间面板同时加载 item 树）
+        this.handleSelectList(created.id);
+        ElMessage.success('待办项目已创建');
       } catch (err) {
-        if (err !== 'cancel') {
-          ElMessage.error(err.message || '创建失败');
-        }
+        ElMessage.error(err?.message || '创建失败');
       }
     },
     async handleRenameList({ id, name }) {

@@ -113,17 +113,28 @@
         </div>
       </template>
     </el-dialog>
+
+    <!--
+      新建待办条目对话框（item 模式：名称 + 优先级 + 截止时间）。
+      替换原 promptCreateItem 的 ElMessageBox.prompt，创建时直接携带 priority + dueAt 落库。
+    -->
+    <TodoCreateDialog
+      v-model:visible="createDialog.visible"
+      mode="item"
+      @confirm="onCreateItemConfirm"
+    />
   </div>
 </template>
 
 <script>
 import { Plus, Filter } from '@element-plus/icons-vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessage } from 'element-plus';
 import TodoItemRow from './TodoItemRow.vue';
+import TodoCreateDialog from './TodoCreateDialog.vue';
 
 export default {
   name: 'TodoListPanel',
-  components: { Plus, Filter, TodoItemRow },
+  components: { Plus, Filter, TodoItemRow, TodoCreateDialog },
   // select-list：顶部 list 名被点击时触发，
   // 父组件切到右侧 list-detail 视图（中间 item 树保留或挂载）。
   // delete-item：行内删除按钮触发，交由父组件走确认 + IPC + 刷新流程。
@@ -146,6 +157,11 @@ export default {
       // 对话框草稿：编辑中尚未应用，确定时 copy 到生效值
       draftFilterPriority: [],
       draftFilterStatus: [],
+      // 新建待办条目对话框：visible + 当前 parent_id（顶层条目为 null）
+      createDialog: {
+        visible: false,
+        parentId: null,
+      },
     };
   },
   computed: {
@@ -248,35 +264,45 @@ export default {
     async handleCreateChildItem(parentId) {
       await this.promptCreateItem(parentId);
     },
-    async promptCreateItem(parentId) {
-      // 受控模式下 listId 由父传入；无 listId 时禁止创建（不再有内置"新建项目"）
+    /**
+     * 打开"新建待办条目"对话框（item 模式：名称 + 优先级 + 截止时间）。
+     * 替换原 ElMessageBox.prompt：创建时即可设定优先级/截止时间，
+     * 不必创建后到 TodoItemDetail 二次编辑。
+     *
+     * @param parentId - 父条目 id；顶层条目传 null
+     */
+    promptCreateItem(parentId) {
+      // 受控模式下 listId 由父传入；无 listId 时禁止创建
       if (!this.listId) {
         ElMessage.warning('请先在左侧选择待办项目');
         return;
       }
+      this.createDialog = { visible: true, parentId };
+    },
+    /**
+     * TodoCreateDialog confirm 回调：携带 priority + dueAt 调 createTodoItem，
+     * 刷新 item 树并选中新条目（与原 promptCreateItem 落地逻辑一致）。
+     *
+     * @param payload - { name, priority, dueAt }，dueAt 为 value-format="x" 的字符串时间戳或 null
+     */
+    async onCreateItemConfirm({ name, priority, dueAt }) {
       try {
-        const { value } = await ElMessageBox.prompt('请输入待办条目标题', '新建待办条目', {
-          confirmButtonText: '创建',
-          cancelButtonText: '取消',
+        const created = await window.todoApp.createTodoItem({
+          title: name,
+          todo_list_id: this.listId,
+          parent_id: this.createDialog.parentId,
+          priority,
+          due_at: dueAt ? parseInt(dueAt, 10) : null,
         });
-        if (value && value.trim()) {
-          const created = await window.todoApp.createTodoItem({
-            title: value.trim(),
-            todo_list_id: this.listId,
-            parent_id: parentId,
-          });
-          await this.loadItemTree();
-          // 创建后立即选中新条目：
-          // - 触发父组件 handleSelectItem → rightPanelView='item-detail' 显示详情
-          // - selectedItemId 变化回流为本组件 :selected-item-id，新条目在列表中高亮
-          // 必须在 loadItemTree 之后 emit，否则新条目还没渲染，selectedItemId 高亮无的放矢
-          this.$emit('select-item', created.id);
-          ElMessage.success('待办条目已创建');
-        }
+        await this.loadItemTree();
+        // 创建后立即选中新条目：
+        // - 触发父组件 handleSelectItem → rightPanelView='item-detail' 显示详情
+        // - selectedItemId 变化回流为本组件 :selected-item-id，新条目在列表中高亮
+        // 必须在 loadItemTree 之后 emit，否则新条目还没渲染，selectedItemId 高亮无的放矢
+        this.$emit('select-item', created.id);
+        ElMessage.success('待办条目已创建');
       } catch (err) {
-        if (err !== 'cancel') {
-          ElMessage.error(err.message || '创建失败');
-        }
+        ElMessage.error(err?.message || '创建失败');
       }
     },
     async handleToggleStatus(payload) {
