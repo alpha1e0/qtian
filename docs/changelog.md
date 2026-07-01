@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.0.0] 2026-07-01（快捷输入框）
+
+**User**: todo-app 中间面板最下方增加固定快捷输入框，路径前缀（蓝色，每级 2 字符）+ 输入框，Enter 创建待办条目；结尾 `#4 #3 #2 #1` 控制优先级 urgent/important/normal/hint
+
+**Summary**:
+
+中间面板（`TodoListPanel.vue`）底部新增**固定不滚动**的快捷输入框，让用户无需打开新建对话框即可快速录入条目。左侧蓝色路径前缀标识新条目落地层级（选中条目时为其子项，每级标题取前 2 字符；未选中时为 `/` 根级）；输入结尾可附 `#1`～`#4` 控制符指定优先级，控制符连同前后空白从 title 中剔除。解析逻辑集中在 main 侧纯函数，单一 IPC 封装"解析+落库"，renderer 走同一通道保证只有一处真源。
+
+### 新增
+
+- **解析纯函数**（`todo-quick-input.ts`，可测）
+  - `parseQuickItemInput(raw): { title, priority }`：正则 `/\s*#([1-4])\s*$/` 匹配结尾控制符
+  - 映射 `#4→urgent` / `#3→important` / `#2→normal` / `#1→hint`；无控制符默认 `normal`
+  - 控制符及前后空白剔除；title 为空抛错
+- **IPC**：
+  - `ipc-channels.ts`：`TODO_CREATE_ITEM_QUICK`
+  - `todo-app.handler.ts`：handler 调 `parseQuickItemInput` + `itemService.create` 返回新条目
+  - `preload/index.ts`：`createTodoItemQuick(raw, listId, parentId)`
+- **UI**（`TodoListPanel.vue`）：
+  - 根已是 flex 列；在 `.list-panel-scroll` 之后新增 `.quick-input-bar`（`flex-shrink:0` 钉在底部，不随滚动消失）
+  - 左侧 `.quick-input-path` 蓝色路径前缀；computed `quickInputPathPrefix`（每级 `title.slice(0,2)`）/ `quickInputPathFull`（tooltip 完整路径）
+  - `findItemPath(nodes, id)` DFS 求选中条目祖先链
+  - `handleQuickCreate`：Enter 触发 → `createTodoItemQuick(raw, listId, selectedItemId)` → `loadItemTree` → 选中新建条目 → 清空输入框
+  - 仅 `listId` 存在时显示
+
+### 测试
+
+- `todo-quick-input.test.ts`：19 个用例（#1-#4 映射、空白剔除、无控制符默认、#0/#5/孤立# 不识别、仅结尾匹配、多控制符取末位、空 title 抛错、null 安全）
+- 全部 268 个 todo-app 单测通过（249 → 268），`electron-vite build` 三端编译无类型错误
+
+### 文档
+
+- `docs/specs/100_todo-app-design.md`：IPC 通道清单 + TodoListPanel 组件表同步更新
+
 ## [1.0.0] 2026-07-01
 
 **User**: todo-app 增加"待办项目"收藏功能：中间面板工具栏增加 star 收藏按钮；sidebar 增加"收藏"tab 以列表形式展示所有收藏项目

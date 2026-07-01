@@ -111,6 +111,8 @@ export const IPC_CHANNELS = {
   TODO_DELETE_TODO_ITEM: 'qtian:todo:delete-todo-item',
   TODO_RESTORE_TODO_ITEM: 'qtian:todo:restore-todo-item',
   TODO_UPDATE_TODO_ITEM_STATUS: 'qtian:todo:update-todo-item-status',
+  // TodoItem 快捷创建（中间面板底部输入框：解析结尾 #N 控制符 + 落库）
+  TODO_CREATE_ITEM_QUICK: 'qtian:todo:create-item-quick',
 
   // Label
   TODO_LIST_LABELS: 'qtian:todo:list-labels',

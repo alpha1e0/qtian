@@ -219,6 +219,9 @@ const api = {
     restoreTodoItem: (id) => ipcRenderer.invoke(IPC_CHANNELS.TODO_RESTORE_TODO_ITEM, id),
     updateTodoItemStatus: (id, status) =>
       ipcRenderer.invoke(IPC_CHANNELS.TODO_UPDATE_TODO_ITEM_STATUS, id, status),
+    // 快捷创建（中间面板底部输入框：main 侧解析结尾 #N 控制符 + 落库）
+    createTodoItemQuick: (raw, listId, parentId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.TODO_CREATE_ITEM_QUICK, raw, listId, parentId),
 
     // Label
     listLabels: () => ipcRenderer.invoke(IPC_CHANNELS.TODO_LIST_LABELS),

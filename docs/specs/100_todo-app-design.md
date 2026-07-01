@@ -802,6 +802,7 @@ class TodoTaskService {
 'qtian:todo:delete-todo-item'       // (id) → void  软删除（递归子 todo/document）
 'qtian:todo:restore-todo-item'      // (id) → TodoItem
 'qtian:todo:update-todo-item-status'// (id, status) → TodoItem  含状态机校验
+'qtian:todo:create-item-quick'      // (raw, listId, parentId) → TodoItem  快捷创建：解析结尾 #N 控制符（#4=urgent/#3=important/#2=normal/#1=hint）+ 落库
 
 // ===== Label =====
 'qtian:todo:list-labels'            // → TodoLabel[]
@@ -1217,7 +1218,7 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 | `TodoCreateDialog.vue` | 统一新建 / 重命名对话框：根分类 / 子分类 / 待办项目（含标签）/ 待办条目（含优先级 + 截止时间）/ 重命名分类 / 重命名待办项目。替换原 4 处新建 + 2 处重命名的 `ElMessageBox.prompt`，沿用 Aurora 浅色基调与 TodoItemDetail / TodoListDetail 表单样式 | props: `visible`(v-model), `mode`, `parentName`, `initialName`, `allLabels`；emit `update:visible`, `confirm(payload)` |
 | `TodoLabelCloud.vue` | 标签云（仅渲染云本身，选中态由 selectedId 高亮） | emit `select-label` |
 | `TodoSearchBar.vue` | 顶部搜索框 + 历史下拉 + 结果跳转 | emit `search`, `jump-to-result`, `use-history` |
-| `TodoListPanel.vue` | 中间面板（受控）：list 名标题 + todo items 树；tree-toolbar 右侧图标按钮组（新建/筛选） | props: `listId`, `listName`；emit `select-item`, `select-list`, `toggle-status`, `delete-item` |
+| `TodoListPanel.vue` | 中间面板（受控）：list 名标题 + todo items 树；tree-toolbar 右侧图标按钮组（新建/筛选/收藏）；底部固定快捷输入框（路径前缀 + 输入框，Enter 创建，结尾 `#N` 控制优先级） | props: `listId`, `listName`, `isFavorite`；emit `select-item`, `select-list`, `toggle-status`, `delete-item`, `toggle-favorite` |
 | `TodoItemRow.vue` | 单行 todo item，支持复选框、缩进、手动进度切换、行内删除（移至回收站） | emit `toggle-status`, `select`, `create-child`, `delete` |
 | `TodoItemDetail.vue` | 右侧详情面板，分「基本信息 / AI任务」两个 tab（与 sidebar 同款 radio-button toggle）。基本信息含：标题/状态/优先级/截止时间/描述/进度/手动进度/关联文档；AI任务含 task_prompt + Agent/LLM/额外 prompt 内联表单 + 运行/重跑/查看面板 | props: `itemId`；emit `updated`, `open-doc`, `run-task({agentName,llmConfigName,extraPrompt})`, `view-task` |
 | `TodoCategoryDetail.vue` | 右侧分类详情面板：总结信息（创建/修改时间 + 直接子项目数）+ 名称可编辑（失焦自动保存） | props: `categoryId`；emit `updated` |

@@ -82,6 +82,24 @@
     </div>
 
     <!--
+      快捷输入框（固定底部，不随滚动消失）：
+      左侧路径前缀（蓝色，每级取前 2 字符）标识新条目落地位置——
+      选中条目时为其子项，未选中时为根级；Enter 直接创建。
+      输入结尾可附 #4/#3/#2/#1 控制优先级（main 侧解析，见 createTodoItemQuick）。
+    -->
+    <div v-if="listId" class="quick-input-bar">
+      <span class="quick-input-path" :title="quickInputPathFull">{{ quickInputPathPrefix }}</span>
+      <el-input
+        v-model="quickInputText"
+        class="quick-input-field"
+        size="small"
+        :placeholder="quickInputPlaceholder"
+        aria-label="快捷创建待办条目"
+        @keyup.enter="handleQuickCreate"
+      />
+    </div>
+
+    <!--
       筛选对话框：优先级（el-check-tag，配色与新建条目 priority-radio 一致）
       + 状态（el-checkbox-group）。
       草稿（draftFilter*）独立于生效值（filter*），「确定」应用、「取消」丢弃、「重置」清空草稿。
@@ -203,6 +221,8 @@ export default {
       // 对话框草稿：编辑中尚未应用，确定时 copy 到生效值
       draftFilterPriority: [],
       draftFilterStatus: [],
+      // 底部快捷输入框文本（Enter 后清空）
+      quickInputText: '',
       // 优先级 / 状态下拉选项：集中维护，避免模板里硬编码 4 份 el-option
       priorityOptions: [
         { label: '紧急', value: 'urgent' },
@@ -235,6 +255,31 @@ export default {
     /** 收藏按钮的悬浮提示：按当前态给出动作语义（收藏 / 取消收藏） */
     favoriteButtonTitle() {
       return this.isFavorite ? '取消收藏' : '收藏';
+    },
+    /**
+     * 快捷输入框路径前缀（蓝色，标识新条目落地位置）。
+     * 取选中条目的祖先链，每级 title 截前 2 字符，用 / 连接，整体以 / 开头。
+     * 未选中条目 → "/"（新建到根级）。找不到选中条目（树未含）也回退到 "/"。
+     */
+    quickInputPathPrefix() {
+      const chain = this.selectedItemChain;
+      if (!chain || chain.length === 0) return '/';
+      return '/' + chain.map((n) => (n.title || '').slice(0, 2)).join('/');
+    },
+    /** 路径前缀 tooltip：完整未截断的祖先链，便于用户辨认截断后的层级 */
+    quickInputPathFull() {
+      const chain = this.selectedItemChain;
+      if (!chain || chain.length === 0) return '/（根级）';
+      return '/' + chain.map((n) => n.title || '').join('/');
+    },
+    /** 选中条目的祖先链（从根到选中条目自身）；无选中或未命中返回 null */
+    selectedItemChain() {
+      if (!this.selectedItemId) return null;
+      return this.findItemPath(this.itemTree, this.selectedItemId);
+    },
+    /** 快捷输入框 placeholder：提示 #N 控制符语法 */
+    quickInputPlaceholder() {
+      return '输入后回车创建，#4紧急 #3重要 #2普通 #1提示';
     },
     /**
      * 按当前筛选对 itemTree 递归过滤后的视图。
@@ -367,6 +412,51 @@ export default {
       } catch (err) {
         ElMessage.error(err?.message || '创建失败');
       }
+    },
+    /**
+     * 快捷创建：读取底部输入框文本，调 createTodoItemQuick（main 侧解析结尾 #N
+     * 控制符 + 落库），刷新 item 树并选中新条目，最后清空输入框。
+     *
+     * 新条目 parent_id = 当前选中条目（作为其子项）；未选中时为根级（null）。
+     * 空输入直接忽略，不报错。
+     */
+    async handleQuickCreate() {
+      const raw = (this.quickInputText || '').trim();
+      if (!raw) return;
+      if (!this.listId) {
+        ElMessage.warning('请先在左侧选择待办项目');
+        return;
+      }
+      try {
+        const created = await window.todoApp.createTodoItemQuick(
+          raw,
+          this.listId,
+          this.selectedItemId,
+        );
+        this.quickInputText = '';
+        await this.loadItemTree();
+        // 与 onCreateItemConfirm 一致：加载后再选中新条目，确保高亮有的放矢
+        this.$emit('select-item', created.id);
+      } catch (err) {
+        // title 为空（如仅输入 "#4"）会被 main 侧拒绝；此处展示错误
+        ElMessage.error(err?.message || '创建失败');
+      }
+    },
+    /**
+     * DFS 查找 id 在树中的祖先链（从根到目标节点自身的节点数组）。
+     * 用于快捷输入框路径前缀展示。未找到返回 null。
+     *
+     * @param nodes - 当前层级节点数组（itemTree 或某节点的 children）
+     * @param id - 目标 item id
+     */
+    findItemPath(nodes, id) {
+      if (!Array.isArray(nodes)) return null;
+      for (const node of nodes) {
+        if (node.id === id) return [node];
+        const sub = this.findItemPath(node.children, id);
+        if (sub) return [node, ...sub];
+      }
+      return null;
     },
     async handleToggleStatus(payload) {
       this.$emit('toggle-status', payload);
@@ -549,6 +639,40 @@ export default {
 .empty-state :deep(.el-empty__description) {
   color: var(--text-on-dark-secondary, #8b8aa0);
   letter-spacing: 0.02em;
+}
+
+/*
+ * 快捷输入框（固定底部）：与 .list-panel-scroll 同为 .todo-list-panel-inner
+ * 的 flex 子项；scroll 区 flex:1 占满，本条 flex-shrink:0 钉在底部不随滚动消失。
+ * 左侧蓝色路径前缀 + 右侧输入框，整体顶部加分隔线与上方列表区隔开。
+ */
+.quick-input-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px 14px;
+  border-top: 1px solid rgba(99, 102, 241, 0.12);
+  background: rgba(20, 20, 32, 0.55);
+  backdrop-filter: blur(6px);
+}
+
+/* 路径前缀：accent 蓝、等宽风格，标识新条目落地层级；超长省略 */
+.quick-input-path {
+  flex-shrink: 0;
+  max-width: 45%;
+  color: var(--accent, #6366f1);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quick-input-field {
+  flex: 1;
+  min-width: 0;
 }
 
 /*

@@ -12,6 +12,7 @@ import {
   TodoTrashEntityType,
   TodoListExportBundle,
 } from '@/core/services/app-modules/todo-app/types';
+import { parseQuickItemInput } from '@/core/services/app-modules/todo-app/todo-quick-input';
 
 const logger = createLogger('IPC:TodoApp');
 
@@ -181,6 +182,23 @@ export function registerTodoAppHandlers(todoAppService: TodoAppService): void {
   ipcMain.handle(IPC_CHANNELS.TODO_UPDATE_TODO_ITEM_STATUS, async (_e, id: number, status: TodoItemStatus) => {
     return item.updateStatus(id, status);
   });
+
+  // ===== TodoItem 快捷创建（中间面板底部输入框） =====
+  // 解析结尾 #N 控制符（#4=urgent/#3=important/#2=normal/#1=hint）后落库，
+  // 单一通道保证解析逻辑只存于 main（renderer 无需重复实现，便于单测覆盖）。
+  ipcMain.handle(
+    IPC_CHANNELS.TODO_CREATE_ITEM_QUICK,
+    async (_e, raw: string, listId: number, parentId: number | null) => {
+      const { title, priority } = parseQuickItemInput(raw);
+      logger.info(`Quick create item: title='${title}', priority=${priority}, listId=${listId}`);
+      return item.create({
+        title,
+        todo_list_id: listId,
+        parent_id: parentId,
+        priority,
+      });
+    },
+  );
 
   // ===== Label =====
   ipcMain.handle(IPC_CHANNELS.TODO_LIST_LABELS, async () => {
