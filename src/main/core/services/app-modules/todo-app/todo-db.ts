@@ -33,14 +33,18 @@ export class TodoDb {
   }
 
   /**
-   * 初始化：确保目录存在并按 todo-app.sql 建表（幂等，IF NOT EXISTS）。
+   * 初始化：确保目录存在并按 todo-app.sql 建表（幂等，IF NOT EXISTS），
+   * 再执行增量列迁移（为已有库补齐后续新增字段）。
    *
    * 注意：DBManager 的 isInitialized 仅检查是否有任意表，不会自动建表，
    *      因此 TodoDb 显式调用 runSqlScript（与 TaskDb 一致）。
+   *      CREATE TABLE IF NOT EXISTS 对已存在的表不会加列，故新增字段需
+   *      由 runMigrations 显式 ALTER TABLE ADD COLUMN 补齐。
    */
   initialize(): void {
     this.ensureDir(path.dirname(this.dbPath));
     this.runSqlScript(this.sqlFile);
+    this.runMigrations();
     logger.info(`TodoDb initialized at ${this.dbPath}`);
   }
 
@@ -90,5 +94,34 @@ export class TodoDb {
       throw new Error(`Cannot read todo-app SQL file '${sqlFile}': ${err}`);
     }
     this.db.exec(script);
+  }
+
+  /**
+   * 增量列迁移：为已有数据库补齐后续版本新增的列。
+   *
+   * 背景：CREATE TABLE IF NOT EXISTS 对已存在的表不会添加新列，老库升级时
+   *      需通过 ALTER TABLE ADD COLUMN 显式补齐。每条迁移均先以
+   *      PRAGMA table_info 检查列是否已存在，保证幂等（重复执行安全）。
+   *
+   * 新增字段在此追加迁移项，保持向前兼容。
+   */
+  private runMigrations(): void {
+    this.ensureColumn('todo_list', 'is_favorite', 'INTEGER NOT NULL DEFAULT 0');
+  }
+
+  /**
+   * 幂等加列：若目标表无该列则执行 ALTER TABLE ADD COLUMN。
+   *
+   * @param table - 业务表名
+   * @param column - 待新增列名
+   * @param definition - 列定义（类型 + 约束，如 'INTEGER NOT NULL DEFAULT 0'）
+   */
+  private ensureColumn(table: string, column: string, definition: string): void {
+    const rows = this.db.query<{ name: string }>(`PRAGMA table_info(${table})`);
+    const exists = rows.some((r) => r.name === column);
+    if (!exists) {
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+      logger.info(`Migration: added column ${table}.${column}`);
+    }
   }
 }

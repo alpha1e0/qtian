@@ -25,13 +25,14 @@ CREATE INDEX IF NOT EXISTS idx_category_deleted ON todo_category(deleted_at);
 -- TodoList
 -- ============================================================
 CREATE TABLE IF NOT EXISTS todo_list (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  name        TEXT NOT NULL,
-  description TEXT NOT NULL DEFAULT '',
-  category_id INTEGER,
-  created_at  INTEGER NOT NULL,
-  updated_at  INTEGER NOT NULL,
-  deleted_at  INTEGER,
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  name         TEXT NOT NULL,
+  description  TEXT NOT NULL DEFAULT '',
+  category_id  INTEGER,
+  is_favorite  INTEGER NOT NULL DEFAULT 0,  -- 0=未收藏 1=已收藏；用户快捷置顶常用项目
+  created_at   INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL,
+  deleted_at   INTEGER,
   FOREIGN KEY (category_id) REFERENCES todo_category(id) ON DELETE NO ACTION
 );
 CREATE INDEX IF NOT EXISTS idx_list_category ON todo_list(category_id) WHERE deleted_at IS NULL;

@@ -150,6 +150,8 @@ interface TodoList {
   category_id: number | null;
   /** 标签 ID 列表（来自 todo_list_label 多对多关系） */
   label_ids: number[];
+  /** 是否收藏（用户置顶常用项目；sidebar 收藏 tab 聚合此标记） */
+  is_favorite: boolean;
   created_at: number;
   updated_at: number;
   /** 软删除时间（null 表示未删除） */
@@ -363,13 +365,14 @@ CREATE INDEX IF NOT EXISTS idx_category_deleted ON todo_category(deleted_at);
 -- TodoList
 -- ============================================================
 CREATE TABLE IF NOT EXISTS todo_list (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  name        TEXT NOT NULL,
-  description TEXT NOT NULL DEFAULT '',
-  category_id INTEGER,
-  created_at  INTEGER NOT NULL,
-  updated_at  INTEGER NOT NULL,
-  deleted_at  INTEGER,
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  name         TEXT NOT NULL,
+  description  TEXT NOT NULL DEFAULT '',
+  category_id  INTEGER,
+  is_favorite  INTEGER NOT NULL DEFAULT 0,  -- 0=未收藏 1=已收藏
+  created_at   INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL,
+  deleted_at   INTEGER,
   FOREIGN KEY (category_id) REFERENCES todo_category(id) ON DELETE NO ACTION
 );
 CREATE INDEX IF NOT EXISTS idx_list_category ON todo_list(category_id) WHERE deleted_at IS NULL;
@@ -518,7 +521,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS todo_fts USING fts5(
 | :--- | :--- |
 | `TodoAppService` | 模块入口：DB 初始化、Service 单例装配、生命周期管理 |
 | `TodoCategoryService` | Category CRUD + 树构建 + 递归层级校验 |
-| `TodoListService` | TodoList CRUD + 标签多对多维护（`todo_list_label`） |
+| `TodoListService` | TodoList CRUD + 标签多对多维护（`todo_list_label`） + 收藏（`toggleFavorite` / `listFavorites`） |
 | `TodoItemService` | TodoItem CRUD + 递归层级校验 + 状态机校验 |
 | `TodoLabelService` | Label CRUD（name 唯一） + `todo_list_label` 多对多维护（兼容历史 `todo_item_label`） |
 | `TodoDocumentService` | Document CRUD + 附件落盘（hash 命名） |
@@ -789,6 +792,8 @@ class TodoTaskService {
 'qtian:todo:update-todo-list'       // (id, patch) → TodoList
 'qtian:todo:delete-todo-list'       // (id) → void  软删除（级联 todo_item/document）
 'qtian:todo:restore-todo-list'      // (id) → TodoList
+'qtian:todo:toggle-favorite'        // (id) → TodoList | undefined  切换收藏态（幂等翻转）
+'qtian:todo:list-favorites'         // () → TodoList[]  sidebar 收藏 tab 数据源（is_favorite=1 且未删除）
 
 // ===== TodoItem =====
 'qtian:todo:get-todo-item-tree'     // (listId) → TodoItemNode[]
@@ -1207,7 +1212,7 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 | 组件 | 职责 | 主要 props/事件 |
 | :--- | :--- | :--- |
 | `TodoAppPage.vue` | 三栏布局容器，持有 categoryTree + allTodoLists，computed 合并 mergedTree，管理选中 category/label/list/item | — |
-| `TodoSidebar.vue` | 左侧导航，category+todo_list 统一树 / label 云+标签关联项目列表切换 | `view: 'category'\|'label'` |
+| `TodoSidebar.vue` | 左侧导航，category+todo_list 统一树 / label 云+标签关联项目列表 / 收藏项目扁平列表 三视图切换 | `view: 'category'\|'label'\|'favorite'` |
 | `TodoCategoryTree.vue` | 基于 el-tree 渲染 category（目录）+ todo_list（叶子）混合树 | props: `selectedNodeKey`, `labels`；emit `select({type,id})`, `create`, `rename`, `delete`, `create-list`, `rename-list`, `delete-list` |
 | `TodoCreateDialog.vue` | 统一新建 / 重命名对话框：根分类 / 子分类 / 待办项目（含标签）/ 待办条目（含优先级 + 截止时间）/ 重命名分类 / 重命名待办项目。替换原 4 处新建 + 2 处重命名的 `ElMessageBox.prompt`，沿用 Aurora 浅色基调与 TodoItemDetail / TodoListDetail 表单样式 | props: `visible`(v-model), `mode`, `parentName`, `initialName`, `allLabels`；emit `update:visible`, `confirm(payload)` |
 | `TodoLabelCloud.vue` | 标签云（仅渲染云本身，选中态由 selectedId 高亮） | emit `select-label` |

@@ -206,6 +206,9 @@ const api = {
     // 导入/导出 JSON（主进程聚合 dialog + fs + exchange service，取消返回 null）
     exportTodoList: (listId) => ipcRenderer.invoke(IPC_CHANNELS.TODO_EXPORT_TODO_LIST, listId),
     importTodoList: (categoryId) => ipcRenderer.invoke(IPC_CHANNELS.TODO_IMPORT_TODO_LIST, categoryId),
+    // 收藏（切换收藏态 + 列出收藏项目，sidebar 收藏 tab 数据源）
+    toggleFavoriteTodoList: (id) => ipcRenderer.invoke(IPC_CHANNELS.TODO_TOGGLE_FAVORITE, id),
+    listFavoriteTodoLists: () => ipcRenderer.invoke(IPC_CHANNELS.TODO_LIST_FAVORITES),
 
     // TodoItem
     getTodoItem: (id) => ipcRenderer.invoke(IPC_CHANNELS.TODO_GET_TODO_ITEM, id),

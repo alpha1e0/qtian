@@ -99,6 +99,9 @@ export const IPC_CHANNELS = {
   // TodoList 导入/导出 JSON（主进程聚合 dialog + fs + exchange service）
   TODO_EXPORT_TODO_LIST: 'qtian:todo:export-todo-list',
   TODO_IMPORT_TODO_LIST: 'qtian:todo:import-todo-list',
+  // TodoList 收藏（切换收藏态 + 列出收藏项目，sidebar 收藏 tab 数据源）
+  TODO_TOGGLE_FAVORITE: 'qtian:todo:toggle-favorite',
+  TODO_LIST_FAVORITES: 'qtian:todo:list-favorites',
 
   // TodoItem
   TODO_GET_TODO_ITEM: 'qtian:todo:get-todo-item',

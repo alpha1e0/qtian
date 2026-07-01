@@ -1,5 +1,41 @@
 # Changelog
 
+## [1.0.0] 2026-07-01
+
+**User**: todo-app 增加"待办项目"收藏功能：中间面板工具栏增加 star 收藏按钮；sidebar 增加"收藏"tab 以列表形式展示所有收藏项目
+
+**Summary**:
+
+为 todo-app 待办项目（todo_list）新增收藏能力，让用户快捷置顶常用项目。中间面板工具栏的 star 按钮切换当前项目收藏态（实心=已收藏 / 空心=未收藏，暖金色强调以区别于筛选的 indigo accent）；侧边栏新增第三个 tab"收藏"，以扁平列表展示所有 `is_favorite=1` 的项目，列表项样式与标签云 tab 关联项目卡片完全一致，点击跳转、右键菜单（导出/重命名/删除）均复用现有交互。
+
+### 新增
+
+- **数据模型**：`todo_list` 表新增 `is_favorite INTEGER NOT NULL DEFAULT 0` 字段（0=未收藏 1=已收藏）
+  - `data/todo-app.sql`：CREATE TABLE 同步加列（新库直接建好）
+  - `todo-db.ts`：`initialize()` 新增 `runMigrations()` + 通用 `ensureColumn(table, column, definition)` 幂等迁移（`PRAGMA table_info` 检查 + `ALTER TABLE ADD COLUMN`），为已有库补齐新字段
+- **类型**：`types.ts` 的 `TodoList` 接口新增 `is_favorite: boolean`
+- **Service**（`todo-list.service.ts`）：
+  - `toggleFavorite(id): TodoList | undefined` — 事务内翻转收藏态（更新 `updated_at`），不存在的 id 安全返回 undefined
+  - `listFavorites(): TodoList[]` — 返回所有 `is_favorite=1` 且未软删除的项目
+  - 所有 SELECT / `mapRow` / `TodoListRow` 同步纳入 `is_favorite`（0/1 ↔ false/true）
+- **IPC**：
+  - `ipc-channels.ts`：`TODO_TOGGLE_FAVORITE` / `TODO_LIST_FAVORITES`
+  - `todo-app.handler.ts`：注册两个 handler
+  - `preload/index.ts`：`toggleFavoriteTodoList(id)` / `listFavoriteTodoLists()`
+- **UI**：
+  - `TodoListPanel.vue`：工具栏增加 star 按钮（`Star`/`StarFilled` 动态），props 加 `isFavorite`，emit `toggle-favorite`；金色 `.favorite-btn.is-favorite` 高亮
+  - `TodoAppPage.vue`：computed `currentListIsFavorite`；`handleToggleFavorite` 调 IPC + 刷新 allTodoLists + 刷新 sidebar 收藏列表；重命名/删除/详情更新后同步刷新收藏列表
+  - `TodoSidebar.vue`：view-toggle 三等分增加"收藏"按钮；`favorite` tab 渲染扁平收藏列表（复用 `.label-list-item` 卡片样式）；`loadFavoriteLists` / `refreshFavoriteLists`；view watcher 切到收藏时懒加载
+
+### 测试
+
+- `todo-list.service.test.ts`：新增 9 个用例（`is_favorite` 字段默认值与回读、`toggleFavorite` 双向翻转 + 不存在 id 安全、`listFavorites` 仅收藏 / 排除已删除 / 排除未收藏 / 取消后移除）
+- 全部 249 个 todo-app 单测通过（25 → 34），`electron-vite build` 三端编译无类型错误
+
+### 文档
+
+- `docs/specs/100_todo-app-design.md`：更新 TodoList 类型、SQL schema、Service 职责表、IPC 通道清单、UI 组件表
+
 ## [Unreleased] 2026-06-18
 
 **User**: todo-app Phase 5 Todo 驱动 AI 任务（适配层 Service + IPC + 3 个新 UI 组件 + TodoItemDetail 集成 + 测试 + 文档）

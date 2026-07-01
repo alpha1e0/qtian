@@ -4,6 +4,7 @@
       <el-radio-group v-model="view" size="small" class="view-toggle">
         <el-radio-button value="category">分类</el-radio-button>
         <el-radio-button value="label">标签</el-radio-button>
+        <el-radio-button value="favorite">收藏</el-radio-button>
       </el-radio-group>
 
       <!-- 可滚动内容区：树/标签云过长时仅此处滚动，footer 始终可见 -->
@@ -32,7 +33,7 @@
             待办项目列表，溢出时仅下段内部滚动，标签云始终可见。
           两段均位于 .sidebar-scroll 内，外层不再滚动，避免与内段滚动冲突。
         -->
-        <div v-else class="label-split" :class="{ 'has-selection': !!selectedLabelId }">
+        <div v-else-if="view === 'label'" class="label-split" :class="{ 'has-selection': !!selectedLabelId }">
           <div class="label-cloud-pane">
             <TodoLabelCloud
               :labels="labels"
@@ -60,6 +61,34 @@
                   <div class="label-list-name">{{ list.name }}</div>
                   <div v-if="list.description" class="label-list-desc">{{ list.description }}</div>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!--
+          收藏 tab：扁平列表，展示所有 is_favorite = 1 的待办项目。
+          列表项样式复用 .label-list-item（与标签 tab 关联项目卡片一致），
+          让用户跨 tab 识别同一对象。点击触发 select-list，右键复用
+          TodoContextMenu（导出 / 重命名 / 删除，与标签 tab 同款）。
+        -->
+        <div v-else-if="view === 'favorite'" class="favorite-pane">
+          <div class="favorite-scroll">
+            <div v-if="favoriteLists.length === 0" class="label-lists-empty">
+              暂无收藏的待办项目
+            </div>
+            <div
+              v-for="list in favoriteLists"
+              :key="list.id"
+              class="label-list-item"
+              :title="`查看「${list.name}」`"
+              @click="$emit('select-list', list.id)"
+              @contextmenu="onLabelListContextMenu($event, list)"
+            >
+              <el-icon><Document /></el-icon>
+              <div class="label-list-meta">
+                <div class="label-list-name">{{ list.name }}</div>
+                <div v-if="list.description" class="label-list-desc">{{ list.description }}</div>
               </div>
             </div>
           </div>
@@ -140,6 +169,8 @@ export default {
       view: 'category',
       // 标签下关联待办项目列表（仅 selectedLabelId 命中时加载）
       labelLists: [],
+      // 收藏的待办项目列表（切到收藏 tab 或父组件刷新时加载）
+      favoriteLists: [],
       // 右键菜单状态：visible + 鼠标坐标 + 当前命中项目 + 菜单项
       ctxMenu: {
         visible: false,
@@ -170,6 +201,12 @@ export default {
         this.labelLists = [];
       }
     },
+    // 切到收藏 tab 时按需加载（首次进入或外部数据变更后）
+    view(val) {
+      if (val === 'favorite') {
+        this.loadFavoriteLists();
+      }
+    },
   },
   methods: {
     /**
@@ -196,6 +233,26 @@ export default {
       }
       this.labelLists = [];
       return Promise.resolve();
+    },
+    /**
+     * 加载所有已收藏的待办项目（收藏 tab 数据源）。
+     * 由 view watcher（切到 favorite）或父组件 refreshFavoriteLists 触发。
+     */
+    async loadFavoriteLists() {
+      try {
+        this.favoriteLists = await window.todoApp.listFavoriteTodoLists();
+      } catch (err) {
+        ElMessage.error('加载收藏待办项目失败');
+        console.error(err);
+        this.favoriteLists = [];
+      }
+    },
+    /**
+     * 刷新收藏列表（外部数据变更后调用：toggle 收藏 / 重命名 / 删除 / 详情更新）。
+     * 始终重新拉取，确保切回收藏 tab 时数据为最新。
+     */
+    refreshFavoriteLists() {
+      return this.loadFavoriteLists();
     },
     /**
      * 标签下待办项目卡片右键：阻止浏览器默认菜单，记录鼠标坐标 + 命中项目，
@@ -342,7 +399,7 @@ export default {
 }
 
 .view-toggle :deep(.el-radio-button) {
-  width: 50%;
+  width: 33.3333%;
 }
 
 .view-toggle :deep(.el-radio-button__inner) {
@@ -419,6 +476,24 @@ export default {
 }
 
 .label-lists-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 4px;
+}
+
+/*
+ * 收藏 tab 容器：扁平列表，独占侧栏滚动区高度。
+ * 复用 .label-list-item 卡片样式（定义在下方），保持与标签 tab 视觉一致。
+ */
+.favorite-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.favorite-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;

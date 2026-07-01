@@ -286,4 +286,71 @@ describe('TodoListService', () => {
       expect(() => svc.purge(99999)).not.toThrow();
     });
   });
+
+  describe('is_favorite 字段', () => {
+    it('create 后默认 is_favorite = false', () => {
+      const l = svc.create({ name: 'f' });
+      expect(l.is_favorite).toBe(false);
+    });
+
+    it('getById / list 返回值含 is_favorite 字段', () => {
+      const l = svc.create({ name: 'f' });
+      expect(svc.getById(l.id)?.is_favorite).toBe(false);
+      expect(svc.list()[0].is_favorite).toBe(false);
+    });
+  });
+
+  describe('toggleFavorite', () => {
+    it('未收藏 → 已收藏（返回值反映翻转后状态）', () => {
+      const l = svc.create({ name: 'star' });
+      const toggled = svc.toggleFavorite(l.id);
+      expect(toggled?.is_favorite).toBe(true);
+      expect(svc.getById(l.id)?.is_favorite).toBe(true);
+    });
+
+    it('已收藏 → 取消收藏（连续两次调用恢复原态）', () => {
+      const l = svc.create({ name: 'star' });
+      svc.toggleFavorite(l.id);
+      const toggled = svc.toggleFavorite(l.id);
+      expect(toggled?.is_favorite).toBe(false);
+      expect(svc.getById(l.id)?.is_favorite).toBe(false);
+    });
+
+    it('不存在的 id 返回 undefined 且不抛错', () => {
+      expect(svc.toggleFavorite(99999)).toBeUndefined();
+    });
+  });
+
+  describe('listFavorites', () => {
+    it('只返回已收藏的列表（排除未收藏）', () => {
+      const a = svc.create({ name: 'A' });
+      svc.create({ name: 'B' }); // 未收藏
+      svc.toggleFavorite(a.id);
+
+      const favs = svc.listFavorites();
+      expect(favs).toHaveLength(1);
+      expect(favs[0].id).toBe(a.id);
+      expect(favs[0].is_favorite).toBe(true);
+    });
+
+    it('排除已软删除的收藏列表', () => {
+      const a = svc.create({ name: 'A' });
+      svc.toggleFavorite(a.id);
+      svc.delete(a.id); // 软删除
+
+      expect(svc.listFavorites()).toHaveLength(0);
+    });
+
+    it('无收藏时返回空数组', () => {
+      svc.create({ name: 'plain' });
+      expect(svc.listFavorites()).toEqual([]);
+    });
+
+    it('取消收藏后不再出现在 listFavorites', () => {
+      const a = svc.create({ name: 'A' });
+      svc.toggleFavorite(a.id); // 收藏
+      svc.toggleFavorite(a.id); // 取消
+      expect(svc.listFavorites()).toHaveLength(0);
+    });
+  });
 });

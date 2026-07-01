@@ -10,13 +10,14 @@ const logger = createLogger('TodoListService');
 const DEFAULT_DESCRIPTION = '';
 
 /**
- * TodoList Service — 列表 CRUD + 级联软删除 + 标签多对多维护
+ * TodoList Service — 列表 CRUD + 级联软删除 + 标签多对多维护 + 收藏
  *
  * 职责：
  * - list（按 categoryId 过滤，null 表示未分类）
  * - create / update / delete（级联 todo_item + document）/ restore
  * - 标签作用域：todo_list_label 多对多（label_ids 在 create/update 时全量覆盖）
  * - listByLabel：列出某 label 关联的未删除 todo_list（标签云视图使用）
+ * - toggleFavorite / listFavorites：收藏快捷置顶（sidebar 收藏 tab 数据源）
  *
  * FTS 集成（Phase 3）：searchService 为可选依赖（默认 null）。
  * 可搜索字段：name（title） + description（body）。
@@ -46,18 +47,18 @@ export class TodoListService {
     let rows: TodoListRow[];
     if (categoryId === undefined) {
       rows = this.db.query<TodoListRow>(
-        `SELECT id, name, description, category_id, created_at, updated_at, deleted_at
+        `SELECT id, name, description, category_id, is_favorite, created_at, updated_at, deleted_at
          FROM todo_list WHERE deleted_at IS NULL ORDER BY created_at ASC`,
       );
     } else if (categoryId === null) {
       // 未分类
       rows = this.db.query<TodoListRow>(
-        `SELECT id, name, description, category_id, created_at, updated_at, deleted_at
+        `SELECT id, name, description, category_id, is_favorite, created_at, updated_at, deleted_at
          FROM todo_list WHERE category_id IS NULL AND deleted_at IS NULL ORDER BY created_at ASC`,
       );
     } else {
       rows = this.db.query<TodoListRow>(
-        `SELECT id, name, description, category_id, created_at, updated_at, deleted_at
+        `SELECT id, name, description, category_id, is_favorite, created_at, updated_at, deleted_at
          FROM todo_list WHERE category_id = ? AND deleted_at IS NULL ORDER BY created_at ASC`,
         [categoryId],
       );
@@ -68,7 +69,7 @@ export class TodoListService {
   /** 按 id 获取未删除 todo_list（含 label_ids） */
   getById(id: number): TodoList | undefined {
     const row = this.db.get<TodoListRow>(
-      `SELECT id, name, description, category_id, created_at, updated_at, deleted_at
+      `SELECT id, name, description, category_id, is_favorite, created_at, updated_at, deleted_at
        FROM todo_list WHERE id = ? AND deleted_at IS NULL`,
       [id],
     );
@@ -168,12 +169,49 @@ export class TodoListService {
   /** 列出某 label 关联的未删除 todo_list（标签云视图使用） */
   listByLabel(labelId: number): TodoList[] {
     const rows = this.db.query<TodoListRow>(
-      `SELECT tl.id, tl.name, tl.description, tl.category_id, tl.created_at, tl.updated_at, tl.deleted_at
+      `SELECT tl.id, tl.name, tl.description, tl.category_id, tl.is_favorite, tl.created_at, tl.updated_at, tl.deleted_at
        FROM todo_list tl
        INNER JOIN todo_list_label tll ON tl.id = tll.todo_list_id
        WHERE tll.label_id = ? AND tl.deleted_at IS NULL
        ORDER BY tl.created_at ASC`,
       [labelId],
+    );
+    return rows.map((r) => this.mapRow(r, this.labelService.getListLabels(r.id)));
+  }
+
+  /**
+   * 切换 todo_list 收藏状态（收藏 ↔ 取消收藏）。
+   *
+   * 幂等安全：连续两次调用恢复原态。仅作用于未删除实体（已删除的 list
+   * 即使切换也不会被 listFavorites 查出，故无副作用）。不涉及 FTS——
+   * 收藏是展示属性，不属于可搜索内容。
+   *
+   * @param id - 目标 todo_list id
+   * @returns 更新后的 TodoList；实体不存在时返回 undefined
+   */
+  toggleFavorite(id: number): TodoList | undefined {
+    const existing = this.getById(id);
+    if (!existing) {
+      return undefined;
+    }
+    const now = Date.now();
+    const next = existing.is_favorite ? 0 : 1;
+    this.db.execute(
+      `UPDATE todo_list SET is_favorite = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`,
+      [next, now, id],
+    );
+    logger.info(`TodoList favorite toggled: id=${id}, is_favorite=${next === 1}`);
+    return this.getById(id);
+  }
+
+  /**
+   * 列出所有已收藏且未删除的 todo_list（sidebar 收藏 tab 数据源）。
+   * 按 created_at ASC 排序，与 list / listByLabel 保持一致。
+   */
+  listFavorites(): TodoList[] {
+    const rows = this.db.query<TodoListRow>(
+      `SELECT id, name, description, category_id, is_favorite, created_at, updated_at, deleted_at
+       FROM todo_list WHERE is_favorite = 1 AND deleted_at IS NULL ORDER BY created_at ASC`,
     );
     return rows.map((r) => this.mapRow(r, this.labelService.getListLabels(r.id)));
   }
@@ -265,7 +303,7 @@ export class TodoListService {
   /** 列出回收站中的 todo_list（label_ids 返回 []，因为软删除时已清关联） */
   listTrash(): TodoList[] {
     const rows = this.db.query<TodoListRow>(
-      `SELECT id, name, description, category_id, created_at, updated_at, deleted_at
+      `SELECT id, name, description, category_id, is_favorite, created_at, updated_at, deleted_at
        FROM todo_list WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`,
     );
     return rows.map((r) => this.mapRow(r, []));
@@ -349,6 +387,7 @@ export class TodoListService {
       description: row.description,
       category_id: row.category_id,
       label_ids: labelIds,
+      is_favorite: row.is_favorite === 1,
       created_at: row.created_at,
       updated_at: row.updated_at,
       deleted_at: row.deleted_at ?? null,
@@ -361,6 +400,8 @@ interface TodoListRow {
   name: string;
   description: string;
   category_id: number | null;
+  /** 0=未收藏 1=已收藏（SQLite 无原生布尔，按整数存储） */
+  is_favorite: number;
   created_at: number;
   updated_at: number;
   deleted_at: number | null;

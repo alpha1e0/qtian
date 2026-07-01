@@ -43,11 +43,13 @@
         class="todo-list-panel"
         :list-id="selectedListId"
         :list-name="selectedListName"
+        :is-favorite="currentListIsFavorite"
         :selected-item-id="selectedItemId"
         @select-item="handleSelectItem"
         @toggle-status="handleToggleStatus"
         @select-list="handleSelectList"
         @delete-item="handleDeleteItem"
+        @toggle-favorite="handleToggleFavorite"
       />
 
       <!-- 右侧详情：状态机路由 -->
@@ -160,6 +162,15 @@ export default {
       if (!this.selectedListId) return '';
       const found = this.allTodoLists.find((l) => l.id === this.selectedListId);
       return found ? found.name : '';
+    },
+    /**
+     * 当前选中 list 是否已收藏（驱动 TodoListPanel 工具栏 star 按钮的实心/空心态）。
+     * 从 allTodoLists 解析，toggle 后 allTodoLists 刷新即同步。
+     */
+    currentListIsFavorite() {
+      if (!this.selectedListId) return false;
+      const found = this.allTodoLists.find((l) => l.id === this.selectedListId);
+      return !!found?.is_favorite;
     },
     /**
      * 合并 category + todo_list 为统一树（D1）。
@@ -407,6 +418,7 @@ export default {
         await this.loadAllTodoLists();
         // 标签 tab 下段的项目名来自独立查询，重命名后需要手动刷新才能同步
         await this.$refs.sidebar?.refreshLabelLists?.();
+        await this.$refs.sidebar?.refreshFavoriteLists?.();
         ElMessage.success('已重命名');
       } catch (err) {
         ElMessage.error(err.message || '重命名失败');
@@ -421,6 +433,7 @@ export default {
         await this.loadAllTodoLists();
         // 删除后同步刷新标签 tab 下段（被删项目不再属于任何标签关联）
         await this.$refs.sidebar?.refreshLabelLists?.();
+        await this.$refs.sidebar?.refreshFavoriteLists?.();
         if (this.selectedListId === id) {
           this.selectedListId = null;
           this.selectedItemId = null;
@@ -472,6 +485,23 @@ export default {
         await window.todoApp.updateTodoItemStatus(id, status);
       } catch (err) {
         ElMessage.error(err.message || '状态更新失败');
+      }
+    },
+    /**
+     * 切换当前 todo_list 的收藏态（工具栏 star 按钮触发）。
+     * 调 IPC 翻转后刷新 allTodoLists（star 按钮态由 currentListIsFavorite 派生），
+     * 并同步刷新 sidebar 收藏 tab 列表。
+     *
+     * @param {number} listId - 目标 todo_list id（来自 TodoListPanel.emit，即当前选中 list）
+     */
+    async handleToggleFavorite(listId) {
+      if (!listId) return;
+      try {
+        await window.todoApp.toggleFavoriteTodoList(listId);
+        await this.loadAllTodoLists();
+        await this.$refs.sidebar?.refreshFavoriteLists?.();
+      } catch (err) {
+        ElMessage.error(err?.message || '收藏状态更新失败');
       }
     },
     /**
@@ -527,6 +557,7 @@ export default {
       await Promise.all([this.loadAllTodoLists(), this.loadLabels()]);
       // list 的标签关联可能变化（增/删标签），同步刷新 sidebar 标签 tab 下段
       await this.$refs.sidebar?.refreshLabelLists?.();
+      await this.$refs.sidebar?.refreshFavoriteLists?.();
     },
     /**
      * 子组件请求打开文档：切换到编辑器视图。

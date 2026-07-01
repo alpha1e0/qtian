@@ -83,6 +83,16 @@ export function registerTodoAppHandlers(todoAppService: TodoAppService): void {
     return list.restore(id);
   });
 
+  // ===== TodoList 收藏 =====
+  ipcMain.handle(IPC_CHANNELS.TODO_TOGGLE_FAVORITE, async (_e, id: number) => {
+    logger.info(`Toggle favorite: id=${id}`);
+    return list.toggleFavorite(id);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.TODO_LIST_FAVORITES, async () => {
+    return list.listFavorites();
+  });
+
   // ===== TodoList 导入/导出 JSON =====
   // 主进程聚合 dialog + fs + exchange service，渲染进程只调单一 IPC。
   // 用户取消对话框时返回 null，渲染层静默处理。

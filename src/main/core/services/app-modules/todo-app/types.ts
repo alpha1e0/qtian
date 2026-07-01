@@ -83,6 +83,8 @@ export interface TodoList {
   category_id: number | null;
   /** 标签 ID 列表（来自 todo_list_label 多对多） */
   label_ids: number[];
+  /** 是否收藏（用户置顶常用项目；sidebar 收藏 tab 聚合此标记） */
+  is_favorite: boolean;
   created_at: number;
   updated_at: number;
   /** 软删除时间（null 表示未删除） */

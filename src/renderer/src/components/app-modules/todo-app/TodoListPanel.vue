@@ -41,6 +41,21 @@
               >
                 <el-icon><Filter /></el-icon>
               </el-button>
+              <!--
+                收藏按钮：star 实心 = 已收藏，空心 = 未收藏。
+                点击切换当前 list 收藏态（emit toggle-favorite 由父组件走 IPC）。
+              -->
+              <el-button
+                text
+                class="toolbar-icon-btn favorite-btn"
+                :class="{ 'is-favorite': isFavorite }"
+                :title="favoriteButtonTitle"
+                :aria-label="favoriteButtonTitle"
+                :aria-pressed="isFavorite"
+                @click="$emit('toggle-favorite', listId)"
+              >
+                <el-icon><StarFilled v-if="isFavorite" /><Star v-else /></el-icon>
+              </el-button>
             </el-button-group>
           </div>
         </div>
@@ -96,7 +111,8 @@
       <el-form label-position="top" size="small" class="filter-form">
         <!--
           优先级：el-check-tag 多选；el-check-tag 无 v-model，靠 toggleDraftPriority
-          维护 draft 数组。选中态着色与新建条目 priority-radio 完全一致
+          维护 draft 数组。未选中态为 light 效果（浅色语义底 + 语义色文字），选中态
+          切换为 dark 效果（实色底 + 白字），配色与新建条目 priority-radio 同源
           （urgent=danger / important=warning / normal=accent / hint=muted）。
         -->
         <el-form-item label="优先级">
@@ -152,23 +168,26 @@
 </template>
 
 <script>
-import { Plus, Filter } from '@element-plus/icons-vue';
+import { Plus, Filter, Star, StarFilled } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import TodoItemRow from './TodoItemRow.vue';
 import TodoCreateDialog from './TodoCreateDialog.vue';
 
 export default {
   name: 'TodoListPanel',
-  components: { Plus, Filter, TodoItemRow, TodoCreateDialog },
+  components: { Plus, Filter, Star, StarFilled, TodoItemRow, TodoCreateDialog },
   // select-list：顶部 list 名被点击时触发，
   // 父组件切到右侧 list-detail 视图（中间 item 树保留或挂载）。
   // delete-item：行内删除按钮触发，交由父组件走确认 + IPC + 刷新流程。
-  emits: ['select-item', 'toggle-status', 'select-list', 'delete-item'],
+  // toggle-favorite：工具栏收藏按钮触发，交由父组件走 IPC + 刷新。
+  emits: ['select-item', 'toggle-status', 'select-list', 'delete-item', 'toggle-favorite'],
   props: {
     // 受控：当前 todo_list id（由父组件 selectedListId 驱动）
     listId: { type: Number, default: null },
     // 受控：list 名（由父组件从 allTodoLists 解析，避免本组件再持有 todoLists）
     listName: { type: String, default: '' },
+    // 受控：当前 list 是否已收藏（驱动工具栏 star 按钮的实心/空心态）
+    isFavorite: { type: Boolean, default: false },
     selectedItemId: { type: Number, default: null },
   },
   data() {
@@ -212,6 +231,10 @@ export default {
     /** 筛选按钮的悬浮提示：激活时附加（已启用） */
     filterButtonTitle() {
       return this.isFilterActive ? '筛选（已启用）' : '筛选';
+    },
+    /** 收藏按钮的悬浮提示：按当前态给出动作语义（收藏 / 取消收藏） */
+    favoriteButtonTitle() {
+      return this.isFavorite ? '取消收藏' : '收藏';
     },
     /**
      * 按当前筛选对 itemTree 递归过滤后的视图。
@@ -478,6 +501,18 @@ export default {
   color: var(--accent, #6366f1);
 }
 
+/*
+ * 收藏按钮：已收藏时用暖金色强调（区别于筛选的 indigo accent），
+ * 让用户一眼区分"收藏"与"筛选"两类按钮态。未收藏时沿用通用 muted 态。
+ */
+.favorite-btn.is-favorite {
+  color: #f5a623;
+}
+
+.favorite-btn.is-favorite:hover {
+  color: #e09800;
+}
+
 .toolbar-actions :deep(.el-button) {
   padding: 8px;
 }
@@ -694,9 +729,10 @@ export default {
 }
 
 /*
- * 优先级 check-tag 组：未选中 indigo 中性底，选中态按优先级着色，
- * 配色与 TodoCreateDialog priority-radio 完全一致（urgent=danger / important=warning /
- * normal=accent / hint=muted），用户在两个对话框看到同一套优先级视觉语言。
+ * 优先级 check-tag 组：未选中态为 el-tag effect="light" 风格（浅色语义底 + 语义色文字），
+ * 选中态切换为 effect="dark" 风格（实色底 + 白字），与 TodoCreateDialog priority-radio
+ * 同源配色（urgent=danger / important=warning / normal=accent / hint=muted），
+ * 让用户在两个对话框看到同一套优先级视觉语言。
  */
 .todo-filter-dialog .priority-tag-group {
   display: flex;
@@ -710,20 +746,49 @@ export default {
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  border: 1px solid rgba(99, 102, 241, 0.16);
-  background: rgba(99, 102, 241, 0.04);
-  color: var(--text-on-dark-secondary, #5f5e6f);
   transition: all 0.18s ease;
   cursor: pointer;
 }
 
-.todo-filter-dialog .el-check-tag:hover {
-  background: rgba(99, 102, 241, 0.10);
-  border-color: rgba(99, 102, 241, 0.28);
-  color: var(--text-on-dark, #1f1e2e);
+/* 未选中态（light 效果）：浅色语义底 + 语义色文字 */
+.todo-filter-dialog .prio-tag.prio-urgent {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.24);
+  color: var(--color-danger, #ef4444);
+}
+.todo-filter-dialog .prio-tag.prio-urgent:hover {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.36);
+}
+.todo-filter-dialog .prio-tag.prio-important {
+  background: rgba(245, 158, 11, 0.10);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  color: var(--color-warning, #f59e0b);
+}
+.todo-filter-dialog .prio-tag.prio-important:hover {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(245, 158, 11, 0.40);
+}
+.todo-filter-dialog .prio-tag.prio-normal {
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.24);
+  color: var(--accent, #6366f1);
+}
+.todo-filter-dialog .prio-tag.prio-normal:hover {
+  background: rgba(99, 102, 241, 0.14);
+  border-color: rgba(99, 102, 241, 0.36);
+}
+.todo-filter-dialog .prio-tag.prio-hint {
+  background: rgba(144, 142, 159, 0.12);
+  border: 1px solid rgba(144, 142, 159, 0.30);
+  color: var(--text-on-dark-muted, #908e9f);
+}
+.todo-filter-dialog .prio-tag.prio-hint:hover {
+  background: rgba(144, 142, 159, 0.18);
+  border-color: rgba(144, 142, 159, 0.42);
 }
 
-/* 选中态：分别按紧急 / 重要 / 普通 / 提示语义着色（与新建条目 priority-radio 同源） */
+/* 选中态（dark 效果）：分别按紧急 / 重要 / 普通 / 提示语义实色着色（与新建条目 priority-radio 同源） */
 .todo-filter-dialog .prio-tag.prio-urgent.is-checked {
   background: var(--color-danger, #ef4444);
   border-color: var(--color-danger, #ef4444);
