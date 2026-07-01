@@ -2,7 +2,7 @@
   <div class="todo-category-tree">
     <div class="tree-header">
       <span class="header-title">分类</span>
-      <el-button text @click="handleCreateRoot" title="新建根分类">
+      <el-button text @click="handleCreateRoot" title="新建根分类" aria-label="新建根分类">
         <el-icon><FolderAdd /></el-icon>
       </el-button>
     </div>

@@ -21,6 +21,7 @@
         class="expand-arrow"
         :class="{ 'is-expanded': expanded }"
         :title="expanded ? '折叠' : '展开'"
+        :aria-label="expanded ? '折叠子条目' : '展开子条目'"
         @click.stop="expanded = !expanded"
       >
         <ArrowRight />

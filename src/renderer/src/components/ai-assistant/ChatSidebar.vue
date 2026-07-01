@@ -20,10 +20,10 @@
         <div class="history-meta">
           <span class="history-time" v-if="item.updated_at">{{ formatTime(item.updated_at) }}</span>
           <span class="history-actions">
-            <el-icon class="action-icon" @click.stop="openEditDialog(item)" title="编辑标题">
+            <el-icon class="action-icon" @click.stop="openEditDialog(item)" title="编辑标题" aria-label="编辑对话标题">
               <Edit />
             </el-icon>
-            <el-icon class="action-icon" @click.stop="confirmDelete(item)" title="删除对话">
+            <el-icon class="action-icon" @click.stop="confirmDelete(item)" title="删除对话" aria-label="删除此对话">
               <Delete />
             </el-icon>
           </span>

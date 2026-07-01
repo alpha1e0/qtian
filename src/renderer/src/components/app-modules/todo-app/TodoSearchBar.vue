@@ -87,6 +87,8 @@
               size="small"
               text
               class="history-delete"
+              title="删除此搜索历史"
+              aria-label="删除此搜索历史"
               @click.stop="handleDeleteHistory(h.id)"
             >
               <el-icon><Close /></el-icon>

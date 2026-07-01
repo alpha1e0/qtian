@@ -33,22 +33,22 @@
       <!-- 操作按钮 -->
       <div class="message-actions" v-if="message.role === 'user' || message.role === 'assistant'">
         <el-tooltip content="复制" placement="top" :show-after="500">
-          <el-button link size="small" @click="handleCopy">
+          <el-button link size="small" aria-label="复制" @click="handleCopy">
             <el-icon><DocumentCopy /></el-icon>
           </el-button>
         </el-tooltip>
         <el-tooltip v-if="message.role === 'user'" content="编辑" placement="top" :show-after="500">
-          <el-button link size="small" @click="startEdit">
+          <el-button link size="small" aria-label="编辑" @click="startEdit">
             <el-icon><Edit /></el-icon>
           </el-button>
         </el-tooltip>
         <el-tooltip v-if="message.role === 'assistant'" content="重新生成" placement="top" :show-after="500">
-          <el-button link size="small" @click="$emit('regenerate')">
+          <el-button link size="small" aria-label="重新生成" @click="$emit('regenerate')">
             <el-icon><RefreshRight /></el-icon>
           </el-button>
         </el-tooltip>
         <el-tooltip content="删除" placement="top" :show-after="500">
-          <el-button link size="small" @click="$emit('delete-message', messageIndex)">
+          <el-button link size="small" aria-label="删除" @click="$emit('delete-message', messageIndex)">
             <el-icon><Delete /></el-icon>
           </el-button>
         </el-tooltip>

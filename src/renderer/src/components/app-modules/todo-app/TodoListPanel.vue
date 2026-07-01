@@ -26,6 +26,7 @@
                 text
                 class="toolbar-icon-btn"
                 title="新建待办条目"
+                aria-label="新建待办条目"
                 @click="handleCreateRootItem"
               >
                 <el-icon><Plus /></el-icon>
@@ -35,6 +36,7 @@
                 class="toolbar-icon-btn"
                 :class="{ 'is-active': isFilterActive }"
                 :title="filterButtonTitle"
+                :aria-label="filterButtonTitle"
                 @click="openFilterDialog"
               >
                 <el-icon><Filter /></el-icon>

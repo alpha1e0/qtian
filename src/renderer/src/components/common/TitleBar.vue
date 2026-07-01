@@ -33,12 +33,12 @@
 
     <!-- 窗口控制按钮 -->
     <div class="titlebar-controls">
-      <button class="ctrl-btn" @click="handleMinimize" title="最小化">
+      <button class="ctrl-btn" @click="handleMinimize" title="最小化" aria-label="最小化">
         <svg width="12" height="12" viewBox="0 0 12 12">
           <rect y="5" width="12" height="1.5" fill="currentColor" />
         </svg>
       </button>
-      <button v-if="!isQuickMode" class="ctrl-btn" @click="handleMaximize" title="最大化">
+      <button v-if="!isQuickMode" class="ctrl-btn" @click="handleMaximize" title="最大化" aria-label="最大化">
         <svg v-if="isMaximized" width="12" height="12" viewBox="0 0 12 12">
           <rect x="2" y="0" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.2" />
           <rect y="3" width="9" height="9" fill="white" stroke="currentColor" stroke-width="1.2" />
@@ -47,7 +47,7 @@
           <rect x="0.5" y="0.5" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.2" />
         </svg>
       </button>
-      <button class="ctrl-btn ctrl-btn-close" @click="handleClose" title="关闭">
+      <button class="ctrl-btn ctrl-btn-close" @click="handleClose" title="关闭" aria-label="关闭">
         <svg width="12" height="12" viewBox="0 0 12 12">
           <line x1="1" y1="1" x2="11" y2="11" stroke="currentColor" stroke-width="1.4" />
           <line x1="11" y1="1" x2="1" y2="11" stroke="currentColor" stroke-width="1.4" />
