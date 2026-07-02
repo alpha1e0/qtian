@@ -80,7 +80,11 @@
           </el-form>
         </div>
 
-        <!-- 文档区域（参考 TodoItemDetail .docs-section） -->
+        <!--
+          文档区域（标签云展示，与 TodoItemDetail .doc-cloud 视觉一致）：
+          docs 以 flex-wrap chip 形式呈现，点击单条拉起抽屉编辑。
+          更新时间作为 chip 的次级徽标（hover tooltip 不显示，直接小字徽章贴右侧）。
+        -->
         <div class="docs-section">
           <div class="docs-header">
             <span class="section-title">项目文档</span>
@@ -89,16 +93,22 @@
             </el-button>
           </div>
           <div v-if="documents.length === 0" class="empty-hint">暂无文档</div>
-          <div
-            v-for="doc in documents"
-            :key="doc.id"
-            class="doc-item"
-            :title="doc.name"
-            @click="handleOpenDoc(doc)"
-          >
-            <el-icon><Document /></el-icon>
-            <span class="doc-name">{{ doc.name }}</span>
-            <span class="doc-updated">{{ formatTime(doc.updated_at) }}</span>
+          <div v-else class="doc-cloud">
+            <div
+              v-for="doc in documents"
+              :key="doc.id"
+              class="doc-chip"
+              role="button"
+              tabindex="0"
+              :title="`打开「${doc.name}」（更新于 ${formatTime(doc.updated_at)}）`"
+              :aria-label="`打开文档 ${doc.name}`"
+              @click="handleOpenDoc(doc)"
+              @keyup.enter="handleOpenDoc(doc)"
+            >
+              <el-icon><Document /></el-icon>
+              <span class="doc-chip-name">{{ doc.name }}</span>
+              <span class="doc-chip-meta">{{ formatTime(doc.updated_at) }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -554,50 +564,63 @@ export default {
   letter-spacing: 0.18em;
 }
 
-/* 文档卡片：浮起的档案条目（含更新时间） */
-.doc-item {
+/*
+ * 文档标签云：flex-wrap chip 布局（与 TodoItemDetail .doc-cloud 视觉一致）。
+ * 更新时间作为 chip 内嵌的次级徽标，让用户在云视图中也能识别最近编辑的文档。
+ */
+.doc-cloud {
   display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.doc-chip {
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  border-radius: 10px;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
   cursor: pointer;
-  font-size: 13px;
-  background: rgba(99, 102, 241, 0.04);
-  border: 1px solid rgba(99, 102, 241, 0.08);
-  transition: all 0.18s ease;
-  margin-bottom: 8px;
-  color: var(--text-on-dark, #e4e4ed);
+  user-select: none;
+  background: rgba(99, 102, 241, 0.06);
+  color: var(--text-on-dark-secondary);
+  border: 1px solid rgba(99, 102, 241, 0.20);
+  transition: all 0.2s ease;
 }
 
-.doc-item:hover {
-  background: rgba(99, 102, 241, 0.10);
-  border-color: rgba(99, 102, 241, 0.22);
+.doc-chip:hover,
+.doc-chip:focus-visible {
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--text-on-dark);
+  border-color: rgba(99, 102, 241, 0.36);
   transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.10);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.10);
+  outline: none;
 }
 
-.doc-item :deep(.el-icon) {
+.doc-chip :deep(.el-icon) {
   color: var(--accent);
   flex-shrink: 0;
 }
 
-.doc-name {
-  flex: 1;
+.doc-chip-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  letter-spacing: 0.01em;
 }
 
-.doc-updated {
+.doc-chip-meta {
   font-size: 10px;
   color: var(--text-on-dark-muted);
   font-feature-settings: 'tnum';
-  flex-shrink: 0;
-  letter-spacing: 0.08em;
-  padding: 2px 7px;
+  letter-spacing: 0.06em;
+  padding: 1px 6px;
   border-radius: 999px;
-  background: rgba(99, 102, 241, 0.06);
+  background: rgba(99, 102, 241, 0.08);
+  flex-shrink: 0;
 }
 </style>

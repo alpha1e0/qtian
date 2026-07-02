@@ -82,21 +82,44 @@
     </div>
 
     <!--
-      快捷输入框（固定底部，不随滚动消失）：
-      左侧路径前缀（蓝色，每级取前 2 字符）标识新条目落地位置——
-      选中条目时为其子项，未选中时为根级；Enter 直接创建。
-      输入结尾可附 #4/#3/#2/#1 控制优先级（main 侧解析，见 createTodoItemQuick）。
+      快捷输入框（Aurora Library 捕获栏，固定底部不随滚动消失）：
+      浮于纸面的 capture 行——三段式：
+        ① 路径胶囊（accent-soft 底 + 文件夹图标，每级取前 2 字符）标识落地层级
+        ② 输入框（无边框，leading ＋，Enter 直接创建；结尾 #N 控制优先级）
+        ③ 优先级图例（4 个语义色点，点击即把 #N 追加到输入框，替代长占位符教学）
     -->
     <div v-if="listId" class="quick-input-bar">
-      <span class="quick-input-path" :title="quickInputPathFull">{{ quickInputPathPrefix }}</span>
+      <span class="quick-path-chip" :title="quickInputPathFull">
+        <el-icon class="quick-path-glyph"><FolderOpened /></el-icon>
+        <span class="quick-path-text">{{ quickInputPathPrefix }}</span>
+      </span>
+
       <el-input
+        ref="quickInput"
         v-model="quickInputText"
         class="quick-input-field"
         size="small"
-        :placeholder="quickInputPlaceholder"
+        placeholder="新建待办条目…"
         aria-label="快捷创建待办条目"
         @keyup.enter="handleQuickCreate"
-      />
+      >
+        <template #prefix>
+          <el-icon class="quick-input-plus"><Plus /></el-icon>
+        </template>
+      </el-input>
+
+      <div class="quick-priority-legend" role="group" aria-label="优先级快捷标记">
+        <span
+          v-for="p in priorityLegend"
+          :key="p.code"
+          class="legend-dot"
+          :class="`legend-${p.value}`"
+          :title="`${p.code} → ${p.label}`"
+          :aria-label="`设为${p.label}优先级 (${p.code})`"
+          role="button"
+          @click="appendPriorityCode(p.code)"
+        >{{ p.code }}</span>
+      </div>
     </div>
 
     <!--
@@ -186,14 +209,14 @@
 </template>
 
 <script>
-import { Plus, Filter, Star, StarFilled } from '@element-plus/icons-vue';
+import { Plus, Filter, Star, StarFilled, FolderOpened } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import TodoItemRow from './TodoItemRow.vue';
 import TodoCreateDialog from './TodoCreateDialog.vue';
 
 export default {
   name: 'TodoListPanel',
-  components: { Plus, Filter, Star, StarFilled, TodoItemRow, TodoCreateDialog },
+  components: { Plus, Filter, Star, StarFilled, FolderOpened, TodoItemRow, TodoCreateDialog },
   // select-list：顶部 list 名被点击时触发，
   // 父组件切到右侧 list-detail 视图（中间 item 树保留或挂载）。
   // delete-item：行内删除按钮触发，交由父组件走确认 + IPC + 刷新流程。
@@ -277,9 +300,14 @@ export default {
       if (!this.selectedItemId) return null;
       return this.findItemPath(this.itemTree, this.selectedItemId);
     },
-    /** 快捷输入框 placeholder：提示 #N 控制符语法 */
-    quickInputPlaceholder() {
-      return '输入后回车创建，#4紧急 #3重要 #2普通 #1提示';
+    /**
+     * 优先级图例（快捷输入框右侧 4 个语义色点）。
+     * 复用 priorityOptions 顺序，附 #N 控制符；点击图例点即把对应 #N 追加到输入框，
+     * 把"记住语法"变成"点一下即可"。
+     */
+    priorityLegend() {
+      const codes = { urgent: '#4', important: '#3', normal: '#2', hint: '#1' };
+      return this.priorityOptions.map((p) => ({ ...p, code: codes[p.value] }));
     },
     /**
      * 按当前筛选对 itemTree 递归过滤后的视图。
@@ -457,6 +485,17 @@ export default {
         if (sub) return [node, ...sub];
       }
       return null;
+    },
+    /**
+     * 点击优先级图例：把 #N 追加到输入框结尾（替换结尾已有的 #N），并聚焦输入框。
+     * 让用户无需记忆语法——点击彩色色点即可设定优先级。
+     */
+    appendPriorityCode(code) {
+      const current = (this.quickInputText || '').trimEnd();
+      // 替换结尾已存在的 #1-#4，保证最终仅保留最新选择
+      const stripped = current.replace(/\s*#[1-4]\s*$/, '');
+      this.quickInputText = `${stripped} ${code}`.replace(/^\s+/, '');
+      this.$refs.quickInput?.focus?.();
     },
     async handleToggleStatus(payload) {
       this.$emit('toggle-status', payload);
@@ -642,37 +681,145 @@ export default {
 }
 
 /*
- * 快捷输入框（固定底部）：与 .list-panel-scroll 同为 .todo-list-panel-inner
- * 的 flex 子项；scroll 区 flex:1 占满，本条 flex-shrink:0 钉在底部不随滚动消失。
- * 左侧蓝色路径前缀 + 右侧输入框，整体顶部加分隔线与上方列表区隔开。
+ * 快捷输入框（Aurora Library 捕获栏）
+ * -----------------------------------------------------------------------------
+ * 设计语言：浮于纸面的 capture 行。背景用卡片白（--surface-card #fff）而非深色玻璃，
+ * 顶部一根发线 + 一道极淡上投阴影，让整条"浮"在米白纸面上方，视线自然落到此处。
+ * 三段式：路径胶囊 ｜ 无边框输入 ｜ 优先级图例，间隔靠 hairline divider 而非 gap，
+ * 视觉更克制、编辑级。
  */
 .quick-input-bar {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 18px 14px;
-  border-top: 1px solid rgba(99, 102, 241, 0.12);
-  background: rgba(20, 20, 32, 0.55);
-  backdrop-filter: blur(6px);
+  gap: 12px;
+  padding: 11px 18px;
+  background: var(--surface-card, #ffffff);
+  border-top: 1px solid var(--border-light, rgba(0, 0, 0, 0.06));
+  box-shadow: 0 -8px 22px -14px rgba(17, 18, 32, 0.14);
+  position: relative;
 }
 
-/* 路径前缀：accent 蓝、等宽风格，标识新条目落地层级；超长省略 */
-.quick-input-path {
+/*
+ * 路径胶囊：accent-soft 底的圆角胶囊，accent-text 文字 + 文件夹图标，
+ * 标识"新条目将落入此层级"。文字过窄时省略；与输入框之间用 gap 隔开即可。
+ */
+.quick-path-chip {
   flex-shrink: 0;
-  max-width: 45%;
-  color: var(--accent, #6366f1);
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 42%;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: var(--accent-soft, rgba(99, 102, 241, 0.1));
+  color: var(--accent-text, #4f46e5);
+  font-size: 11.5px;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
   white-space: nowrap;
+  overflow: hidden;
+}
+.quick-path-glyph {
+  flex-shrink: 0;
+  font-size: 12px;
+  opacity: 0.8;
+}
+.quick-path-text {
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+/*
+ * 输入框：移除 Element Plus 默认下划线/边框，做"无边框嵌入纸面"效果。
+ * leading ＋ 用 accent 色，呼应工具栏新建按钮，强化"录入"动作。
+ * 聚焦时不喧宾夺主——仅输入文字变深，不加描边光晕，保持编辑器般的克制。
+ */
 .quick-input-field {
   flex: 1;
   min-width: 0;
+}
+.quick-input-field :deep(.el-input__wrapper) {
+  background: transparent;
+  box-shadow: none !important;
+  padding: 0 4px;
+  border-radius: 0;
+}
+.quick-input-field :deep(.el-input__wrapper.is-focus),
+.quick-input-field :deep(.el-input__wrapper:hover) {
+  box-shadow: none !important;
+}
+.quick-input-field :deep(.el-input__inner) {
+  color: var(--text-on-dark, #1f1e2e);
+  font-size: 13.5px;
+  letter-spacing: 0.01em;
+  height: 30px;
+  line-height: 30px;
+}
+.quick-input-field :deep(.el-input__inner::placeholder) {
+  color: var(--text-on-dark-muted, #908e9f);
+  opacity: 0.65;
+  font-style: italic;
+}
+.quick-input-plus {
+  color: var(--accent, #6366f1);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/*
+ * 优先级图例：4 个语义色点（urgent 红 / important 琥珀 / normal 靛 / hint 灰）。
+ * 双重职责——既教学 #N 语法，又是可点击的快捷输入：点击即把 #N 追加到输入框。
+ * 默认半透明、克制；hover 抬升 + 全色，编辑级细腻反馈。
+ * 与左侧之间用 hairline divider 划界，避免与输入文字粘连。
+ */
+.quick-priority-legend {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border-light, rgba(0, 0, 0, 0.06));
+}
+.legend-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 6px;
+  font-family: var(--font-mono, 'Cascadia Code', Consolas, monospace);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  opacity: 0.5;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+.legend-dot:hover {
+  opacity: 1;
+  transform: translateY(-1px);
+}
+.legend-dot:active {
+  transform: translateY(0);
+}
+.legend-urgent {
+  color: var(--color-danger, #ef4444);
+  background: rgba(239, 68, 68, 0.1);
+}
+.legend-important {
+  color: var(--color-warning, #f59e0b);
+  background: rgba(245, 158, 11, 0.12);
+}
+.legend-normal {
+  color: var(--accent, #6366f1);
+  background: var(--accent-soft, rgba(99, 102, 241, 0.1));
+}
+.legend-hint {
+  color: var(--text-on-dark-muted, #908e9f);
+  background: rgba(144, 142, 159, 0.12);
 }
 
 /*

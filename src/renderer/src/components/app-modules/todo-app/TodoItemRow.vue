@@ -28,7 +28,7 @@
       </el-icon>
       <span v-else class="expand-arrow-placeholder" />
 
-      <span class="item-title" :class="{ done: item.status === 'done' }">{{ item.title }}</span>
+      <span class="item-title" :class="{ done: item.status === 'done', abandoned: item.status === 'abandoned' }">{{ item.title }}</span>
 
       <!-- 右侧右对齐：子条目数量、进度 -->
       <div class="item-tail">
@@ -240,6 +240,12 @@ export default {
   text-decoration: line-through;
   text-decoration-color: rgba(31, 30, 46, 0.45);
   opacity: 0.55;
+}
+
+/* 已放弃：文字置灰弱化，区别于已完成的删除线效果 */
+.item-title.abandoned {
+  color: var(--text-on-dark-muted, #8b8aa0);
+  opacity: 0.6;
 }
 
 /*

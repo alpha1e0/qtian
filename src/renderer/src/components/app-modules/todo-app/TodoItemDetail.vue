@@ -110,7 +110,11 @@
           </el-form-item>
         </el-form>
 
-        <!-- 文档区域 -->
+        <!--
+          文档区域（标签云展示）：
+          docs 以 flex-wrap chip 形式呈现，沿用 TodoLabelCloud 视觉语言，
+          让"关联文档"作为可快速扫视的入口集合，点击单条拉起抽屉编辑。
+        -->
         <div class="docs-section">
           <div class="docs-header">
             <span class="section-title">关联文档</span>
@@ -119,14 +123,21 @@
             </el-button>
           </div>
           <div v-if="documents.length === 0" class="empty-hint">暂无文档</div>
-          <div
-            v-for="doc in documents"
-            :key="doc.id"
-            class="doc-item"
-            @click="handleOpenDoc(doc)"
-          >
-            <el-icon><Document /></el-icon>
-            <span class="doc-name">{{ doc.name }}</span>
+          <div v-else class="doc-cloud">
+            <div
+              v-for="doc in documents"
+              :key="doc.id"
+              class="doc-chip"
+              role="button"
+              tabindex="0"
+              :title="`打开「${doc.name}」`"
+              :aria-label="`打开文档 ${doc.name}`"
+              @click="handleOpenDoc(doc)"
+              @keyup.enter="handleOpenDoc(doc)"
+            >
+              <el-icon><Document /></el-icon>
+              <span class="doc-chip-name">{{ doc.name }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -804,38 +815,54 @@ export default {
   letter-spacing: 0.18em;
 }
 
-/* 文档卡片：浮起的档案条目 */
-.doc-item {
+/*
+ * 文档标签云：flex-wrap chip 布局，沿用 TodoLabelCloud 视觉语言。
+ * 每个 chip = 文档入口（icon + name），点击拉起编辑抽屉。
+ * 与原 .doc-item 卡片列表的区别：横向流式排列，单位面积信息密度更高。
+ */
+.doc-cloud {
   display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.doc-chip {
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  border-radius: 8px;
+  gap: 5px;
+  max-width: 100%;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
   cursor: pointer;
-  font-size: 13px;
-  background: rgba(99, 102, 241, 0.04);
-  border: 1px solid rgba(99, 102, 241, 0.08);
-  transition: all 0.18s ease;
-  margin-bottom: 6px;
-  color: var(--text-on-dark, #e4e4ed);
+  user-select: none;
+  background: rgba(99, 102, 241, 0.06);
+  color: var(--text-on-dark-secondary);
+  border: 1px solid rgba(99, 102, 241, 0.20);
+  transition: all 0.2s ease;
 }
 
-.doc-item:hover {
-  background: rgba(99, 102, 241, 0.10);
-  border-color: rgba(99, 102, 241, 0.22);
+.doc-chip:hover,
+.doc-chip:focus-visible {
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--text-on-dark);
+  border-color: rgba(99, 102, 241, 0.36);
   transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.10);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.10);
+  outline: none;
 }
 
-.doc-item :deep(.el-icon) {
+.doc-chip :deep(.el-icon) {
   color: var(--accent);
+  flex-shrink: 0;
 }
 
-.doc-name {
+.doc-chip-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  letter-spacing: 0.01em;
 }
 
 /* tab toggle：复用 sidebar 的 .view-toggle 编辑级风格 */

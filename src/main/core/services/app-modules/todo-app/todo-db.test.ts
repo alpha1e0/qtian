@@ -64,11 +64,11 @@ describe('TodoDb', () => {
 
     it('通过 DBManager 可插入并查询 todo_category', () => {
       const mgr = db.getDBManager();
-      mgr.insert(
+      const result = mgr.insert(
         'INSERT INTO todo_category (name, parent_id, created_at, updated_at, deleted_at) VALUES (?, ?, ?, ?, NULL)',
         ['test', null, 1, 1],
       );
-      const row = mgr.get('SELECT id, name FROM todo_category WHERE id = ?', [1]);
+      const row = mgr.get('SELECT id, name FROM todo_category WHERE id = ?', [result.lastRowid]);
       expect(row).toBeDefined();
       expect(row.name).toBe('test');
     });
