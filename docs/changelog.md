@@ -1,5 +1,84 @@
 # Changelog
 
+## [1.0.0] 2026-07-02（"无分类"待办项目 + sidebar tree-header 优化）
+
+**User**: todo-app 支持"无分类"待办项目（`category_id=NULL`，sidebar 分类树顶部显示"无分类"虚拟节点）；同时优化 `TodoCategoryTree` tree-header：去掉"分类"文本、操作图标居中、新增"创建待办项目 / 全部展开 / 全部折叠"按钮。
+
+**Summary**:
+
+约定 `todo_list.category_id IS NULL` 为"无分类"（外键允许 NULL，无需在 `todo_category` 表插入系统行）。sidebar 分类树顶部由前端 `TodoAppPage.mergedTree` computed 拼接一个虚拟节点 `{ id:0, name:'无分类', children:[未分类 todo_list...] }`，IPC 边界做 id 转换（`id=0` ↔ `null`）。同步优化 tree-header：去掉"分类"文本，4 个图标按钮（新建根分类 / 新建待办项目 / 全部展开 / 全部折叠）居中排列；"新建待办项目"在未选中分类时默认在"无分类"下创建。
+
+### 改动
+
+- **`data/todo-app.sql`**：`todo_list.category_id` 字段注释更新为 `NULL = 无分类`
+- **`src/main/core/services/app-modules/todo-app/todo-list.service.ts`**：保持 `list(null)` 查 `WHERE category_id IS NULL`；`create` 默认 `category_id=null`（service 层无任何"哨兵"逻辑）
+- **`src/renderer/src/components/app-modules/todo-app/TodoAppPage.vue`**：
+  - `mergedTree` computed 在真实 category 树之前拼接虚拟"无分类"节点（`id:0`，children 为 `category_id == null` 的 todo_list）
+  - `handleCreateListUnderCategory` 将 `categoryId===0` 转为 `null` 传给 `createTodoList` IPC
+  - `currentNodeKey` / `handleSelectCategory` / 删除 handler 使用 `!= null` 判断（允许 id=0 通过）
+- **`src/renderer/src/components/app-modules/todo-app/TodoCategoryTree.vue`**：
+  - tree-header 去掉"分类"文本，4 个图标按钮居中（`FolderAdd` / `DocumentAdd` / `Expand` / `Fold`）
+  - 新增 `handleCreateListFromHeader`（未选中分类时默认在虚拟"无分类"节点下创建）
+  - 新增 `expandAll` / `collapseAll` / `setAllExpanded` 方法，遍历 `tree.store.root`
+  - 虚拟节点（`data.id === 0`）：`Files` 图标、空右键菜单、`.is-uncategorized` 弱化样式
+- **`src/renderer/src/components/app-modules/todo-app/TodoCategoryDetail.vue`**：
+  - `loadDetail` 对 `categoryId===0` 直接构造静态详情（不查 backend），`listTodoLists(null)` 拉未分类列表计数
+  - `isUncategorized` computed + 名称输入框 `:disabled` + 提示文案
+- **`src/main/core/services/app-modules/todo-app/todo-category.service.test.ts`** / **`todo-list.service.test.ts`**：保持原断言不变（无哨兵相关用例）
+
+### 设计决策
+
+- **null vs 哨兵行**：先前曾尝试在 `todo_category` 表插入 `id=0` 哨兵行承载"无分类"，但 SQLite `INTEGER PRIMARY KEY AUTOINCREMENT` 会将显式 `id=0` 当作自增触发（实际存储为下一个自增值），导致外键约束失败。改用 `category_id=NULL` 方案：外键约束对 NULL 引用不校验存在性，规避该兼容性问题
+- **前端虚拟节点 vs 后端特殊行**：虚拟节点零迁移成本（无 schema 变更、无数据迁移），缺点是后端 `getTree()` 不返回该节点——通过 `TodoAppPage.mergedTree` computed 在前端补齐，IPC 边界做 id 转换即可
+- **id=0 作为前端标识**：真实 category 由 AUTOINCREMENT 生成，从 1 开始，故 id=0 不会与真实节点冲突，是安全的虚拟节点标识
+
+### 测试
+
+- todo-app 单元测试 268 个全部通过（`npx vitest run src/main/core/services/app-modules/todo-app/`）
+- 2 个 GlobalShortcutManager 失败用例与本次改动无关（Ctrl+Q 窗口隐藏/显示断言，属历史问题）
+
+## [1.0.0] 2026-07-02（关联文档抽屉化 + 标签云展示）
+
+**User**: todo-app 待办条目的"关联文档"优化：1. el-drawer 抽屉框（从右往左展开，占整个 app 页面 2/3）；2. detail 中"关联文档"由列表改为标签云；3. 使用 vditor 三方组件（含文本编辑、图片粘贴）；4. 图片展示走伪协议
+
+**Summary**:
+
+将原右栏 600px 固定宽的 `TodoDocumentEditor` 改造为 `el-drawer` 抽屉模式，从右往左展开覆盖 app 页面 2/3 宽度（`size: 66.6667%`，`direction: rtl`），并保留底层三栏的可交互性（`modal: false`）便于跨条目复制资料。同时把 `TodoItemDetail` / `TodoListDetail` 的"关联文档"由纵向 `.doc-item` 列表改为 flex-wrap chip 布局（`.doc-cloud` / `.doc-chip`），沿用 `TodoLabelCloud` 视觉语言（pill 圆角 + accent-soft 描边 + hover 抬升），提升单位面积信息密度与扫视效率。
+
+### 改动
+
+- **`TodoDocumentEditor.vue`（抽屉化重构）**
+  - 外层由 `<div class="todo-doc-editor">` 改为 `<el-drawer>`（`v-model:visible`、`size: 66.6667%`、`direction: rtl`、`modal: false`、`append-to-body`、`:with-header="false"` 自绘工具条）
+  - 新增 `visible` prop（v-model）+ `update:visible` emit；移除原 `back` emit（关闭按钮在自绘工具条内）
+  - vditor 初始化推迟到 `@opened` 事件，避免在隐藏容器上初始化（尺寸为 0）导致排版错乱
+  - 抽屉关闭时销毁 vditor + 停止自动保存（保留组件实例，再次打开时复用）
+  - 新增 `destroyEditor()` 公共方法，统一销毁逻辑；`handleKeyDown` 仅在 `visible` 时响应 Ctrl+S / Ctrl+R
+  - 抽屉打开期间切换 docId 时重新加载并初始化编辑器（搜索跳转 + 详情 chip 切换文档场景）
+  - 全局 unscoped 样式 `.todo-doc-drawer .el-drawer__body { padding: 0 }` 让编辑器贴边铺满
+- **`TodoAppPage.vue`（抽屉挂载 + 状态机瘦身）**
+  - 新增 `docDrawerVisible` state，挂载 `<TodoDocumentEditor>` 在 `.todo-app-page` 根级（脱离三栏布局约束）
+  - 移除 `rightPanelView === 'document-editor'` 分支与 `handleEditorBack` 方法
+  - `openDoc()` / `handleJumpToResult(document)` 改为置 `docDrawerVisible = true`
+  - 注：`.todo-item-detail-wide`（flex 0 0 600px）保留供 `TaskPanel` 使用
+- **`TodoItemDetail.vue` / `TodoListDetail.vue`（文档标签云）**
+  - 模板：`v-for doc-item` 列表 → `.doc-cloud` flex-wrap + `.doc-chip` 入口
+  - chip 含 `role="button"` / `tabindex="0"` / `aria-label` / `@keyup.enter` 键盘可达性
+  - `TodoListDetail` 的 chip 内嵌 `.doc-chip-meta`（更新时间徽标）保留次级信息
+  - CSS：删除 `.doc-item` / `.doc-name` / `.doc-updated`，新增 `.doc-cloud` / `.doc-chip` / `.doc-chip-name` / `.doc-chip-meta`，沿用 TodoLabelCloud 视觉（accent-soft pill + hover 抬升 + 描边增强）
+
+### 设计决策
+
+- **non-modal**：`modal: false` 保留对底层 detail 的可交互性，便于跨条目复制资料（与 qmin 全屏 md-editor 不同，qtian 的 todo-app 是三栏结构，用户编辑文档时通常需要参考右侧详情/左侧导航）
+- **抽屉 vs 右栏 600px**：抽屉覆盖 app 2/3 宽度（约 800-1000px），比原 600px 固定宽更宽裕，vditor 工具条不再拥挤
+- **vditor 初始化时机**：el-drawer 默认惰性渲染 body，且开合有过渡动画，`mounted` 时容器尺寸为 0 会导致 vditor 排版错乱，故推迟到 `@opened`
+- **图片伪协议**：沿用既有 `local-resource://`（`saveAttachment` / `saveAttachmentFromPath` 返回值），未引入 qmin 的 `local-resource-md://` 相对路径变体（qtian 暂无 md 文件迁移需求）
+- **标签云语义**：在文档场景下解读为"flex-wrap chip 入口集合"（与 TodoLabelCloud 一致），而非按内容长度加权——文档数量通常远少于标签词频，加权会让大小不一致反而难读
+
+### 测试
+
+- 现有 todo-app 单元测试 276 个全部通过（未触及 main 侧服务层）
+- 2 个 GlobalShortcutManager 失败用例与本次改动无关（Ctrl+Q 窗口隐藏/显示断言，属历史问题）
+
 ## [1.0.0] 2026-07-01（快捷输入框）
 
 **User**: todo-app 中间面板最下方增加固定快捷输入框，路径前缀（蓝色，每级 2 字符）+ 输入框，Enter 创建待办条目；结尾 `#4 #3 #2 #1` 控制优先级 urgent/important/normal/hint

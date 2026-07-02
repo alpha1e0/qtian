@@ -51,9 +51,16 @@
 
         <!-- 元素信息（可编辑） -->
         <div class="form-section">
+          <div v-if="isUncategorized" class="uncategorized-hint">
+            系统分类，不可重命名/删除
+          </div>
           <el-form label-position="top" size="small">
             <el-form-item label="名称">
-              <el-input v-model="formData.name" @blur="handleSave" />
+              <el-input
+                v-model="formData.name"
+                :disabled="isUncategorized"
+                @blur="handleSave"
+              />
             </el-form-item>
           </el-form>
         </div>
@@ -76,6 +83,9 @@ import { ElMessage } from 'element-plus';
  * 数据来源：无独立 getCategoryById IPC，沿用 sidebar 同源 getCategoryTree，
  * 本地 DFS 查找 id === categoryId 拿到 name/created_at/updated_at。
  * 直接子项目数 = listTodoLists(categoryId).length（不含子分类里的）。
+ *
+ * 特殊：categoryId=0 是前端虚拟"无分类"节点（后端无对应 category 行，
+ * 承载 category_id=null 的待办项目），用静态数据填充不查 backend。
  */
 export default {
   name: 'TodoCategoryDetail',
@@ -96,6 +106,16 @@ export default {
       saveStatusTimer: null,
     };
   },
+  computed: {
+    /**
+     * 当前是否为前端虚拟"无分类"节点（id=0）。
+     * 该节点为前端构造，后端无对应 category 行（category_id=null 的 list 统一展示在此节点下），
+     * 不可重命名/删除，详情面板以只读形式展示。
+     */
+    isUncategorized() {
+      return this.categoryId === 0;
+    },
+  },
   watch: {
     categoryId() {
       this.loadDetail();
@@ -112,10 +132,20 @@ export default {
     /**
      * 加载分类详情：getCategoryTree 后本地 DFS 查找当前节点。
      * 同步拉取直接子 todo_list 数量（listTodoLists(categoryId) 只返回直接子）。
+     *
+     * 特殊处理：categoryId=0 是前端虚拟"无分类"节点（后端无对应 category 行），
+     * 直接用静态数据填充，不查 backend；listTodoLists(null) 拉未分类列表。
      */
     async loadDetail() {
       this.loading = true;
       try {
+        // 虚拟"无分类"节点（id=0）：后端无对应行，直接构造静态详情
+        if (this.isUncategorized) {
+          this.formData = { name: '无分类', createdAt: null, updatedAt: null };
+          const lists = await window.todoApp.listTodoLists(null);
+          this.directChildListCount = Array.isArray(lists) ? lists.length : 0;
+          return;
+        }
         const tree = await window.todoApp.getCategoryTree();
         const node = this.findCategoryNode(tree, this.categoryId);
         if (node) {
@@ -159,6 +189,8 @@ export default {
      */
     async handleSave() {
       if (!this.formData) return;
+      // 虚拟节点不可改名（input disabled 已阻断，此处双保险）
+      if (this.isUncategorized) return;
       const name = (this.formData.name || '').trim();
       if (!name) {
         ElMessage.warning('分类名称不能为空');
@@ -394,6 +426,17 @@ export default {
   font-style: italic;
   text-align: center;
   padding: 32px 0;
+  letter-spacing: 0.02em;
+}
+
+/* 虚拟"无分类"系统提示：弱化样式，仅说明不可编辑 */
+.uncategorized-hint {
+  font-size: 12px;
+  color: var(--text-on-dark-muted, #8b8aa0);
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(99, 102, 241, 0.04);
   letter-spacing: 0.02em;
 }
 </style>

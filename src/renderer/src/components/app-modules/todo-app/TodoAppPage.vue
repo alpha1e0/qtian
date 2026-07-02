@@ -35,8 +35,8 @@
           - labelId 命中 → 标签关联条目列表
           - listId 命中 → item 树
           - 都为 null → 空状态（用户未在侧边栏选中 list）
-        item-detail / list-detail / category-detail / document-editor 等视图由
-        右侧列独立承载，中间列在这些视图下保留原 list 上下文，避免用户切换详情后列表消失。
+        item-detail / list-detail / category-detail 等视图由
+        右侧列独立承载，文档编辑器已抽屉化（覆盖三栏），中间列在这些视图下保留原 list 上下文。
       -->
       <TodoListPanel
         ref="listPanel"
@@ -78,16 +78,6 @@
         @updated="handleListUpdated"
         @open-doc="openDoc"
       />
-      <TodoDocumentEditor
-        v-else-if="rightPanelView === 'document-editor'"
-        class="todo-item-detail todo-item-detail-wide"
-        :doc-id="activeDoc?.id ?? null"
-        :item-id="activeDoc?.itemId ?? null"
-        :list-id="activeDoc?.listId ?? null"
-        :title-path="activeDoc?.titlePath ?? ''"
-        @back="handleEditorBack"
-        @saved="handleDocSaved"
-      />
       <TaskPanel
         v-else-if="rightPanelView === 'task-panel'"
         :key="`task-${taskPanelTaskId}`"
@@ -109,6 +99,20 @@
       @restored="handleTrashRestored"
       @purged="handleTrashChanged"
       @emptied="handleTrashChanged"
+    />
+
+    <!--
+      文档编辑抽屉（覆盖 app 2/3 宽度，从右往左展开）：
+      挂载在 .todo-app-page 根级，脱离三栏布局约束，便于跨条目复制资料。
+      visible 由 docDrawerVisible 双向绑定；docId/itemId/listId/titlePath 由 activeDoc 驱动。
+    -->
+    <TodoDocumentEditor
+      v-model:visible="docDrawerVisible"
+      :doc-id="activeDoc?.id ?? null"
+      :item-id="activeDoc?.itemId ?? null"
+      :list-id="activeDoc?.listId ?? null"
+      :title-path="activeDoc?.titlePath ?? ''"
+      @saved="handleDocSaved"
     />
   </div>
 </template>
@@ -139,11 +143,14 @@ export default {
       selectedLabelId: null,
       selectedListId: null,
       selectedItemId: null,
-      // 右侧视图状态机：'empty' | 'item-detail' | 'category-detail' | 'list-detail' | 'label-items' | 'document-editor' | 'task-panel'
+      // 右侧视图状态机：'empty' | 'item-detail' | 'category-detail' | 'list-detail' | 'label-items' | 'task-panel'
       // 中间面板视图（item 树 / 标签条目列表）由 selectedListId / selectedLabelId 单独驱动，
       // 不走 rightPanelView，保证右侧详情切换时中间面板上下文不丢。
+      // 文档编辑器已抽屉化（docDrawerVisible），不再作为 rightPanelView 的分支。
       rightPanelView: 'empty',
-      // 当前打开的文档上下文（编辑器视图使用）
+      // 文档编辑抽屉可见性（独立于 rightPanelView，让抽屉覆盖在三栏之上）
+      docDrawerVisible: false,
+      // 当前打开的文档上下文（抽屉编辑器使用）
       activeDoc: null,
       // 强制右侧详情组件刷新（文档保存后刷新关联列表）
       detailKey: 0,
@@ -178,7 +185,26 @@ export default {
      * 深拷贝避免污染 categoryTree 原始数据；todo_list 节点用复合 nodeKey 区分。
      */
     mergedTree() {
-      return this.buildMergedTree(this.categoryTree);
+      const realTree = this.buildMergedTree(this.categoryTree);
+      // 在树顶部插入虚拟"无分类"节点（category_id=null 的待办项目）
+      // id=0 仅用于前端标识，后端存储 category_id=null
+      const uncategorizedLists = this.allTodoLists
+        .filter((l) => l.category_id == null)
+        .map((l) => ({
+          __type: 'list',
+          nodeKey: `list_${l.id}`,
+          id: l.id,
+          name: l.name,
+          category_id: null,
+        }));
+      const uncategorizedNode = {
+        __type: 'category',
+        nodeKey: 'cat_0',
+        id: 0,
+        name: '无分类',
+        children: uncategorizedLists,
+      };
+      return [uncategorizedNode, ...realTree];
     },
     /**
      * el-tree 的 current-node-key（D2）。
@@ -186,10 +212,10 @@ export default {
      * 未命中时返回 null（el-tree 不高亮任何节点）。
      */
     currentNodeKey() {
-      // category 详情：高亮 category 节点
+      // category 详情：高亮 category 节点（含 id=0 虚拟"无分类"节点）
       if (
         this.rightPanelView === 'category-detail' &&
-        this.selectedCategoryId
+        this.selectedCategoryId != null
       ) {
         return `cat_${this.selectedCategoryId}`;
       }
@@ -302,7 +328,7 @@ export default {
       this.selectedListId = null;
       this.selectedItemId = null;
       this.activeDoc = null;
-      this.rightPanelView = categoryId ? 'category-detail' : 'empty';
+      this.rightPanelView = categoryId != null ? 'category-detail' : 'empty';
     },
     handleSelectLabel(labelId) {
       this.selectedLabelId = labelId;
@@ -381,16 +407,17 @@ export default {
      */
     async handleCreateListUnderCategory(payload) {
       const categoryId = payload?.categoryId;
-      if (!categoryId) {
+      if (categoryId == null) {
         ElMessage.warning('请先选择分类');
         return;
       }
       const name = payload?.name;
       if (!name || !name.trim()) return;
       try {
+        // 前端虚拟"无分类"节点用 id=0 标识；后端存储 category_id=null
         const created = await window.todoApp.createTodoList({
           name: name.trim(),
-          category_id: categoryId,
+          category_id: categoryId === 0 ? null : categoryId,
         });
         // 创建时一并打标签：先解析（字符串新标签名 → 真实 id），再 updateTodoList
         const labelIds = payload.labelIds;
@@ -438,7 +465,7 @@ export default {
           this.selectedListId = null;
           this.selectedItemId = null;
           // 删除当前 list 后回退到所属 category 详情（若有），否则空状态
-          this.rightPanelView = this.selectedCategoryId ? 'category-detail' : 'empty';
+          this.rightPanelView = this.selectedCategoryId != null ? 'category-detail' : 'empty';
         }
         ElMessage.success('已删除');
       } catch (err) {
@@ -560,7 +587,8 @@ export default {
       await this.$refs.sidebar?.refreshFavoriteLists?.();
     },
     /**
-     * 子组件请求打开文档：切换到编辑器视图。
+     * 子组件请求打开文档：拉起文档抽屉（不再切换 rightPanelView）。
+     * 抽屉覆盖三栏之上，原详情上下文保持不动，关闭抽屉即回到原视图。
      * payload: { id?, itemId?, listId?, titlePath }
      */
     openDoc(payload) {
@@ -570,22 +598,7 @@ export default {
         listId: payload.listId ?? null,
         titlePath: payload.titlePath ?? '',
       };
-      this.rightPanelView = 'document-editor';
-    },
-    /** 编辑器返回：依据 activeDoc 上下文回退到上一级视图 */
-    handleEditorBack() {
-      if (this.activeDoc?.itemId) {
-        this.rightPanelView = 'item-detail';
-      } else if (this.activeDoc?.listId) {
-        this.rightPanelView = 'list-detail';
-      } else if (this.selectedItemId) {
-        this.rightPanelView = 'item-detail';
-      } else if (this.selectedListId) {
-        this.rightPanelView = 'list-detail';
-      } else {
-        this.rightPanelView = 'empty';
-      }
-      this.activeDoc = null;
+      this.docDrawerVisible = true;
     },
     /** 文档保存后刷新对应源详情（通过 :key 强制重渲染） */
     handleDocSaved() {
@@ -643,7 +656,7 @@ export default {
             listId: doc.todo_list_id ?? null,
             titlePath: result.category_path?.join(' / ') || doc.name,
           };
-          this.rightPanelView = 'document-editor';
+          this.docDrawerVisible = true;
         }
       } catch (err) {
         console.error('jump to result failed', err);

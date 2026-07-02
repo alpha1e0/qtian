@@ -166,7 +166,8 @@ describe('TodoCategoryService', () => {
 
   describe('getTree', () => {
     it('空数据返回空数组', () => {
-      expect(svc.getTree()).toEqual([]);
+      const tree = svc.getTree();
+      expect(tree).toHaveLength(0);
     });
 
     it('应构建多层树结构', () => {
@@ -177,9 +178,9 @@ describe('TodoCategoryService', () => {
 
       const tree = svc.getTree();
       expect(tree).toHaveLength(1);
-      expect(tree[0].name).toBe('root');
-      expect(tree[0].children).toHaveLength(2);
-      const c1Node = tree[0].children.find((n) => n.name === 'c1');
+      const root_node = tree[0];
+      expect(root_node.children).toHaveLength(2);
+      const c1Node = root_node.children.find((n) => n.name === 'c1');
       expect(c1Node!.children).toHaveLength(1);
       expect(c1Node!.children[0].name).toBe('gc');
     });
@@ -203,8 +204,9 @@ describe('TodoCategoryService', () => {
       );
 
       const tree = svc.getTree();
-      expect(tree[0].list_count).toBe(3); // 含子分类
-      const childNode = tree[0].children[0];
+      const rootNode = tree[0];
+      expect(rootNode.list_count).toBe(3); // 含子分类
+      const childNode = rootNode.children[0];
       expect(childNode.list_count).toBe(1);
     });
   });

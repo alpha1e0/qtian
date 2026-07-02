@@ -39,8 +39,8 @@ export class TodoListService {
 
   /**
    * 列出 todo_list：
-   * - categoryId === null 且 includeUncategorized=true：未分类列表
-   * - categoryId === null 且 includeUncategorized=false：所有未删除列表
+   * - categoryId === undefined：所有未删除列表
+   * - categoryId === null：无分类列表（category_id IS NULL）
    * - categoryId 为数字：该分类下的列表
    */
   list(categoryId?: number | null): TodoList[] {

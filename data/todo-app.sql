@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS todo_list (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   name         TEXT NOT NULL,
   description  TEXT NOT NULL DEFAULT '',
-  category_id  INTEGER,
+  category_id  INTEGER,  -- NULL = 无分类（FK 允许 NULL，前端用虚拟节点展示）
   is_favorite  INTEGER NOT NULL DEFAULT 0,  -- 0=未收藏 1=已收藏；用户快捷置顶常用项目
   created_at   INTEGER NOT NULL,
   updated_at   INTEGER NOT NULL,

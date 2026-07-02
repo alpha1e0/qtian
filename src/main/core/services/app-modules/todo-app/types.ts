@@ -80,6 +80,7 @@ export interface TodoList {
   id: number;
   name: string;
   description: string;
+  /** 所属 category ID（null = 无分类） */
   category_id: number | null;
   /** 标签 ID 列表（来自 todo_list_label 多对多） */
   label_ids: number[];

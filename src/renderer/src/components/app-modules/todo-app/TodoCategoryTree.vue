@@ -1,13 +1,42 @@
 <template>
   <div class="todo-category-tree">
     <div class="tree-header">
-      <span class="header-title">分类</span>
-      <el-button text @click="handleCreateRoot" title="新建根分类" aria-label="新建根分类">
+      <el-button
+        text
+        @click="handleCreateRoot"
+        title="新建根分类"
+        aria-label="新建根分类"
+      >
         <el-icon><FolderAdd /></el-icon>
+      </el-button>
+      <el-button
+        text
+        @click="handleCreateListFromHeader"
+        title="新建待办项目"
+        aria-label="新建待办项目"
+      >
+        <el-icon><DocumentAdd /></el-icon>
+      </el-button>
+      <el-button
+        text
+        @click="expandAll"
+        title="全部展开"
+        aria-label="全部展开"
+      >
+        <el-icon><Expand /></el-icon>
+      </el-button>
+      <el-button
+        text
+        @click="collapseAll"
+        title="全部折叠"
+        aria-label="全部折叠"
+      >
+        <el-icon><Fold /></el-icon>
       </el-button>
     </div>
 
     <el-tree
+      ref="treeRef"
       :data="treeData"
       node-key="nodeKey"
       :props="treeProps"
@@ -22,7 +51,13 @@
         <!-- 右键菜单改用自封装 TodoContextMenu 跟随鼠标（el-dropdown 锚到触发元素，无法跟鼠标）。
              node-contextmenu 直接提供 data，无需在 DOM 上挂 data-node-key 再上溯查找，
              且命中范围覆盖整行（含 expand-icon 列、content padding）。 -->
-        <div class="tree-node" :class="{ 'is-list': data.__type === 'list' }">
+        <div
+          class="tree-node"
+          :class="{
+            'is-list': data.__type === 'list',
+            'is-uncategorized': data.__type === 'category' && data.id === 0,
+          }"
+        >
           <!-- 空分类占位箭头（D3）：el-tree 默认对无 children 的节点不渲染展开图标，
                category 节点即使无子项也应显示占位，保持"目录"语义一致性。
                用可见的 CaretRight 与 el-tree 默认 caret 同尺寸（24x24），避免标签错位。 -->
@@ -39,7 +74,10 @@
             :class="{ active: data.nodeKey === selectedNodeKey }"
             :title="node.label"
           >
-            <el-icon v-if="data.__type === 'category'" class="node-icon"><Folder /></el-icon>
+            <el-icon v-if="data.__type === 'category'" class="node-icon">
+              <Files v-if="data.id === 0" />
+              <Folder v-else />
+            </el-icon>
             <el-icon v-else class="node-icon"><Document /></el-icon>
             {{ node.label }}
           </span>
@@ -78,6 +116,7 @@
 import {
   Plus,
   Folder,
+  Files,
   Document,
   CaretRight,
   ArrowRight,
@@ -87,6 +126,8 @@ import {
   Delete,
   Upload,
   Download,
+  Expand,
+  Fold,
 } from '@element-plus/icons-vue';
 import { markRaw } from 'vue';
 import TodoContextMenu from './TodoContextMenu.vue';
@@ -94,7 +135,7 @@ import TodoCreateDialog from './TodoCreateDialog.vue';
 
 export default {
   name: 'TodoCategoryTree',
-  components: { Plus, Folder, Document, CaretRight, ArrowRight, TodoContextMenu, TodoCreateDialog },
+  components: { Plus, Folder, Files, Document, CaretRight, ArrowRight, Expand, Fold, TodoContextMenu, TodoCreateDialog },
   props: {
     // 统一树（category + todo_list 叶子），由父组件 mergedTree 提供
     treeData: { type: Array, default: () => [] },
@@ -193,6 +234,10 @@ export default {
      * 顺序与原 el-dropdown-menu 保持一致。
      */
     buildMenuItems(data) {
+      // 虚拟"无分类"节点本轮禁用所有右键操作（未来开放"新建待办项目"时在此添加）
+      if (data.__type === 'category' && data.id === 0) {
+        return [];
+      }
       if (data.__type === 'category') {
         return [
           { command: 'create-sub-category', label: '新建子分类', icon: this.icons.folderAdd },
@@ -244,6 +289,63 @@ export default {
      */
     handleCreateRoot() {
       this.createDialog = { visible: true, mode: 'root-category', parentData: null };
+    },
+    /**
+     * 从 tree-header 发起的"新建待办项目"：
+     * - 若当前选中了 category 节点 → 在该分类下创建
+     * - 否则（未选 / 选中 list）→ 归入"无分类"虚拟节点（id=0，后端存为 null）
+     */
+    handleCreateListFromHeader() {
+      const selectedCat = this.findSelectedCategory();
+      if (selectedCat) {
+        this.handleCreateList(selectedCat);
+      } else {
+        this.handleCreateList({ __type: 'category', id: 0, name: '无分类' });
+      }
+    },
+    /**
+     * 在 treeData 中按 selectedNodeKey 查找当前选中的 category 节点。
+     * 仅当 nodeKey 以 `cat_` 开头时才视为 category（排除 list 叶子）。
+     */
+    findSelectedCategory() {
+      if (!this.selectedNodeKey || !this.selectedNodeKey.startsWith('cat_')) {
+        return null;
+      }
+      return this.findNodeByKey(this.treeData, this.selectedNodeKey);
+    },
+    /** 递归 DFS 按 nodeKey 查找节点 */
+    findNodeByKey(nodes, key) {
+      if (!Array.isArray(nodes)) return null;
+      for (const n of nodes) {
+        if (n.nodeKey === key) return n;
+        const found = this.findNodeByKey(n.children, key);
+        if (found) return found;
+      }
+      return null;
+    },
+    /** 全部展开：递归设置所有 tree node 的 expanded = true */
+    expandAll() {
+      this.setAllExpanded(true);
+    },
+    /** 全部折叠：递归设置所有 tree node 的 expanded = false */
+    collapseAll() {
+      this.setAllExpanded(false);
+    },
+    /**
+     * 批量切换全部节点的展开状态。
+     * 访问 el-tree 内部 store.root，递归遍历 childNodes 设置 expanded。
+     * 叶子节点（无 children）设置 expanded 无副作用。
+     */
+    setAllExpanded(expanded) {
+      const tree = this.$refs.treeRef;
+      if (!tree?.store?.root) return;
+      const traverse = (node) => {
+        node.expanded = expanded;
+        if (node.childNodes) {
+          node.childNodes.forEach(traverse);
+        }
+      };
+      traverse(tree.store.root);
     },
     /**
      * 打开"新建子分类"对话框，parentData 提供副标题所需父分类名 + 创建所需 parentId。
@@ -318,7 +420,8 @@ export default {
 .tree-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
+  gap: 2px;
   padding: 4px 8px 6px;
   margin-bottom: 6px;
   position: relative;
@@ -338,12 +441,21 @@ export default {
   );
 }
 
-.header-title {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-on-dark-muted, #5c5b72);
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
+/* tree-header 内按钮统一样式：紧凑无文字图标按钮 */
+.tree-header :deep(.el-button) {
+  --el-button-text-color: var(--text-on-dark-muted, #8b8aa0);
+  padding: 4px 6px;
+  height: auto;
+  min-height: 0;
+}
+
+.tree-header :deep(.el-button:hover) {
+  --el-button-text-color: var(--accent-text);
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.tree-header :deep(.el-button .el-icon) {
+  font-size: 15px;
 }
 
 /* Element Plus 树节点底层排版微调 */
@@ -408,6 +520,11 @@ export default {
 /* list 叶子节点稍微收敛字重，与 category 视觉区分 */
 .tree-node.is-list .node-label {
   font-weight: 400;
+}
+
+/* 虚拟"无分类"节点弱化视觉权重（系统节点，不可改名/删除） */
+.tree-node.is-uncategorized .node-label {
+  color: var(--text-on-dark-muted, #8b8aa0);
 }
 
 /* 空分类占位箭头：与 el-tree 默认 .el-tree-node__expand-icon 同尺寸（24x24），

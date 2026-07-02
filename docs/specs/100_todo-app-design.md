@@ -146,7 +146,7 @@ interface TodoList {
   name: string;
   /** 描述（≤1500 字符） */
   description: string;
-  /** 所属 category ID（null 表示未分类） */
+  /** 所属 category ID（null = 无分类；前端用虚拟节点 id=0 展示，见 §9.3 D9） */
   category_id: number | null;
   /** 标签 ID 列表（来自 todo_list_label 多对多关系） */
   label_ids: number[];
@@ -368,7 +368,7 @@ CREATE TABLE IF NOT EXISTS todo_list (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   name         TEXT NOT NULL,
   description  TEXT NOT NULL DEFAULT '',
-  category_id  INTEGER,
+  category_id  INTEGER,  -- NULL = 无分类（FK 允许 NULL，前端用虚拟节点展示，见 §9.3 D9）
   is_favorite  INTEGER NOT NULL DEFAULT 0,  -- 0=未收藏 1=已收藏
   created_at   INTEGER NOT NULL,
   updated_at   INTEGER NOT NULL,
@@ -512,6 +512,15 @@ CREATE VIRTUAL TABLE IF NOT EXISTS todo_fts USING fts5(
 | restore（恢复软删除） | 重新 `INSERT INTO todo_fts` |
 
 封装在 `TodoSearchService.syncFts(type, id, rawText)` 方法中，供各 Service 调用。
+
+### 4.4 "无分类"约定
+
+**无后端哨兵行**：`todo_list.category_id = NULL` 即代表"无分类"，外键允许 NULL 故无需在 `todo_category` 表插入系统行（SQLite 外键对 NULL 引用不校验存在性）。
+
+- **存储**：`todo_list.category_id` 为可空 INTEGER，NULL = 无分类
+- **查询**：`TodoListService.list(null)` 查 `WHERE category_id IS NULL`；`list(undefined)` 仍返回全部
+- **前端展示**：`TodoAppPage.mergedTree` computed 在真实 category 树之前拼接一个虚拟节点 `{ id: 0, name: '无分类', children: [未分类 todo_list...] }`，IPC 调用前将 `id=0` 转换回 `null`（见 §9.3 D9）
+- **优势**：避免 SQLite `INTEGER PRIMARY KEY AUTOINCREMENT` 将显式 `id=0` 当作自增触发的兼容性问题；外键约束自然成立
 
 ## 5 核心接口设计
 
@@ -1242,9 +1251,11 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 6. **TodoListPanel 受控化（D6）**：删除原 `panel-header`（el-select + 新建项目按钮）与 `todoLists`/`currentListId` 本地状态。props 改为 `listId` / `listName` / `labelId`，watch `listId` 触发 `loadItemTree`。顶部仅保留 `tree-toolbar`：左侧 list 名标题（prop 传入，点击触发 `select-list`），右侧为图标按钮组（不含文字）：「新建待办条目」（Plus，title 提示）、「筛选」（Filter，title 提示，筛选激活时 accent 强调）。原"项目文档"按钮已移除，文档入口收敛到右侧 `TodoListDetail`。父组件 `TodoAppPage` 负责从 `allTodoLists` 解析 list 名。
 7. **selectedItemId 联动（D7）**：`handleSelectCategory` 与 `handleSelectList` 均在切换时清空 `selectedItemId`，避免上一个 list 的 item 高亮残留。
 8. **右侧详情统一化（D8）**：右侧详情区对三种选中态提供一致的「总结信息 + 元素信息」结构：`category-detail`（创建/修改时间 + 直接子项目数，仅名称可编辑）/ `list-detail`（创建/修改时间 + 名称/描述可编辑 + 项目文档列表）/ `item-detail`（沿用 TodoItemDetail 完整表单 + 文档 + AI 任务）。三类详情共用失焦自动保存 + 顶部状态条反馈模式。中间面板视图（item 树 / 标签条目列表）由 `selectedListId` / `selectedLabelId` 单独驱动，与 `rightPanelView` 状态机解耦，保证右侧切换详情时中间面板上下文不丢。
+9. **无分类虚拟节点（D9）**：sidebar 分类树最顶部恒定显示"无分类"节点（前端虚拟节点，无后端 category 行），承载 `category_id IS NULL` 的待办项目。`TodoAppPage.mergedTree` computed 在真实 category 树之前拼接 `{ __type:'category', nodeKey:'cat_0', id:0, name:'无分类', children:[未分类 todo_list...] }`；虚拟节点用 `Files` 图标（区别于用户分类的 `Folder`）、`.is-uncategorized` class 弱化文字色，右键菜单本轮禁用所有操作（未来开放"新建待办项目"入口时在此添加）。点击虚拟节点右侧切到 `category-detail`（只读：名称输入框 `disabled`，上方提示"系统分类，不可重命名/删除"）。IPC 边界做 id 转换：`handleCreateListUnderCategory` 将 `categoryId===0` 转为 `null` 传给 `createTodoList`；`TodoCategoryDetail.loadDetail` 对 `categoryId===0` 直接构造静态详情不查 backend。`TodoListService.list(null)` 查 `WHERE category_id IS NULL`，`create` 默认 `category_id=null`。
 
 ### 9.4 交互细节
 
+- **"无分类"节点**：sidebar 分类树顶部的前端虚拟节点（id=0 仅用于前端标识，后端无对应 category 行，存储层 `todo_list.category_id = NULL`）。不可改名/删除/拖拽。可展开查看下属待办项目（`category_id IS NULL` 的 todo_list），可点击进入只读详情（名称输入框 disabled + 提示文案）。右键不弹出任何菜单（本轮保守；未来开放"新建待办项目"入口时在此添加）。tree-header 的"新建待办项目"按钮在未选中分类时默认在该虚拟节点下创建（IPC 调用前将 id=0 转换回 null）。
 - **递归层级提示**：创建 category / todo_item 时，若已达 4 层上限，禁用"新建子项"按钮并提示。
 - **状态切换**：todo item 行内复选框点击触发 `update-todo-item-status`，校验失败时弹窗提示原因。
 - **编辑自动激活**：在 `TodoItemDetail` 编辑标题、描述（失焦保存）或拖动进度滑块（`@change` 保存）时，若当前 `status === 'init'`，保存前先将状态自动推进为 `in_progress`（调用 `updateTodoItemStatus`），再继续原保存流程；状态条目视觉同步更新，避免"初始"态被无声长期保留。
