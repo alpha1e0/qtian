@@ -1,15 +1,14 @@
 <template>
   <!--
-    文档编辑抽屉：从右往左展开，覆盖 app 页面 2/3 宽度（spec §9.x 优化）。
+    文档编辑抽屉：从右往左展开，覆盖 app 页面 3/4 宽度（spec §9.x 优化）。
     使用 el-drawer 替代原右栏 600px 固定宽布局，给 vditor 编辑器更宽裕的横向空间。
-    non-modal（modal=false）保留对底层 detail 的可交互性，便于跨条目复制资料。
+    启用 modal 遮罩并依赖默认 close-on-click-modal，点击抽屉外空白区域可关闭抽屉。
     vditor 初始化推迟到 @opened，避免在隐藏容器上初始化导致尺寸为 0。
   -->
   <el-drawer
     v-model="drawerVisible"
     direction="rtl"
-    size="66.6667%"
-    :modal="false"
+    size="75%"
     :with-header="false"
     append-to-body
     class="todo-doc-drawer"
@@ -17,39 +16,47 @@
     @closed="onDrawerClosed"
   >
     <div class="todo-doc-editor">
-      <!-- 顶部工具条：标题路径 + 字数统计 + 保存 -->
+      <!--
+        顶部工具条：标题路径（左）+ 字数统计 + 保存 + 关闭（右）。
+        关闭按钮与保存按钮成组放在右上角，符合常见编辑器布局；
+        关闭显式带"关闭"文字 + x 图标，避免原纯图标按钮不易识别。
+      -->
       <div class="md-editor-toolbar">
-        <el-button
-          size="small"
-          text
-          aria-label="关闭文档编辑"
-          class="close-btn"
-          @click="handleClose"
-        >
-          <el-icon><Close /></el-icon>
-        </el-button>
-        <el-text size="small" type="info" truncated class="title-path">
+        <el-text size="small" type="primary" truncated class="title-path">
           {{ titlePath || docName || '未命名文档' }}
         </el-text>
         <el-text size="small" type="info" class="word-count">{{ contentLength }} 字</el-text>
-        <el-button
-          size="small"
-          :loading="saving"
-          type="primary"
-          plain
-          aria-label="保存文档"
-          class="save-btn"
-          @click="handleManualSave"
-        >
-          <el-icon><Select /></el-icon>
-          <span>保存</span>
-        </el-button>
+        <el-button-group>
+          <el-button
+            size="small"
+            :loading="saving"
+            type="primary"
+            plain
+            aria-label="保存文档"
+            class="save-btn"
+            @click="handleManualSave"
+          >
+            <el-icon><Select /></el-icon>
+          </el-button>
+          <el-button
+            size="small"
+            type="info"
+            plain
+            aria-label="关闭文档编辑（Esc）"
+            class="close-btn"
+            @click="handleClose"
+          >
+            <el-icon><Close /></el-icon>
+          </el-button>
+        </el-button-group>
+        
       </div>
 
       <el-input
         v-model="docName"
         placeholder="文档名称"
         size="small"
+        suffix-icon="Edit"
         class="doc-name-input"
       />
 
@@ -102,6 +109,14 @@
 <script>
 import { ElMessage } from 'element-plus';
 import { Select, Close } from '@element-plus/icons-vue';
+// 静态导入 vditor 主类（与 qmin/VditorPanel.vue 同款），由 Vite 打包进产物。
+// 动态 import('vditor') 在抽屉这种延迟挂载场景下，race 风险高（用户在 await
+// 期间关抽屉、ref 失效等），静态导入消除了这一类时序问题。
+import Vditor from 'vditor';
+// 显式静态引入 vditor 样式，避免运行时 cdn 加载失败导致编辑器"白板"。
+// vditor 默认通过 options.cdn 异步注入 CSS，dev 模式下路径解析不稳定；
+// 静态 import 由 Vite 接管，产物中恒定存在，编辑器首屏即可见。
+import 'vditor/dist/index.css';
 
 /** 自动保存间隔（毫秒） */
 const AUTO_SAVE_INTERVAL = 30000;
@@ -169,26 +184,31 @@ export default {
   watch: {
     /**
      * 抽屉打开/关闭切换：
-     * - 打开（false→true）：预加载文档内容到 currentContent（vditor 尚未初始化）
-     * - 关闭（true→false）：销毁 vditor + 停止自动保存由 onDrawerClosed（@closed）兜底
-     * - docId 变化（抽屉已开）：重新加载并切换 vditor 内容
+     * - 打开（false→true）：预加载文档内容到 currentContent（vditor 尚未初始化，
+     *   真正初始化由 @opened → onDrawerOpened 完成，此时容器已有真实尺寸）
+     * - 关闭（true→false）：由 onDrawerClosed（@closed）兜底销毁 vditor
+     *
+     * 注意：不要在 visible 翻 true 时立刻 initEditor —— el-drawer 此时刚开始
+     * 开启动画，body 尚未渲染，$refs.editorRef 为 undefined，会导致 vditor 以
+     * undefined 元素构造，后续 destroy 抛 "Cannot read properties of undefined"。
      */
     visible(v) {
       if (v) {
         this.loadDocument();
       }
     },
+    /**
+     * docId 变化（用户在抽屉已打开时点击另一个文档 chip）：
+     * - 抽屉已开：调 loadDocument，内部对已有 vditor 直接 setValue 切换内容；
+     *   无需 destroy/re-init（vditor 实例复用，避免抖动与潜在 race）
+     * - 抽屉未开：什么都不做，content 由 visible watch 在打开时拉取
+     *
+     * 注意：原实现在此处调 initEditor 会与 visible 同 tick 触发时拿到空 ref，
+     * 已移除（详见 visible watch 注释）。
+     */
     docId() {
-      // 抽屉打开期间切换文档：重置状态并重新加载
       if (this.visible) {
-        this.destroyEditor();
-        this.loaded = false;
-        this.loadDocument().then(() => {
-          // 容器已可见，直接初始化（无需等待 @opened）
-          if (this.visible && !this.vditor) {
-            this.initEditor();
-          }
-        });
+        this.loadDocument();
       }
     },
   },
@@ -236,9 +256,16 @@ export default {
     /**
      * 抽屉完全展开后初始化 vditor（此时容器已有真实尺寸）。
      * 重复调用幂等：已初始化时跳过。
+     * 双重保护：等待 $nextTick 确保 DOM 已提交 + 校验 editorRef 存在，
+     * 避免任何边界时序下以 undefined 元素构造 vditor。
      */
     async onDrawerOpened() {
       if (this.vditor) return;
+      await this.$nextTick();
+      if (!this.$refs.editorRef) {
+        console.warn('TodoDocumentEditor: editorRef missing on @opened, skip init');
+        return;
+      }
       await this.initEditor();
       this.startAutoSave();
     },
@@ -250,11 +277,18 @@ export default {
       this.stopAutoSave();
       this.destroyEditor();
     },
-    /** 销毁 vditor 实例并清理状态 */
+    /**
+     * 销毁 vditor 实例并清理状态。
+     * 防御性校验 element 仍挂在 DOM 上：vditor 在 element 被外层 innerHTML 清空
+     * 后调用 destroy 会抛 "Cannot read properties of undefined (reading 'element')"，
+     * 此处先校验再调 destroy，失败仅告警不阻塞（保留 this.vditor = null 让下次开兜底重建）。
+     */
     destroyEditor() {
       if (this.vditor) {
         try {
-          this.vditor.destroy();
+          if (this.vditor.element && this.vditor.element.isConnected) {
+            this.vditor.destroy();
+          }
         } catch (err) {
           console.warn('vditor destroy failed', err);
         }
@@ -265,8 +299,12 @@ export default {
     /** 初始化 vditor 实例 */
     async initEditor() {
       if (this.vditor) return;
-      const VditorModule = await import('vditor');
-      const Vditor = VditorModule.default;
+      // 容器必须存在且在 DOM 中，否则 vditor 构造会以 undefined 元素落库，
+      // 后续 destroy / setValue 全部失败（"Cannot read properties of undefined"）。
+      if (!this.$refs.editorRef || !this.$refs.editorRef.isConnected) {
+        console.warn('TodoDocumentEditor: editorRef unavailable, skip init');
+        return;
+      }
 
       this.vditor = new Vditor(this.$refs.editorRef, {
         minHeight: 400,
@@ -274,8 +312,19 @@ export default {
         mode: 'ir',
         placeholder: '在此输入 Markdown...',
         value: this.currentContent,
-        // CDN 本地化：开发态 Vite dev server 可解析；生产打包需复制 dist 到 resources
-        cdn: 'node_modules/vditor/dist',
+        // 显式中文（vditor 默认即 zh_CN，写出来便于排错）
+        lang: 'zh_CN',
+        // 不设置 cdn —— 使用 vditor 默认在线 CDN（jsdelivr）。
+        //
+        // 为什么不像原代码那样设 'node_modules/vditor'：
+        // 1. vditor 内部 URL 形如 `${cdn}/dist/<sub>`（i18n / math / icons 等），
+        //    历史配置 'node_modules/vditor/dist' 会拼出 `dist/dist/...` 双重 dist 404；
+        // 2. 即便修正为 'node_modules/vditor'，Vite dev server 对 /node_modules/<pkg>/<path>
+        //    的直接 URL 服务策略不稳定（HMR 期间偶发 404、被依赖优化器拦截等）；
+        // 3. 生产打包后 /node_modules/ 路径完全不存在（产物只在 dist-electron/renderer/），
+        //    需要额外的 vite 插件把 vditor/dist 复制过去才能工作；
+        // 4. 参考 qmin/VditorPanel.vue 的成熟做法：不设 cdn，让 vditor 走在线 CDN，
+        //    逻辑最简单且 dev/prod 行为一致，离线场景作为后续可选增强。
         cache: { enable: false },
         counter: {
           enable: true,
@@ -570,8 +619,39 @@ export default {
   flex-shrink: 0;
 }
 
+/*
+ * 文档名称输入框：宽度 70% + 水平居中，suffix Edit 图标作"可编辑"语义提示。
+ * 父容器 .todo-doc-editor 为 flex column，故用 align-self:center 实现水平居中。
+ * 内层用 :deep() 注入柔和底色与圆角，让标题区从工具条到编辑器之间有视觉缓冲。
+ */
 .doc-name-input {
   flex-shrink: 0;
+  width: 70%;
+  align-self: center;
+  margin: 6px 0 10px;
+}
+.doc-name-input :deep(.el-input__wrapper) {
+  background: rgba(99, 102, 241, 0.04);
+  border-radius: 18px;
+  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.18) inset;
+  transition: box-shadow 0.2s ease, background 0.2s ease;
+}
+.doc-name-input :deep(.el-input__wrapper:hover) {
+  background: rgba(99, 102, 241, 0.07);
+  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.32) inset;
+}
+.doc-name-input :deep(.el-input__wrapper.is-focus) {
+  background: var(--surface-card, #ffffff);
+  box-shadow: 0 0 0 1px var(--accent, #6366f1) inset,
+    0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+.doc-name-input :deep(.el-input__inner) {
+  text-align: center;
+  letter-spacing: 0.2px;
+}
+.doc-name-input :deep(.el-input__suffix) {
+  color: var(--accent, #6366f1);
+  opacity: 0.7;
 }
 
 /*
@@ -595,11 +675,17 @@ export default {
 <!--
   全局样式（unscoped）：覆盖 el-drawer 默认 body padding，让 .todo-doc-editor 铺满。
   仅作用于本应用挂载的 .todo-doc-drawer，避免污染其他 el-drawer。
+  遮罩层叠加 backdrop-filter 与 indigo 色调，与 Aurora 主题氛围一致。
 -->
 <style>
 .todo-doc-drawer .el-drawer__body {
   padding: 0;
   display: flex;
   flex-direction: column;
+}
+/* 仅对本抽屉的遮罩做轻微模糊 + indigo 染色，强化"浮层"层级感 */
+.el-overlay:has(.todo-doc-drawer) {
+  background-color: rgba(30, 27, 50, 0.42);
+  backdrop-filter: blur(2px);
 }
 </style>

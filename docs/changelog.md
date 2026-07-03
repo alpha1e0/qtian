@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.0.0] 2026-07-03（文档抽屉点击外部关闭）
+
+**User**: todo-app，`TodoDocumentEditor.vue` 的 el-drawer 点击空白，自动消失。
+
+**Summary**:
+
+将文档编辑抽屉由 `modal: false` 改为默认 modal（启用遮罩层），依赖 el-drawer 默认的 `close-on-click-modal: true` 行为，点击抽屉外的遮罩区域即可关闭抽屉。同步给遮罩叠加 `backdrop-filter: blur(2px)` 与 indigo 染色，与 Aurora 深色主题氛围一致。
+
+### 改动
+
+- **`TodoDocumentEditor.vue`**：
+  - 移除 `:modal="false"` 声明（恢复默认 modal 行为）
+  - 顶部设计意图注释由"non-modal 保留底层可交互性"更新为"启用 modal 遮罩，点击外部可关闭"
+  - 全局 unscoped 样式新增 `.el-overlay:has(.todo-doc-drawer)` 规则：`background-color: rgba(30,27,50,0.42)` + `backdrop-filter: blur(2px)`，强化"浮层"层级感
+
+### 设计决策
+
+- 之前的 `modal: false` 是为了"跨条目复制资料时保留底层 detail 的可交互性"，但实际使用中点击空白区域无响应反而让用户对"如何关闭抽屉"产生困惑。改为 modal 后，遮罩既承担"点击外部关闭"的可见语义，又用模糊效果强化 z-index 层级关系，更符合抽屉类组件的通用心智模型。
+- `:has()` 选择器在现代 Chromium（Electron 内核）下原生支持，零运行时成本，且仅作用于本应用挂载的 `.todo-doc-drawer`，不会污染其他 el-drawer。
+
+### 测试
+
+- todo-app 单元测试 268 个全部通过（CSS/模板级调整，无逻辑变更）
+
 ## [1.0.0] 2026-07-02（"无分类"待办项目 + sidebar tree-header 优化）
 
 **User**: todo-app 支持"无分类"待办项目（`category_id=NULL`，sidebar 分类树顶部显示"无分类"虚拟节点）；同时优化 `TodoCategoryTree` tree-header：去掉"分类"文本、操作图标居中、新增"创建待办项目 / 全部展开 / 全部折叠"按钮。
@@ -71,6 +95,8 @@
 - **non-modal**：`modal: false` 保留对底层 detail 的可交互性，便于跨条目复制资料（与 qmin 全屏 md-editor 不同，qtian 的 todo-app 是三栏结构，用户编辑文档时通常需要参考右侧详情/左侧导航）
 - **抽屉 vs 右栏 600px**：抽屉覆盖 app 2/3 宽度（约 800-1000px），比原 600px 固定宽更宽裕，vditor 工具条不再拥挤
 - **vditor 初始化时机**：el-drawer 默认惰性渲染 body，且开合有过渡动画，`mounted` 时容器尺寸为 0 会导致 vditor 排版错乱，故推迟到 `@opened`
+- **vditor 资源加载（参考 qmin）**：移除 `cdn` 选项，让 vditor 走默认在线 CDN（jsdelivr）。原 `cdn: 'node_modules/vditor/dist'` 因 vditor 内部以 `${cdn}/dist/<sub>` 拼接资源 URL 而产生双重 `dist`，404 致使 i18n/math/icons 加载失败，编辑器白板。改静态 `import Vditor from 'vditor'` + 静态 `import 'vditor/dist/index.css'`，与 `qmin/VditorPanel.vue` 完全一致；离线场景作为后续可选增强（vite-plugin-static-copy 把 vditor/dist 复制到 public/）
+- **防御性构造/销毁**：`initEditor` 前置校验 `editorRef.isConnected`（避免空 ref 构造导致后续 destroy 抛 "Cannot read properties of undefined"）；`destroyEditor` 校验 `vditor.element.isConnected` 再 destroy（兜底 element 被外层 innerHTML 清空的情况）
 - **图片伪协议**：沿用既有 `local-resource://`（`saveAttachment` / `saveAttachmentFromPath` 返回值），未引入 qmin 的 `local-resource-md://` 相对路径变体（qtian 暂无 md 文件迁移需求）
 - **标签云语义**：在文档场景下解读为"flex-wrap chip 入口集合"（与 TodoLabelCloud 一致），而非按内容长度加权——文档数量通常远少于标签词频，加权会让大小不一致反而难读
 
