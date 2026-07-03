@@ -1,14 +1,44 @@
 <template>
-  <MainComponent />
+  <!--
+    根据 URL 参数 window=quick 路由到不同窗口根组件：
+    - 主窗口（默认）：MainComponent（含 CustomTitleBar）
+    - 快捷窗口：QuickModeWindow（含 QuickTitleBar）
+    QuickModeWindow 异步加载以降低主窗口首屏开销。
+  -->
+  <component :is="rootComponent" />
 </template>
 
 <script>
+import { defineAsyncComponent } from 'vue';
 import MainComponent from './components/MainComponent.vue';
+
+/** URL 参数值，标识快捷窗口（与主进程 QUICK_WINDOW_QUERY_VALUE 对应） */
+const QUICK_WINDOW_QUERY_VALUE = 'quick';
 
 export default {
   name: 'App',
   components: {
     MainComponent,
+    QuickModeWindow: defineAsyncComponent(
+      () => import('./components/quick-mode/QuickModeWindow.vue')
+    ),
+  },
+  data() {
+    return {
+      /** 'main' 或 'quick'，由 mounted 时读取 URL 参数确定 */
+      windowType: 'main',
+    };
+  },
+  computed: {
+    rootComponent() {
+      return this.windowType === 'quick' ? 'QuickModeWindow' : 'MainComponent';
+    },
+  },
+  mounted() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('window') === QUICK_WINDOW_QUERY_VALUE) {
+      this.windowType = 'quick';
+    }
   },
 };
 </script>

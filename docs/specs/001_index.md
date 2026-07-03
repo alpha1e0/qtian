@@ -16,7 +16,7 @@
 | :--- | :--- | :--- |
 | 总体需求 | 项目总体需求 | ./002_ai-assistant-req.md |
 | 总体设计 | 项目总体设计 | ./002_ai-assistant-design.md |
-| 快捷模式UI设计 | 快捷模式UI设计 | ./003_quick-mode-ui-design.md |
+| 快捷模式UI设计 | 快捷模式UI设计（独立窗口架构） | ./003_quick-mode-ui-design.md |
 | 普通模式UI设计 | 普通模式UI设计 | ./003_normal-mode-chat-ui-design.md |
 | 任务系统设计 | 公共任务系统（任务抽象、TaskManager、AgentTaskExecutor、Source 机制） | ./007_task-design.md |
 | Todo 应用需求 | Todo 应用（含 FTS5 搜索、文档系统、Todo 驱动 AI 任务）需求 | ./100_todo-app-req.md |
@@ -24,10 +24,12 @@
 | Todo 导入导出需求 | 待办项目 JSON 导入/导出（备份、迁移、共享）需求 | ./101_todo-app-import-export-req.md |
 
 
-**注意**： AI助手包含 **快捷模式（quick-mode）** 和 **普通模式（normal-mode）**:
+**注意**： AI助手包含 **快捷模式（quick-mode）** 和 **普通模式（normal-mode）**，二者运行在**独立的 `BrowserWindow`** 中：
 
-- **快捷模式（quick-mode）**，一次性的临时对话，快捷键换出，对话结果不保存，快捷模式可手动转换为普通模式
-- **普通模式（normal-mode）**，完整模式，记录历史，多伦对话
+- **快捷模式（quick-mode）**，独立快捷窗口，一次性的临时对话，快捷键唤起，对话结果不保存，可手动转换为普通模式（经主进程中转，主窗口接收数据）
+- **普通模式（normal-mode）**，主窗口默认模式，完整模式，记录历史，多轮对话
+
+详见 `003_quick-mode-ui-design.md` 的"独立窗口架构"章节。
 
 
 ## 3. 公共模块

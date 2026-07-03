@@ -14,6 +14,15 @@ const logger = createLogger('TrayManager', LogLevel.INFO);
 /** 托盘图标文件名 */
 const TRAY_ICON_FILENAME = 'tray.png';
 
+/** TrayManager create 方法的可选回调 */
+export interface TrayManagerOptions {
+  /**
+   * 点击"显示快捷模式"菜单项时的回调（通常为 windowManager.showQuickWindow）。
+   * 未提供时菜单项仍展示但点击无操作。
+   */
+  onShowQuickMode?: () => void;
+}
+
 /**
  * 系统托盘管理器
  *
@@ -23,14 +32,17 @@ const TRAY_ICON_FILENAME = 'tray.png';
 export class TrayManager {
   private tray: Tray | null = null;
   private mainWindow: BrowserWindow | null = null;
+  private options: TrayManagerOptions = {};
 
   /**
    * 创建系统托盘并绑定主窗口
    *
    * @param mainWindow - 应用主窗口实例
+   * @param options - 可选回调（如"显示快捷模式"）
    */
-  create(mainWindow: BrowserWindow): void {
+  create(mainWindow: BrowserWindow, options?: TrayManagerOptions): void {
     this.mainWindow = mainWindow;
+    this.options = options ?? {};
     const iconPath = this.resolveIconPath();
     const icon = nativeImage.createFromPath(iconPath);
 
@@ -96,6 +108,8 @@ export class TrayManager {
 
   /**
    * 构建托盘右键菜单
+   *
+   * 菜单项：显示主窗口 / 显示快捷模式 / 退出
    */
   private buildContextMenu(): Menu {
     return Menu.buildFromTemplate([
@@ -103,6 +117,13 @@ export class TrayManager {
         label: '显示主窗口',
         click: () => {
           this.showMainWindow();
+        },
+      },
+      {
+        label: '显示快捷模式',
+        click: () => {
+          // 委托给外部回调（通常为 WindowManager.showQuickWindow）
+          this.options.onShowQuickMode?.();
         },
       },
       { type: 'separator' },

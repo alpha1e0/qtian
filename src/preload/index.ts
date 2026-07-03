@@ -284,6 +284,17 @@ const api = {
   appQuit: () => ipcRenderer.invoke('qtian:app-quit'),
   showAbout: () => ipcRenderer.invoke('qtian:show-about'),
 
+  // 快捷窗口控制（多窗口架构：主窗口与快捷窗口为独立 BrowserWindow）
+  openQuickWindow: () => ipcRenderer.invoke('qtian:quick-window-open'),
+  showQuickWindow: () => ipcRenderer.invoke('qtian:quick-window-show'),
+  hideQuickWindow: () => ipcRenderer.invoke('qtian:quick-window-hide'),
+  toggleQuickWindow: () => ipcRenderer.invoke('qtian:quick-window-toggle'),
+  /**
+   * 跨窗口导航：快捷窗口 → 主进程 → 主窗口
+   * payload: { message?, agentId?, llmConfig?, historyId? }
+   */
+  navigateToNormalMode: (payload: unknown) => ipcRenderer.invoke('qtian:quick-to-normal-navigate', payload),
+
   // Generic IPC event listeners
   ipcRendererOn: (channel, callback) => {
     const wrapper = (event, ...args) => callback(...args);

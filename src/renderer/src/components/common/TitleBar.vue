@@ -38,7 +38,7 @@
           <rect y="5" width="12" height="1.5" fill="currentColor" />
         </svg>
       </button>
-      <button v-if="!isQuickMode" class="ctrl-btn" @click="handleMaximize" title="最大化" aria-label="最大化">
+      <button class="ctrl-btn" @click="handleMaximize" title="最大化" aria-label="最大化">
         <svg v-if="isMaximized" width="12" height="12" viewBox="0 0 12 12">
           <rect x="2" y="0" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.2" />
           <rect y="3" width="9" height="9" fill="white" stroke="currentColor" stroke-width="1.2" />
@@ -88,12 +88,6 @@ const menus = [
 export default {
   name: 'CustomTitleBar',
   emits: ['switch-mode'],
-  props: {
-    isQuickMode: {
-      type: Boolean,
-      default: false,
-    },
-  },
   data() {
     return {
       iconUrl,
@@ -129,7 +123,8 @@ export default {
     handleCommand(command) {
       switch (command) {
         case 'quick-mode':
-          this.$emit('switch-mode', 'quick');
+          // 唤起独立快捷窗口（不再在主窗口内切换）
+          window.electron.openQuickWindow();
           break;
         case 'normal-mode':
           this.$emit('switch-mode', 'normal');

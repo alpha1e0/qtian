@@ -2,12 +2,10 @@
  * GlobalShortcutManager - 全局快捷键管理模块
  *
  * 管理 Electron 全局快捷键的注册和注销。
- * 当前仅注册 Ctrl+Q 用于唤起快捷模式：
- * - 窗口隐藏/最小化时：显示并聚焦窗口
- * - 窗口可见时：隐藏窗口到托盘
+ * 当前仅注册 Ctrl+Q：切换快捷窗口的显示/隐藏（由 WindowManager 负责具体窗口操作）。
  */
 
-import { BrowserWindow, globalShortcut } from 'electron';
+import { globalShortcut } from 'electron';
 import { createLogger, LogLevel } from './logger';
 
 const logger = createLogger('GlobalShortcut', LogLevel.INFO);
@@ -15,16 +13,25 @@ const logger = createLogger('GlobalShortcut', LogLevel.INFO);
 /** Ctrl+Q 快捷键绑定 */
 const QUICK_MODE_ACCELERATOR = 'CommandOrControl+Q';
 
+/**
+ * 快捷窗口控制能力的最小契约
+ *
+ * 使用结构化类型而非直接依赖 WindowManager，降低耦合并便于单测 mock。
+ */
+export interface QuickWindowToggle {
+  toggleQuickWindow(): Promise<void>;
+}
+
 export class GlobalShortcutManager {
-  private mainWindow: BrowserWindow | null = null;
+  private controller: QuickWindowToggle | null = null;
 
   /**
-   * 注册全局快捷键并绑定主窗口
+   * 注册全局快捷键并绑定快捷窗口控制器
    *
-   * @param mainWindow - 应用主窗口实例
+   * @param controller - 提供快捷窗口切换能力的对象（通常为 WindowManager）
    */
-  register(mainWindow: BrowserWindow): void {
-    this.mainWindow = mainWindow;
+  register(controller: QuickWindowToggle): void {
+    this.controller = controller;
 
     const result = globalShortcut.register(QUICK_MODE_ACCELERATOR, () => {
       this.handleQuickModeShortcut();
@@ -48,25 +55,19 @@ export class GlobalShortcutManager {
   /**
    * 处理 Ctrl+Q 快捷键回调
    *
-   * 窗口不可见时：显示并切换到快捷模式
-   * 窗口可见时：通知渲染进程切换到快捷模式（如已是快捷模式则隐藏）
+   * 委托 WindowManager 切换快捷窗口可见性：
+   * - 快捷窗口可见 → 隐藏
+   * - 快捷窗口不可见/不存在 → 显示并聚焦
    */
-  private handleQuickModeShortcut(): void {
-    if (!this.mainWindow) return;
-
-    if (!this.mainWindow.isVisible() || this.mainWindow.isMinimized()) {
-      if (this.mainWindow.isMinimized()) {
-        this.mainWindow.restore();
-      }
-      this.mainWindow.show();
-      this.mainWindow.focus();
-      // 唤起时切换到快捷模式
-      this.mainWindow.webContents.send('switch-to-quick-mode');
-      logger.info('Quick mode shortcut: window restored');
-    } else {
-      // 窗口可见：通知渲染进程处理（快捷模式则隐藏，普通模式则切换）
-      this.mainWindow.webContents.send('qtian:ctrl-q-toggle');
-      logger.info('Quick mode shortcut: toggle sent to renderer');
+  private async handleQuickModeShortcut(): Promise<void> {
+    if (!this.controller) {
+      logger.warn('Ctrl+Q pressed but no controller registered');
+      return;
+    }
+    try {
+      await this.controller.toggleQuickWindow();
+    } catch (err) {
+      logger.error('Failed to toggle quick window via shortcut', err as Error);
     }
   }
 }

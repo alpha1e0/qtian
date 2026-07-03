@@ -131,17 +131,18 @@ describe('TrayManager', () => {
   });
 
   describe('context menu actions', () => {
-    it('should build menu with "显示主窗口" and "退出" items', async () => {
+    it('should build menu with "显示主窗口", "显示快捷模式" and "退出" items', async () => {
       const { Menu } = await import('electron');
 
       trayManager.create(mockMainWindow as any);
 
       const menuTemplate = (Menu.buildFromTemplate as ReturnType<typeof vi.fn>).mock.calls[0][0];
 
-      expect(menuTemplate).toHaveLength(3);
+      expect(menuTemplate).toHaveLength(4);
       expect(menuTemplate[0].label).toBe('显示主窗口');
-      expect(menuTemplate[1].type).toBe('separator');
-      expect(menuTemplate[2].label).toBe('退出');
+      expect(menuTemplate[1].label).toBe('显示快捷模式');
+      expect(menuTemplate[2].type).toBe('separator');
+      expect(menuTemplate[3].label).toBe('退出');
     });
 
     it('"显示主窗口" click should show main window', async () => {
@@ -156,13 +157,34 @@ describe('TrayManager', () => {
       expect(mockMainWindow.focus).toHaveBeenCalled();
     });
 
+    it('"显示快捷模式" click should invoke onShowQuickMode callback', async () => {
+      const { Menu } = await import('electron');
+      const onShowQuickMode = vi.fn();
+
+      trayManager.create(mockMainWindow as any, { onShowQuickMode });
+
+      const menuTemplate = (Menu.buildFromTemplate as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      menuTemplate[1].click();
+
+      expect(onShowQuickMode).toHaveBeenCalledTimes(1);
+    });
+
+    it('"显示快捷模式" click should be safe when no callback provided', async () => {
+      const { Menu } = await import('electron');
+
+      trayManager.create(mockMainWindow as any);
+
+      const menuTemplate = (Menu.buildFromTemplate as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(() => menuTemplate[1].click()).not.toThrow();
+    });
+
     it('"退出" click should call app.quit', async () => {
       const { Menu, app } = await import('electron');
 
       trayManager.create(mockMainWindow as any);
 
       const menuTemplate = (Menu.buildFromTemplate as ReturnType<typeof vi.fn>).mock.calls[0][0];
-      menuTemplate[2].click();
+      menuTemplate[3].click();
 
       expect(app.quit).toHaveBeenCalled();
     });

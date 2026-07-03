@@ -3,29 +3,12 @@
     <!-- 初始状态：仅输入框 -->
     <div v-if="pageState === 'initial'" class="initial-state">
       <div class="chat-input-section">
-        <!-- 顶部行：左侧Agent名称 + 右侧切换按钮 -->
-        <div class="section-header">
-          <el-text class="mx-1" tag="B">{{ currentAgentName }}</el-text>
-          <!-- <span class="agent-label">{{ currentAgentName }}</span> -->
-          <el-tooltip content="切换到完整对话模式" placement="left" :show-after="300">
-            <el-button
-              circle
-              size="small"
-              type="primary"
-              class="switch-full-btn"
-              @click="handleSwitchToNormalMode"
-              aria-label="切换到完整对话模式"
-            >
-              <el-icon><FullScreen /></el-icon>
-            </el-button>
-          </el-tooltip>
-        </div>
         <el-input
           v-model="message"
           type="textarea"
           placeholder="输入你想问的问题..."
           class="chat-input"
-          :rows="3"
+          :rows="4"
           resize="none"
           @keydown="handleKeyDown"
           aria-label="快捷模式输入框"
@@ -81,24 +64,6 @@
     <!-- 回答状态：用户问题 + AI回答 -->
     <div v-else class="answering-state">
       <div class="answering-card">
-        <!-- 顶部行：右上角按钮 -->
-        <div class="section-header">
-          <el-text class="mx-1" tag="B">{{ currentAgentName }}</el-text>
-          <el-tooltip content="切换到完整对话模式" placement="left" :show-after="300">
-            <el-button
-              circle
-              size="small"
-              type="primary"
-              @click="handleConvertToNormalMode"
-              :disabled="!assistantAnswer || isChatting"
-              aria-label="切换到完整对话模式"
-            >
-              <el-icon><FullScreen /></el-icon>
-            </el-button>
-          </el-tooltip>
-        </div>
-        <el-divider />
-
         <!-- 用户问题（只读卡片） -->
         <div class="question-card">
           {{ userQuestion }}
@@ -159,7 +124,7 @@
 </template>
 
 <script>
-import { Loading, FullScreen, RefreshRight, Plus, VideoPause } from '@element-plus/icons-vue';
+import { Loading, RefreshRight, Plus, VideoPause } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import MarkdownIt from 'markdown-it';
 
@@ -184,15 +149,15 @@ const QUICK_MODE_SIZES = {
   /** 初始状态：仅输入框 */
   initial: { width: 1000, height: 215 },
   /** 回答状态：用户问题 + AI回答 */
-  answering: { width: 1000, height: 850 },
+  answering: { width: 1000, height: 650 },
 };
 
 export default {
   name: 'QuickModePage',
 
-  components: { Loading, FullScreen, RefreshRight, Plus, VideoPause },
+  components: { Loading, RefreshRight, Plus, VideoPause },
 
-  emits: ['navigate'],
+  emits: ['navigate', 'agent-name-change'],
 
   data() {
     return {
@@ -237,6 +202,15 @@ export default {
     },
   },
 
+  watch: {
+    /**
+     * Agent 名称变化时上报给父组件（QuickTitleBar 展示）
+     */
+    currentAgentName(newName) {
+      this.$emit('agent-name-change', newName);
+    },
+  },
+
   async mounted() {
     await this.loadAgents();
     await this.loadLlmConfigs();
@@ -248,28 +222,27 @@ export default {
 
     // 进入快捷模式时调整窗口大小
     await this.resizeWindow('initial');
+
+    // 初始上报 Agent 名称给 TitleBar
+    this.$emit('agent-name-change', this.currentAgentName);
   },
 
   unmounted() {
     window.electron.ipcRendererOff('qtian:ai:chat-chunk', this.onChatChunk);
     window.electron.ipcRendererOff('qtian:ai:chat-complete', this.onChatComplete);
     window.electron.ipcRendererOff('qtian:ai:chat-error', this.onChatError);
-
-    // 离开快捷模式时恢复窗口大小（由主进程根据屏幕自适应）
-    window.electron.getNormalWindowSize().then((size) => {
-      window.electron.resizeWindow(size.width, size.height, true);
-    });
+    // 快捷窗口关闭仅隐藏，无需恢复主窗口尺寸
   },
 
   methods: {
     /**
-     * 调整窗口大小
+     * 调整窗口大小（保持窗口可手动调整，不锁定 resizable）
      * @param {'initial' | 'answering'} state - 页面状态
      */
     async resizeWindow(state) {
       const size = QUICK_MODE_SIZES[state];
       if (size) {
-        await window.electron.resizeWindow(size.width, size.height, false);
+        await window.electron.resizeWindow(size.width, size.height);
       }
     },
 
@@ -442,6 +415,19 @@ export default {
     },
 
     /**
+     * 由 QuickTitleBar 触发的切换请求：根据当前页面状态决定路径
+     * - 回答中且有消息 → handleConvertToNormalMode（持久化历史）
+     * - 其他 → handleSwitchToNormalMode（仅切换）
+     */
+    requestSwitchToNormal() {
+      if (this.pageState === 'answering' && this.messages.length > 0) {
+        this.handleConvertToNormalMode();
+      } else {
+        this.handleSwitchToNormalMode();
+      }
+    },
+
+    /**
      * 重置为初始状态
      */
     handleReset() {
@@ -541,26 +527,11 @@ export default {
   max-width: 970px;
   background: var(--surface-card);
   border-radius: var(--radius-lg);
-  padding: 6px 12px;
+  padding: 9px 12px;
   position: relative;
   -webkit-app-region: no-drag;
   box-shadow: var(--shadow-md);
   border: 1px solid var(--border-light);
-}
-
-.section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 4px;
-  height: 28px;
-  padding: 2px 5px 2px 7px;
-}
-
-.agent-label {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-secondary);
 }
 
 .chat-input {
@@ -586,7 +557,8 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 8px;
+  margin: 12px 2px 4px 2px;
+  /* padding: 4px; */
 }
 
 .input-selectors {
@@ -625,19 +597,11 @@ export default {
   position: relative;
   -webkit-app-region: no-drag;
   max-height: 90vh;
+  /* max-height: 600px; */
   display: flex;
   flex-direction: column;
   box-shadow: var(--shadow-md);
   border: 1px solid var(--border-light);
-}
-
-.answering-card .section-header {
-  margin-bottom: 0;
-}
-
-.answering-card :deep(.el-divider) {
-  margin: 10px 0;
-  border-color: var(--border-light);
 }
 
 .question-card {
@@ -655,7 +619,7 @@ export default {
 .answer-area {
   flex: 1;
   overflow-y: auto;
-  min-height: 60px;
+  min-height: 500px;
 }
 
 .answer-content {

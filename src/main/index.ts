@@ -1,12 +1,14 @@
 /**
  * Main process entry point for Qtian application
+ *
+ * 多窗口架构：主窗口（普通模式）+ 快捷窗口（独立 BrowserWindow）。
+ * WindowManager 集中管理窗口生命周期与跨窗口导航中转。
  */
 
 // 首先导入启动日志（在模块加载时立即执行）
 import './startup-log';
 
-import { app, protocol, BrowserWindow, ipcMain, dialog, nativeImage, screen } from 'electron';
-import * as path from 'path';
+import { app, protocol, BrowserWindow, ipcMain, dialog } from 'electron';
 
 import { config, wpath } from './core/common/context';
 import { registerAllHandlers } from './core/ipc/handlers';
@@ -17,6 +19,7 @@ import { createLogger, LogLevel } from './core/utils/logger';
 import { registerLocalResourceProtocol } from './core/utils/local-resource-protocol';
 import { TrayManager } from './core/utils/TrayManager';
 import { GlobalShortcutManager } from './core/utils/GlobalShortcutManager';
+import { WindowManager, getNormalWindowSize } from './core/utils/WindowManager';
 
 const logger = createLogger('background', LogLevel.INFO);
 
@@ -31,60 +34,10 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'local-resource', privileges: { bypassCSP: true } },
 ]);
 
-let mainWindow: BrowserWindow | null = null;
+/** 多窗口管理器（替代原全局 mainWindow 变量） */
+const windowManager = new WindowManager();
 const trayManager = new TrayManager();
 const shortcutManager = new GlobalShortcutManager();
-
-/** 标志位：区分"关闭到托盘"和"真正退出" */
-let isQuitting = false;
-
-/**
- * Create the browser window
- */
-/** 根据屏幕工作区计算普通模式窗口大小（不超过屏幕可用区域） */
-function getNormalWindowSize(): { width: number; height: number } {
-  const { width: screenW, height: screenH } = screen.getPrimaryDisplay().workAreaSize;
-  return {
-    width: Math.min(1600, screenW - 40),
-    height: Math.min(900, screenH - 40),
-  };
-}
-
-async function createWindow() {
-  const normalSize = getNormalWindowSize();
-  // Create the browser window (frameless，由自定义标题栏控制窗口)
-  mainWindow = new BrowserWindow({
-    width: normalSize.width,
-    height: normalSize.height,
-    frame: false,
-    icon: nativeImage.createFromPath(path.join(__dirname, '../../public/icon.png')),
-    webPreferences: {
-      preload: path.join(__dirname, '../preload/index.js'),
-      nodeIntegration: process.env.ELECTRON_NODE_INTEGRATION === 'true',
-      contextIsolation: process.env.ELECTRON_NODE_INTEGRATION !== 'true',
-    },
-  });
-
-  // Electron-vite dev server URL
-  if (isDevelopment && process.env.ELECTRON_RENDERER_URL) {
-    await mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
-    // DevTools disabled by default, use Ctrl+Shift+I to open manually
-    // if (!process.env.IS_TEST) mainWindow.webContents.openDevTools();
-  } else {
-    // Load the index.html when not in development
-    const indexPath = path.join(__dirname, '../renderer/index.html');
-    mainWindow.loadFile(indexPath);
-  }
-
-  // 拦截关闭事件：非真正退出时隐藏到托盘
-  mainWindow.on('close', (event) => {
-    if (!isQuitting) {
-      event.preventDefault();
-      mainWindow?.hide();
-      logger.info('Window hidden to system tray');
-    }
-  });
-}
 
 /**
  * Show error dialog
@@ -95,50 +48,63 @@ function error(title: string, msg: string): void {
 
 /**
  * 注册窗口控制 IPC handlers（frameless 窗口需要自定义标题栏控制）
+ *
+ * 多窗口架构下，所有窗口控制类 IPC 改用 `BrowserWindow.fromWebContents(event.sender)`
+ * 定位调用方窗口，不再依赖全局 mainWindow 引用。
+ *
+ * @param wm - WindowManager 实例（用于快捷窗口控制 IPC）
  */
-function registerWindowControlHandlers() {
-  ipcMain.handle('qtian:window-minimize', () => {
-    mainWindow?.minimize();
+function registerWindowControlHandlers(wm: WindowManager) {
+  ipcMain.handle('qtian:window-minimize', (event) => {
+    BrowserWindow.fromWebContents(event.sender)?.minimize();
   });
 
-  ipcMain.handle('qtian:window-maximize', () => {
-    if (mainWindow?.isMaximized()) {
-      mainWindow.unmaximize();
+  ipcMain.handle('qtian:window-maximize', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return;
+    if (win.isMaximized()) {
+      win.unmaximize();
     } else {
-      mainWindow?.maximize();
+      win.maximize();
     }
   });
 
-  ipcMain.handle('qtian:window-close', () => {
-    mainWindow?.close();
+  ipcMain.handle('qtian:window-close', (event) => {
+    BrowserWindow.fromWebContents(event.sender)?.close();
   });
 
-  ipcMain.on('qtian:window-drag', (_event, { deltaX, deltaY }: { deltaX: number; deltaY: number }) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      const [x, y] = mainWindow.getPosition();
-      mainWindow.setPosition(x + deltaX, y + deltaY);
+  ipcMain.on('qtian:window-drag', (event, { deltaX, deltaY }: { deltaX: number; deltaY: number }) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win && !win.isDestroyed()) {
+      const [x, y] = win.getPosition();
+      win.setPosition(x + deltaX, y + deltaY);
     }
   });
 
-  ipcMain.handle('qtian:window-resize', (_event, { width, height, resizable }: { width: number; height: number; resizable?: boolean }) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      const [x, y] = mainWindow.getPosition();
-      const [oldW, oldH] = mainWindow.getSize();
-      mainWindow.setBounds({
-        x: x + Math.round((oldW - width) / 2),
-        y: y + Math.round((oldH - height) / 2),
-        width,
-        height,
-      });
-      if (resizable !== undefined) {
-        mainWindow.setResizable(resizable);
-        mainWindow.setMaximizable(resizable);
+  ipcMain.handle(
+    'qtian:window-resize',
+    (event, { width, height, resizable }: { width: number; height: number; resizable?: boolean }) => {
+      const win = BrowserWindow.fromWebContents(event.sender);
+      if (win && !win.isDestroyed()) {
+        const [x, y] = win.getPosition();
+        const [oldW, oldH] = win.getSize();
+        win.setBounds({
+          x: x + Math.round((oldW - width) / 2),
+          y: y + Math.round((oldH - height) / 2),
+          width,
+          height,
+        });
+        if (resizable !== undefined) {
+          win.setResizable(resizable);
+          win.setMaximizable(resizable);
+        }
       }
     }
-  });
+  );
 
-  ipcMain.handle('qtian:window-is-maximized', () => {
-    return mainWindow?.isMaximized() ?? false;
+  ipcMain.handle('qtian:window-is-maximized', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    return win?.isMaximized() ?? false;
   });
 
   ipcMain.handle('qtian:window-normal-size', () => {
@@ -147,7 +113,7 @@ function registerWindowControlHandlers() {
 
   // 真正退出应用（跳过"隐藏到托盘"逻辑）
   ipcMain.handle('qtian:app-quit', () => {
-    isQuitting = true;
+    wm.setQuitting(true);
     app.quit();
   });
 
@@ -160,6 +126,38 @@ function registerWindowControlHandlers() {
       title: '关于',
       message: `Qtian AI助手 v${VERSION}`,
     });
+  });
+
+  // === 快捷窗口控制 IPC（多窗口架构新增） ===
+
+  /**
+   * 打开/显示快捷窗口（不存在则创建）。
+   * open 与 show 语义等价，提供两套别名便于渲染进程语义化调用。
+   */
+  ipcMain.handle('qtian:quick-window-open', async () => {
+    await wm.showQuickWindow();
+  });
+  ipcMain.handle('qtian:quick-window-show', async () => {
+    await wm.showQuickWindow();
+  });
+
+  /** 隐藏快捷窗口 */
+  ipcMain.handle('qtian:quick-window-hide', () => {
+    wm.hideQuickWindow();
+  });
+
+  /** 切换快捷窗口可见性（Ctrl+Q 同款行为） */
+  ipcMain.handle('qtian:quick-window-toggle', async () => {
+    await wm.toggleQuickWindow();
+  });
+
+  /**
+   * 跨窗口导航：快捷窗口 → 主进程 → 主窗口
+   *
+   * payload 结构：{ message?, agentId?, llmConfig?, historyId? }
+   */
+  ipcMain.handle('qtian:quick-to-normal-navigate', (_event, payload: unknown) => {
+    wm.forwardNavigateToMain(payload);
   });
 }
 
@@ -180,21 +178,23 @@ async function readConfig(): Promise<void> {
 }
 
 // Quit when all windows are closed (macOS 标准行为保留)
+// 多窗口下：快捷窗口 close 被拦截为 hide，主窗口 close 被拦截为 hide，
+// 正常使用不会触发；仅在真正退出（destroyAll）后所有窗口销毁时触发。
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  if (BrowserWindow.getAllWindows().length === 0 && process.platform !== 'darwin') {
     app.quit();
   }
 });
 
-// 标记真正退出，避免 close 事件拦截；同时注销全局快捷键
+// 标记真正退出，销毁所有窗口；同时注销全局快捷键
 app.on('before-quit', () => {
-  isQuitting = true;
+  windowManager.destroyAll();
   shortcutManager.unregister();
 });
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
+    windowManager.createMainWindow();
   }
 });
 
@@ -203,7 +203,7 @@ app.on('ready', async () => {
 
   registerLocalResourceProtocol(protocol);
   registerAllHandlers();
-  registerWindowControlHandlers();
+  registerWindowControlHandlers(windowManager);
 
   // 先读取配置（todo-app 等模块依赖 config.todoApp）
   await readConfig();
@@ -226,12 +226,15 @@ app.on('ready', async () => {
     logger.info('Development mode - Vue Devtools available');
   }
 
-  await createWindow();
+  await windowManager.createMainWindow();
 
-  // 创建系统托盘（需要 mainWindow 已创建）
+  // 创建系统托盘 + 注册全局快捷键（需要 mainWindow 已创建）
+  const mainWindow = windowManager.getMainWindow();
   if (mainWindow) {
-    trayManager.create(mainWindow);
-    shortcutManager.register(mainWindow);
+    trayManager.create(mainWindow, {
+      onShowQuickMode: () => windowManager.showQuickWindow(),
+    });
+    shortcutManager.register(windowManager);
   }
 });
 
