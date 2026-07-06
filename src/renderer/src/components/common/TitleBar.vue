@@ -1,34 +1,9 @@
 <template>
   <div class="custom-titlebar">
-    <!-- 可拖拽区域 + 图标 + 标题 -->
+    <!-- 可拖拽区域 + 图标 + 动态功能名 -->
     <div class="titlebar-drag">
       <img :src="iconUrl" alt="Qtian" class="titlebar-icon" />
-    </div>
-
-    <!-- 内联菜单 -->
-    <div class="titlebar-menus">
-      <el-dropdown
-        v-for="menu in menus"
-        :key="menu.label"
-        trigger="hover"
-        @command="handleCommand"
-      >
-        <span class="menu-item">{{ menu.label }}</span>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <template v-for="item in menu.items" :key="item.id">
-              <el-dropdown-item
-                v-if="item.type !== 'separator'"
-                :command="item.id"
-                :divided="item.divided"
-              >
-                {{ item.label }}
-              </el-dropdown-item>
-              <div v-else class="menu-separator" />
-            </template>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
+      <span class="titlebar-title" :title="title">{{ title }}</span>
     </div>
 
     <!-- 窗口控制按钮 -->
@@ -60,39 +35,30 @@
 <script>
 import iconUrl from '../../assets/icon.png';
 
-/** 菜单定义 */
-const menus = [
-  {
-    label: '功能',
-    items: [
-      { id: 'quick-mode', label: '快捷模式' },
-      { id: 'normal-mode', label: '普通模式' },
-      { id: 'sep1', type: 'separator' },
-      { id: 'quit', label: '退出' },
-    ],
-  },
-  {
-    label: '应用',
-    items: [
-      { id: 'todo-app', label: '代办应用' },
-    ],
-  },
-  {
-    label: '帮助',
-    items: [
-      { id: 'about', label: '关于' },
-    ],
-  },
-];
-
+/**
+ * 主窗口自定义 TitleBar
+ *
+ * 极简结构：品牌图标 + 动态功能名 + 标准窗口控制按钮。
+ * 历史「下拉菜单（功能 / 应用 / 帮助）」已随主窗口外壳重构移除，
+ * 模式切换迁移至 SideBar，关于 / 退出后续随设置面板补回。
+ *
+ * 设计文档：docs/specs/003_main-window-shell-design.md §3.2
+ */
 export default {
   name: 'CustomTitleBar',
-  emits: ['switch-mode'],
+  props: {
+    /**
+     * 动态功能名（由 MainComponent 根据 currentComponent 计算）
+     */
+    title: {
+      type: String,
+      default: 'AI 助手',
+    },
+  },
   data() {
     return {
       iconUrl,
       isMaximized: false,
-      menus,
     };
   },
   async mounted() {
@@ -115,30 +81,6 @@ export default {
     },
     onMaximizeStateChanged(state) {
       this.isMaximized = state;
-    },
-    /**
-     * 处理菜单命令
-     * @param {string} command - 菜单项 ID
-     */
-    handleCommand(command) {
-      switch (command) {
-        case 'quick-mode':
-          // 唤起独立快捷窗口（不再在主窗口内切换）
-          window.electron.openQuickWindow();
-          break;
-        case 'normal-mode':
-          this.$emit('switch-mode', 'normal');
-          break;
-        case 'todo-app':
-          this.$emit('switch-mode', 'todo-app');
-          break;
-        case 'quit':
-          window.electron.appQuit();
-          break;
-        case 'about':
-          window.electron.showAbout();
-          break;
-      }
     },
   },
 };
@@ -177,32 +119,6 @@ export default {
   opacity: 0.9;
 }
 
-.titlebar-menus {
-  margin-top: 2px;
-  display: flex;
-  align-items: center;
-  margin-left: 4px;
-  -webkit-app-region: no-drag;
-  height: 100%;
-}
-
-.menu-item {
-  padding: 0 10px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-  color: var(--text-on-dark-secondary);
-  font-size: 13px;
-  border-radius: var(--radius-sm);
-  transition: all 0.15s ease;
-}
-
-.menu-item:hover {
-  background: var(--surface-dark-hover);
-  color: var(--text-on-dark);
-}
-
 .titlebar-controls {
   display: flex;
   margin-left: auto;
@@ -231,11 +147,5 @@ export default {
 .ctrl-btn-close:hover {
   background: #e81123;
   color: white;
-}
-
-.menu-separator {
-  height: 1px;
-  background: var(--border-light);
-  margin: 4px 0;
 }
 </style>

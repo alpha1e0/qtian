@@ -1,42 +1,50 @@
 <template>
   <div class="main-layout">
-    <CustomTitleBar @switch-mode="handleSwitchMode" />
-    <component
-      :is="currentComponent"
-      class="main-content"
-      @navigate="handleNavigate"
-      :initial-message="initialMessage"
-      :initial-agent-id="initialAgentId"
-      :initial-llm-config="initialLlmConfig"
-      :initial-history-id="initialHistoryId"
-    />
+    <SideBar :active-mode="activeMode" @select="handleSidebarSelect" />
+    <div class="main-pane">
+      <CustomTitleBar :title="titleBarTitle" />
+      <component
+        :is="currentComponent"
+        class="main-content"
+        @navigate="handleNavigate"
+        :initial-message="initialMessage"
+        :initial-agent-id="initialAgentId"
+        :initial-llm-config="initialLlmConfig"
+        :initial-history-id="initialHistoryId"
+      />
+    </div>
   </div>
 </template>
 
 <script>
-import QuickModePage from './quick-mode/QuickModePage.vue';
 import AiAssistantPage from './ai-assistant/AiAssistantPage.vue';
 import TodoAppPage from './app-modules/todo-app/TodoAppPage.vue';
 import CustomTitleBar from './common/TitleBar.vue';
+import SideBar from './common/SideBar.vue';
 
 /**
  * 主窗口根组件
  *
+ * 外壳结构：SideBar（48px 图标列）+ 主面板（TitleBar + 内容区）。
+ * 模式切换统一由 SideBar 触发 → handleSidebarSelect 分发。
+ *
  * 多窗口架构下，主窗口默认显示普通模式（AiAssistantPage）。
- * 快捷模式已抽离到独立窗口，通过 Ctrl+Q 或菜单"功能→快捷模式"唤起。
+ * 快捷模式已抽离到独立窗口，通过 SideBar「快捷模式」按钮或 Ctrl+Q 唤起。
  *
  * 跨窗口导航：快捷窗口"切换到完整对话模式"时，经主进程中转，
  * 通过 'qtian:quick-to-normal-navigate' 事件携带 payload 到达此处，
  * 设置 pending* 数据并切换到 AiAssistantPage。
+ *
+ * 设计文档：docs/specs/003_main-window-shell-design.md §3.3
  */
 export default {
   name: 'MainComponent',
 
   components: {
-    QuickModePage,
     AiAssistantPage,
     TodoAppPage,
     CustomTitleBar,
+    SideBar,
   },
 
   data() {
@@ -51,6 +59,20 @@ export default {
   },
 
   computed: {
+    /**
+     * 当前激活模式，决定 SideBar 哪个按钮高亮
+     * @returns {'ai-assistant' | 'todo-app'}
+     */
+    activeMode() {
+      return this.currentComponent === 'TodoAppPage' ? 'todo-app' : 'ai-assistant';
+    },
+    /**
+     * TitleBar 动态功能名
+     * @returns {string}
+     */
+    titleBarTitle() {
+      return this.currentComponent === 'TodoAppPage' ? '待办' : 'AI 助手';
+    },
     /**
      * 仅在切换到 AiAssistantPage 时传递初始消息
      */
@@ -79,17 +101,39 @@ export default {
 
   methods: {
     /**
-     * 处理标题栏菜单的模式切换（主窗口内切换）
-     * @param {string} mode - 'normal' / 'todo-app'
+     * SideBar 选择统一入口
+     * @param {string} key - 'ai-assistant' | 'quick-mode' | 'todo-app' | 'settings'
      */
-    handleSwitchMode(mode) {
-      if (mode === 'normal') {
-        this.clearPending();
-        this.currentComponent = 'AiAssistantPage';
-      } else if (mode === 'todo-app') {
-        this.currentComponent = 'TodoAppPage';
+    handleSidebarSelect(key) {
+      switch (key) {
+        case 'ai-assistant':
+          this.clearPending();
+          this.currentComponent = 'AiAssistantPage';
+          break;
+        case 'todo-app':
+          this.currentComponent = 'TodoAppPage';
+          break;
+        case 'quick-mode':
+          this.openQuickWindow();
+          break;
+        case 'settings':
+          this.openSettings();
+          break;
+        default:
+          console.warn('未知的侧栏选择:', key);
       }
-      // 'quick' 由 TitleBar 自行调用 openQuickWindow，不再走本路径
+    },
+
+    /**
+     * 唤起独立快捷窗口
+     */
+    openQuickWindow() {
+      window.electron.openQuickWindow();
+    },
+
+    // TODO(settings): 后续随设置面板实现补全，当前仅占位
+    openSettings() {
+      console.info('设置面板尚未实现');
     },
 
     /**
@@ -111,7 +155,7 @@ export default {
       switch (target) {
         case 'quick-mode':
           // 唤起独立快捷窗口
-          window.electron.openQuickWindow();
+          this.openQuickWindow();
           break;
         case 'ai-assistant':
           this.pendingMessage = params?.message || '';
@@ -143,8 +187,8 @@ export default {
     handleKeyDown(event) {
       if (event.ctrlKey && event.altKey) {
         if (event.key === 'a') {
-          this.clearPending();
-          this.currentComponent = 'AiAssistantPage';
+          // 统一走 SideBar 入口
+          this.handleSidebarSelect('ai-assistant');
         }
       }
     },
@@ -168,10 +212,18 @@ export default {
 <style scoped>
 .main-layout {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   height: 100vh;
   overflow: hidden;
   background: var(--surface-base);
+}
+
+.main-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .main-content {
