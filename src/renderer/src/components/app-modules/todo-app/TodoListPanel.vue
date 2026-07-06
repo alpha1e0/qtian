@@ -89,7 +89,24 @@
         ③ 优先级图例（4 个语义色点，点击即把 #N 追加到输入框，替代长占位符教学）
     -->
     <div v-if="listId" class="quick-input-bar">
-      <span class="quick-path-chip" :title="quickInputPathFull">
+      <!--
+        路径胶囊：可点击锁定/解锁。
+        锁定后路径固定为点击瞬间的 selectedItemId，连续创建子条目均落到此父级下，
+        不再因"创建→select-item 漂移→子变孙"循环打断输入流。
+        视觉：未锁定为 accent-soft 浅底；锁定后切 accent 实色底 + 白字 + 锁定图标。
+      -->
+      <span
+        class="quick-path-chip"
+        :class="{ 'is-locked': isPathLocked }"
+        role="button"
+        tabindex="0"
+        :aria-pressed="isPathLocked"
+        :aria-label="quickPathChipAriaLabel"
+        :title="quickPathChipTitle"
+        @click="togglePathLock"
+        @keyup.enter.prevent="togglePathLock"
+      >
+        <el-icon v-if="isPathLocked" class="quick-path-glyph"><Lock /></el-icon>
         <span class="quick-path-text">{{ quickInputPathPrefix }}</span>
       </span>
 
@@ -208,14 +225,14 @@
 </template>
 
 <script>
-import { Plus, Filter, Star, StarFilled, FolderOpened } from '@element-plus/icons-vue';
+import { Plus, Filter, Star, StarFilled, FolderOpened, Lock } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import TodoItemRow from './TodoItemRow.vue';
 import TodoCreateDialog from './TodoCreateDialog.vue';
 
 export default {
   name: 'TodoListPanel',
-  components: { Plus, Filter, Star, StarFilled, FolderOpened, TodoItemRow, TodoCreateDialog },
+  components: { Plus, Filter, Star, StarFilled, FolderOpened, Lock, TodoItemRow, TodoCreateDialog },
   // select-list：顶部 list 名被点击时触发，
   // 父组件切到右侧 list-detail 视图（中间 item 树保留或挂载）。
   // delete-item：行内删除按钮触发，交由父组件走确认 + IPC + 刷新流程。
@@ -245,6 +262,12 @@ export default {
       draftFilterStatus: [],
       // 底部快捷输入框文本（Enter 后清空）
       quickInputText: '',
+      // 路径锁定：点击 quick-path-chip 后置 true，后续创建的子条目均落到 lockedPathItemId 下，
+      // 避免"创建→selectedItemId 漂移→子变孙"打断连续录入。再次点击 chip 取消锁定。
+      isPathLocked: false,
+      // 锁定的父条目 id（null = 锁定到根级）；仅在 isPathLocked=true 时生效。
+      // 切换 list 时随 watcher 重置（不同 list 的 itemId 不通用）。
+      lockedPathItemId: null,
       // 优先级 / 状态下拉选项：集中维护，避免模板里硬编码 4 份 el-option
       priorityOptions: [
         { label: '紧急', value: 'urgent' },
@@ -279,20 +302,48 @@ export default {
       return this.isFavorite ? '取消收藏' : '收藏';
     },
     /**
-     * 快捷输入框路径前缀（蓝色，标识新条目落地位置）。
-     * 取选中条目的祖先链，每级 title 截前 2 字符，用 / 连接，整体以 / 开头。
-     * 未选中条目 → "/"（新建到根级）。找不到选中条目（树未含）也回退到 "/"。
+     * 快捷创建当前生效的父条目 id。
+     * 锁定时取 lockedPathItemId（点击锁定瞬间的 selectedItemId 快照），
+     * 未锁定时取 selectedItemId（默认行为：基于当前选中条目创建子项）。
+     * @returns {number|null} parent_id；null 表示根级
+     */
+    quickCreateParentId() {
+      return this.isPathLocked ? this.lockedPathItemId : this.selectedItemId;
+    },
+    /**
+     * 快捷输入框路径前缀（标识新条目落地位置）。
+     * 锁定时基于 lockedPathItemId 解析祖先链；未锁定时基于 selectedItemId。
+     * 每级 title 截前 2 字符，用 / 连接，整体以 / 开头。无目标 → "/"（根级）。
      */
     quickInputPathPrefix() {
-      const chain = this.selectedItemChain;
+      const chain = this.quickInputPathChain;
       if (!chain || chain.length === 0) return '/';
       return '/' + chain.map((n) => (n.title || '').slice(0, 2)).join('/');
     },
-    /** 路径前缀 tooltip：完整未截断的祖先链，便于用户辨认截断后的层级 */
+    /** 路径胶囊 hover tooltip：含锁定态动作提示 + 完整祖先链 */
+    quickPathChipTitle() {
+      const full = this.quickInputPathFull;
+      return this.isPathLocked
+        ? `已锁定创建路径：${full}（再次点击取消锁定）`
+        : `创建路径：${full}（点击锁定，连续在此层级下创建子条目）`;
+    },
+    /** 路径胶囊 aria-label：与 title 同语义，供屏幕阅读器播报 */
+    quickPathChipAriaLabel() {
+      return this.isPathLocked
+        ? `已锁定创建路径 ${this.quickInputPathFull}，再次点击取消锁定`
+        : `创建路径 ${this.quickInputPathFull}，点击锁定路径`;
+    },
+    /** 路径前缀 tooltip 内嵌的完整祖先链：锁定时基于 lockedPathItemId，否则基于 selectedItemId */
     quickInputPathFull() {
-      const chain = this.selectedItemChain;
+      const chain = this.quickInputPathChain;
       if (!chain || chain.length === 0) return '/（根级）';
       return '/' + chain.map((n) => n.title || '').join('/');
+    },
+    /** 当前生效路径（锁定或选中）的祖先链；无目标返回 null */
+    quickInputPathChain() {
+      const targetId = this.quickCreateParentId;
+      if (!targetId) return null;
+      return this.findItemPath(this.itemTree, targetId);
     },
     /** 选中条目的祖先链（从根到选中条目自身）；无选中或未命中返回 null */
     selectedItemChain() {
@@ -325,6 +376,9 @@ export default {
   watch: {
     // 切换 list 时重新加载 item 树（D6 受控模式核心入口）
     listId() {
+      // 切 list 后 itemId 不通用，重置路径锁定避免脏状态
+      this.isPathLocked = false;
+      this.lockedPathItemId = null;
       this.loadItemTree();
     },
   },
@@ -441,10 +495,26 @@ export default {
       }
     },
     /**
+     * 切换路径锁定：未锁定→锁定当前生效路径（快照 quickCreateParentId 到 lockedPathItemId）；
+     * 已锁定→取消锁定，回到"基于 selectedItemId"的默认行为。
+     */
+    togglePathLock() {
+      if (this.isPathLocked) {
+        this.isPathLocked = false;
+        this.lockedPathItemId = null;
+      } else {
+        // 锁定点击瞬间的生效路径（当前选中条目或根级），后续 selectedItemId 漂移不影响
+        this.lockedPathItemId = this.selectedItemId;
+        this.isPathLocked = true;
+      }
+    },
+    /**
      * 快捷创建：读取底部输入框文本，调 createTodoItemQuick（main 侧解析结尾 #N
-     * 控制符 + 落库），刷新 item 树并选中新条目，最后清空输入框。
+     * 控制符 + 落库），刷新 item 树并清空输入框。
      *
-     * 新条目 parent_id = 当前选中条目（作为其子项）；未选中时为根级（null）。
+     * parent_id = quickCreateParentId（锁定时取 lockedPathItemId，否则取 selectedItemId）。
+     * 路径锁定态下不 emit select-item——保持选中条目不变，让用户能在同一父级下
+     * 连续创建多个子条目；未锁定时与创建对话框一致：选中新条目以驱动右侧详情展示。
      * 空输入直接忽略，不报错。
      */
     async handleQuickCreate() {
@@ -458,12 +528,17 @@ export default {
         const created = await window.todoApp.createTodoItemQuick(
           raw,
           this.listId,
-          this.selectedItemId,
+          this.quickCreateParentId,
         );
         this.quickInputText = '';
         await this.loadItemTree();
-        // 与 onCreateItemConfirm 一致：加载后再选中新条目，确保高亮有的放矢
-        this.$emit('select-item', created.id);
+        if (this.isPathLocked) {
+          // 锁定态：保持 selectedItemId 不变（仍是父级），仅刷新树展示新子项。
+          // 不主动滚动——父级可能本就可见，频繁滚动会打断连续录入节奏。
+        } else {
+          // 与 onCreateItemConfirm 一致：加载后再选中新条目，确保高亮有的放矢
+          this.$emit('select-item', created.id);
+        }
       } catch (err) {
         // title 为空（如仅输入 "#4"）会被 main 侧拒绝；此处展示错误
         ElMessage.error(err?.message || '创建失败');
@@ -701,7 +776,8 @@ export default {
 
 /*
  * 路径胶囊：accent-soft 底的圆角胶囊，accent-text 文字 + 文件夹图标，
- * 标识"新条目将落入此层级"。文字过窄时省略；与输入框之间用 gap 隔开即可。
+ * 标识"新条目将落入此层级"。可点击切换锁定态——锁定后切换为 accent 实色底 + 白字 +
+ * 锁定图标，强调"路径已固定"。文字过窄时省略；与输入框之间用 gap 隔开即可。
  */
 .quick-path-chip {
   flex-shrink: 0;
@@ -718,11 +794,38 @@ export default {
   letter-spacing: 0.04em;
   white-space: nowrap;
   overflow: hidden;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease,
+    transform 0.16s ease;
+  outline: none;
+}
+.quick-path-chip:hover,
+.quick-path-chip:focus-visible {
+  background: rgba(99, 102, 241, 0.2);
+  border-color: rgba(99, 102, 241, 0.32);
+}
+.quick-path-chip:active {
+  transform: translateY(0.5px);
+}
+/* 锁定态：accent 实色渐变底 + 白字 + 强阴影，强化"已固定路径"信号 */
+.quick-path-chip.is-locked {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.32);
+}
+.quick-path-chip.is-locked:hover,
+.quick-path-chip.is-locked:focus-visible {
+  background: linear-gradient(135deg, #5457e5, #7d49f0);
+  filter: brightness(1.05);
 }
 .quick-path-glyph {
   flex-shrink: 0;
   font-size: 12px;
   opacity: 0.8;
+}
+.quick-path-chip.is-locked .quick-path-glyph {
+  opacity: 1;
 }
 .quick-path-text {
   overflow: hidden;
