@@ -167,21 +167,23 @@
 
       <el-form label-position="top" size="small" class="filter-form">
         <!--
-          优先级：el-check-tag 多选；el-check-tag 无 v-model，靠 toggleDraftPriority
-          维护 draft 数组。未选中态为 light 效果（浅色语义底 + 语义色文字），选中态
-          切换为 dark 效果（实色底 + 白字），配色与新建条目 priority-radio 同源
-          （urgent=danger / important=warning / normal=accent / hint=muted）。
+          优先级：el-checkbox-group 多选（与下方状态筛选同款控件族，统一交互语言）。
+          全部横向一行排布；每个 checkbox 自带语义色点，色点颜色 = 标签文字颜色
+          （urgent=红 / important=琥珀 / normal=靛 / hint=灰，与 TodoItemRow
+          priority-dot 同源），让"该优先级是哪种色"一眼可辨。
         -->
         <el-form-item label="优先级">
-          <div class="priority-tag-group">
-            <el-check-tag
+          <el-checkbox-group v-model="draftFilterPriority" class="priority-checkbox-group">
+            <el-checkbox
               v-for="opt in priorityOptions"
               :key="opt.value"
-              :checked="draftFilterPriority.includes(opt.value)"
-              :class="`prio-tag prio-${opt.value}`"
-              @change="toggleDraftPriority(opt.value)"
-            >{{ opt.label }}</el-check-tag>
-          </div>
+              :value="opt.value"
+              :class="`priority-checkbox priority-${opt.value}`"
+            >
+              <span class="priority-filter-dot" :class="`dot-${opt.value}`" />
+              <span class="priority-filter-label">{{ opt.label }}</span>
+            </el-checkbox>
+          </el-checkbox-group>
         </el-form-item>
 
         <!--
@@ -580,19 +582,6 @@ export default {
       this.draftFilterPriority = [...this.filterPriority];
       this.draftFilterStatus = [...this.filterStatus];
       this.filterDialogVisible = true;
-    },
-    /**
-     * 优先级 check-tag 多选切换。
-     * el-check-tag 没有 v-model，靠 :checked 绑定 + @change 手动维护 draft 数组。
-     *
-     * @param value - 优先级 key（urgent/important/normal/hint）
-     */
-    toggleDraftPriority(value) {
-      if (this.draftFilterPriority.includes(value)) {
-        this.draftFilterPriority = this.draftFilterPriority.filter((v) => v !== value);
-      } else {
-        this.draftFilterPriority = [...this.draftFilterPriority, value];
-      }
     },
     /** 确定：把草稿浅拷贝写入生效值并关闭对话框 */
     applyFilter() {
@@ -1102,95 +1091,88 @@ export default {
 }
 
 /*
- * 优先级 check-tag 组：未选中态为 el-tag effect="light" 风格（浅色语义底 + 语义色文字），
- * 选中态切换为 effect="dark" 风格（实色底 + 白字），与 TodoCreateDialog priority-radio
- * 同源配色（urgent=danger / important=warning / normal=accent / hint=muted），
- * 让用户在两个对话框看到同一套优先级视觉语言。
+ * 优先级 checkbox 组：与状态筛选同款 el-checkbox-group 控件族，统一交互语言。
+ * 全部横向一行排布（与状态筛选竖向列表形成对比，是因为优先级选项少、用户更频繁
+ * 切换；横排省纵向空间，4 个语义色点+标签一眼可扫）。
+ *
+ * 配色策略：每个 checkbox 左侧色点 + 标签文字**共用同一语义色**（urgent=红 /
+ * important=琥珀 / normal=靛 / hint=灰，与 TodoItemRow priority-dot 同源），
+ * checkbox 选中态本身仍是 indigo accent（避免 4 种颜色同时落在 box 上过载），
+ * 色点 + 文字承担语义区分。
  */
-.todo-filter-dialog .priority-tag-group {
+.todo-filter-dialog .priority-checkbox-group {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 16px;
 }
 
-.todo-filter-dialog .el-check-tag {
+.todo-filter-dialog .priority-checkbox {
+  display: inline-flex;
+  align-items: center;
+  height: auto;
+  margin-right: 0;
+  padding: 4px 6px;
   border-radius: 8px;
-  padding: 5px 14px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  transition: all 0.18s ease;
-  cursor: pointer;
+  transition: background 0.18s ease;
 }
 
-/* 未选中态（light 效果）：浅色语义底 + 语义色文字 */
-.todo-filter-dialog .prio-tag.prio-urgent {
-  background: rgba(239, 68, 68, 0.08);
-  border: 1px solid rgba(239, 68, 68, 0.24);
+.todo-filter-dialog .priority-checkbox:hover {
+  background: rgba(99, 102, 241, 0.04);
+}
+
+.todo-filter-dialog .priority-checkbox .el-checkbox__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding-left: 6px;
+}
+
+/* 色点：8px 圆 + 白色描边圈，与下方状态色点同尺寸（视觉对齐） */
+.todo-filter-dialog .priority-filter-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.6);
+}
+
+.todo-filter-dialog .dot-urgent { background: var(--color-danger, #ef4444); }
+.todo-filter-dialog .dot-important { background: var(--color-warning, #f59e0b); }
+.todo-filter-dialog .dot-normal { background: var(--accent, #6366f1); }
+.todo-filter-dialog .dot-hint { background: var(--text-on-dark-muted, #908e9f); }
+
+/*
+ * 标签文字色 = 色点色（按需求"色点和标签颜色保持一致"）。
+ * 选中态保持同色，避免勾选时颜色突变；hover 微抬亮度强化反馈。
+ */
+.todo-filter-dialog .priority-urgent .el-checkbox__label,
+.todo-filter-dialog .priority-urgent .priority-filter-label {
   color: var(--color-danger, #ef4444);
 }
-.todo-filter-dialog .prio-tag.prio-urgent:hover {
-  background: rgba(239, 68, 68, 0.14);
-  border-color: rgba(239, 68, 68, 0.36);
-}
-.todo-filter-dialog .prio-tag.prio-important {
-  background: rgba(245, 158, 11, 0.10);
-  border: 1px solid rgba(245, 158, 11, 0.28);
+.todo-filter-dialog .priority-important .el-checkbox__label,
+.todo-filter-dialog .priority-important .priority-filter-label {
   color: var(--color-warning, #f59e0b);
 }
-.todo-filter-dialog .prio-tag.prio-important:hover {
-  background: rgba(245, 158, 11, 0.16);
-  border-color: rgba(245, 158, 11, 0.40);
-}
-.todo-filter-dialog .prio-tag.prio-normal {
-  background: rgba(99, 102, 241, 0.08);
-  border: 1px solid rgba(99, 102, 241, 0.24);
+.todo-filter-dialog .priority-normal .el-checkbox__label,
+.todo-filter-dialog .priority-normal .priority-filter-label {
   color: var(--accent, #6366f1);
 }
-.todo-filter-dialog .prio-tag.prio-normal:hover {
-  background: rgba(99, 102, 241, 0.14);
-  border-color: rgba(99, 102, 241, 0.36);
-}
-.todo-filter-dialog .prio-tag.prio-hint {
-  background: rgba(144, 142, 159, 0.12);
-  border: 1px solid rgba(144, 142, 159, 0.30);
+.todo-filter-dialog .priority-hint .el-checkbox__label,
+.todo-filter-dialog .priority-hint .priority-filter-label {
   color: var(--text-on-dark-muted, #908e9f);
 }
-.todo-filter-dialog .prio-tag.prio-hint:hover {
-  background: rgba(144, 142, 159, 0.18);
-  border-color: rgba(144, 142, 159, 0.42);
-}
 
-/* 选中态（dark 效果）：分别按紧急 / 重要 / 普通 / 提示语义实色着色（与新建条目 priority-radio 同源） */
-.todo-filter-dialog .prio-tag.prio-urgent.is-checked {
-  background: var(--color-danger, #ef4444);
-  border-color: var(--color-danger, #ef4444);
-  color: #fff;
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.28);
-}
-.todo-filter-dialog .prio-tag.prio-important.is-checked {
-  background: var(--color-warning, #f59e0b);
-  border-color: var(--color-warning, #f59e0b);
-  color: #fff;
-  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.28);
-}
-.todo-filter-dialog .prio-tag.prio-normal.is-checked {
-  background: var(--accent, #6366f1);
+/* checkbox box 选中色统一 indigo accent，避免 4 色齐染 box 造成视觉过载 */
+.todo-filter-dialog .priority-checkbox .el-checkbox__input.is-checked .el-checkbox__inner {
+  background-color: var(--accent, #6366f1);
   border-color: var(--accent, #6366f1);
-  color: #fff;
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.28);
-}
-.todo-filter-dialog .prio-tag.prio-hint.is-checked {
-  background: var(--text-on-dark-muted, #908e9f);
-  border-color: var(--text-on-dark-muted, #908e9f);
-  color: #fff;
-  box-shadow: 0 4px 12px rgba(144, 142, 159, 0.22);
 }
 
-/* 选中后 hover 保持语义色，仅做微抬升 + 亮度，避免颜色闪烁 */
-.todo-filter-dialog .prio-tag.is-checked:hover {
-  transform: translateY(-1px);
-  filter: brightness(1.06);
+.todo-filter-dialog .priority-checkbox .el-checkbox__input.is-checked + .el-checkbox__label {
+  /* 颜色由上方 priority-* 命名空间提供，此处仅保留结构钩子 */
 }
 
 /*
