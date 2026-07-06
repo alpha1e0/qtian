@@ -791,8 +791,8 @@ export default {
   align-items: center;
   background: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.55) 0%,
-    rgba(255, 255, 255, 0.15) 100%
+    rgba(243, 241, 236, 0.55) 0%,
+    rgba(243, 241, 236, 0.15) 100%
   );
   border-bottom: 1px solid rgba(99, 102, 241, 0.14);
   backdrop-filter: blur(8px);
@@ -814,7 +814,7 @@ export default {
  */
 .todo-sidebar {
   position: relative;
-  flex: 5;
+  flex: 4;
   min-width: 0;
   border-right: 1px solid rgba(99, 102, 241, 0.12);
   /* 外层自身作为 flex column 容器，让 .todo-sidebar-inner 用 flex:1 填充；
@@ -842,7 +842,7 @@ export default {
 
 .todo-item-detail {
   position: relative;
-  flex: 9;
+  flex: 10;
   min-width: 0;
   border-left: 1px solid rgba(99, 102, 241, 0.12);
   overflow-y: auto;

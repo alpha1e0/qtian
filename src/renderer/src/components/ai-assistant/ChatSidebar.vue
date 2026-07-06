@@ -117,8 +117,8 @@ export default {
 
 <style scoped>
 .chat-sidebar {
-  width: 240px;
-  background: var(--surface-dark-secondary);
+  width: 280px;
+  background: rgba(243, 241, 236, 0.55);
   border-right: 1px solid var(--border-light);
   display: flex;
   flex-direction: column;
