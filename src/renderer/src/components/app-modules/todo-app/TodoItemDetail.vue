@@ -1,12 +1,13 @@
 <template>
   <div class="todo-item-detail-inner">
     <!--
-      固定页头：基本信息 / AI任务 双 tab（复用 sidebar 的 radio-button toggle 样式）。
+      固定页头：基本信息 / 文档 / AI任务 三 tab（复用 sidebar 的 radio-button toggle 样式）。
       放在滚动容器之外，保证表单再长也能随时切换 tab。
     -->
     <div class="detail-header">
       <el-radio-group v-model="view" size="small" class="view-toggle">
         <el-radio-button value="basic">基本信息</el-radio-button>
+        <el-radio-button value="docs">文档</el-radio-button>
         <el-radio-button value="task">AI任务</el-radio-button>
       </el-radio-group>
     </div>
@@ -127,12 +128,16 @@
             </div>
           </el-form-item>
         </el-form>
+      </div>
 
-        <!--
-          文档区域（标签云展示）：
-          docs 以 flex-wrap chip 形式呈现，沿用 TodoLabelCloud 视觉语言，
-          让"关联文档"作为可快速扫视的入口集合，点击单条拉起抽屉编辑。
-        -->
+      <!-- =============== 文档 tab =============== -->
+      <!--
+        文档列表（替代原"基本信息" tab 末尾的标签云）：
+        每行 doc-row 含图标 + 名称 + 更新时间 + 右侧删除按钮。
+        点击行触发 handleOpenDoc 复用既有 open-doc emit 路径；
+        删除按钮使用 @click.stop 阻止冒泡到行 click，弹确认框后调 deleteDocument IPC。
+      -->
+      <div v-else-if="view === 'docs'" class="detail-content">
         <div class="docs-section">
           <div class="docs-header">
             <span class="section-title">关联文档</span>
@@ -141,20 +146,33 @@
             </el-button>
           </div>
           <div v-if="documents.length === 0" class="empty-hint">暂无文档</div>
-          <div v-else class="doc-cloud">
+          <div v-else class="doc-list">
             <div
               v-for="doc in documents"
               :key="doc.id"
-              class="doc-chip"
+              class="doc-row"
               role="button"
               tabindex="0"
-              :title="`打开「${doc.name}」`"
+              :title="`打开「${doc.name}」（更新于 ${formatDocTime(doc.updated_at)}）`"
               :aria-label="`打开文档 ${doc.name}`"
               @click="handleOpenDoc(doc)"
               @keyup.enter="handleOpenDoc(doc)"
             >
-              <el-icon><Document /></el-icon>
-              <span class="doc-chip-name">{{ doc.name }}</span>
+              <el-icon class="doc-row-icon"><Document /></el-icon>
+              <div class="doc-row-main">
+                <span class="doc-row-name">{{ doc.name }}</span>
+                <span v-if="doc.updated_at" class="doc-row-meta">{{ formatDocTime(doc.updated_at) }}</span>
+              </div>
+              <el-button
+                class="doc-row-delete"
+                text
+                size="small"
+                :aria-label="`删除文档 ${doc.name}`"
+                title="删除文档"
+                @click.stop="handleDeleteDoc(doc)"
+              >
+                <el-icon><Delete /></el-icon>
+              </el-button>
             </div>
           </div>
         </div>
@@ -256,15 +274,16 @@
 </template>
 
 <script>
-import { Plus, Document, VideoPlay, View, Refresh, Loading, Check, Close, FullScreen } from '@element-plus/icons-vue';
+import { Plus, Document, VideoPlay, View, Refresh, Loading, Check, Close, FullScreen, Delete } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import TodoDescriptionDialog from './TodoDescriptionDialog.vue';
 import { TODO_DESCRIPTION_MAX_LENGTH } from './constants';
 
 /**
- * TodoItemDetail —— todo_item 详情面板（基本信息 / AI任务 双 tab）。
+ * TodoItemDetail —— todo_item 详情面板（基本信息 / 文档 / AI任务 三 tab）。
  *
- * 基本信息 tab：标题 / 状态 / 优先级 / 截止时间 / 描述 / 进度 / 手动进度 / 关联文档
+ * 基本信息 tab：标题 / 状态 / 优先级 / 截止时间 / 描述 / 进度 / 手动进度
+ * 文档 tab：关联文档列表（每行 icon+名称+更新时间+删除按钮，点击行打开编辑器，删除按钮弹确认框）
  * AI任务 tab：task_prompt + Agent / LLM 配置 / 额外 prompt 内联表单 + 运行/重跑/查看面板
  *
  * 自动保存：字段失焦或值变化触发 IPC，顶部 save-status-bar 反馈 saving/saved/error。
@@ -273,7 +292,7 @@ import { TODO_DESCRIPTION_MAX_LENGTH } from './constants';
  */
 export default {
   name: 'TodoItemDetail',
-  components: { Plus, Document, VideoPlay, View, Refresh, Loading, Check, Close, FullScreen, TodoDescriptionDialog },
+  components: { Plus, Document, VideoPlay, View, Refresh, Loading, Check, Close, FullScreen, Delete, TodoDescriptionDialog },
   // run-task 携带 { agentName, llmConfigName, extraPrompt } 负载（首次运行 + 重跑共用）
   emits: ['updated', 'open-doc', 'run-task', 'view-task'],
   props: {
@@ -553,6 +572,43 @@ export default {
         itemId: this.itemId,
         titlePath: `${this.formData?.title || ''} / ${doc.name}`,
       });
+    },
+    /**
+     * 删除关联文档：弹确认框后调 deleteDocument IPC（软删除，可在回收站恢复）。
+     * 删除按钮已用 @click.stop 阻止冒泡到行 click，避免触发 handleOpenDoc。
+     * 删除成功后刷新 documents 列表，让用户立即看到结果。
+     * @param {{ id: number, name: string }} doc - 待删除文档
+     */
+    async handleDeleteDoc(doc) {
+      try {
+        await ElMessageBox.confirm(
+          `确定删除文档「${doc.name}」吗？可在回收站恢复。`,
+          '删除文档',
+          { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' },
+        );
+      } catch (action) {
+        // 用户取消（action === 'cancel'），不做任何处理
+        return;
+      }
+      try {
+        await window.todoApp.deleteDocument(doc.id);
+        await this.loadDocuments();
+        ElMessage.success('文档已删除');
+      } catch (err) {
+        ElMessage.error(err?.message || '删除失败');
+      }
+    },
+    /**
+     * 格式化文档更新时间戳为「YYYY-MM-DD HH:mm」展示。
+     * 与 TodoListDetail.formatTime 同款，仅为文档 tab 的次级 meta 文案服务。
+     * @param {number|string} ts - 毫秒时间戳
+     * @returns {string} 格式化时间，空值返回空串
+     */
+    formatDocTime(ts) {
+      if (!ts) return '';
+      const d = new Date(Number(ts));
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
     },
   },
 };
@@ -860,53 +916,88 @@ export default {
 }
 
 /*
- * 文档标签云：flex-wrap chip 布局，沿用 TodoLabelCloud 视觉语言。
- * 每个 chip = 文档入口（icon + name），点击拉起编辑抽屉。
- * 与原 .doc-item 卡片列表的区别：横向流式排列，单位面积信息密度更高。
+ * 文档列表（替代原标签云 chip 布局）：
+ * 每行 doc-row 含图标 + 名称（+ 次级更新时间） + 右侧删除按钮（hover 显形）。
+ * 列表样式比标签云更适合"管理"语义——可承载更多文档且更易精确点击单条；
+ * 删除按钮独立挂在行尾，@click.stop 防止冒泡触发 handleOpenDoc。
  */
-.doc-cloud {
+.doc-list {
   display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.doc-chip {
-  display: inline-flex;
+.doc-row {
+  display: flex;
   align-items: center;
-  gap: 5px;
-  max-width: 100%;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
   cursor: pointer;
   user-select: none;
-  background: rgba(99, 102, 241, 0.06);
+  background: rgba(99, 102, 241, 0.04);
   color: var(--text-on-dark-secondary);
-  border: 1px solid rgba(99, 102, 241, 0.20);
-  transition: all 0.2s ease;
+  border: 1px solid rgba(99, 102, 241, 0.12);
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
-.doc-chip:hover,
-.doc-chip:focus-visible {
-  background: rgba(99, 102, 241, 0.12);
+.doc-row:hover,
+.doc-row:focus-visible {
+  background: rgba(99, 102, 241, 0.10);
   color: var(--text-on-dark);
-  border-color: rgba(99, 102, 241, 0.36);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.10);
+  border-color: rgba(99, 102, 241, 0.30);
   outline: none;
 }
 
-.doc-chip :deep(.el-icon) {
+.doc-row-icon {
   color: var(--accent);
   flex-shrink: 0;
 }
 
-.doc-chip-name {
+.doc-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.doc-row-name {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.doc-row-meta {
+  font-size: 10px;
+  color: var(--text-on-dark-muted, #5c5b72);
+  font-feature-settings: 'tnum';
+  letter-spacing: 0.06em;
+}
+
+/*
+ * 删除按钮：默认弱化（透明底 + muted 色），hover 时 indigo 强调 + 行 hover 时显形。
+ * 默认隐藏（opacity:0）让"扫视"列表时不被操作图标干扰，需要时 hover 行即可暴露入口；
+ * focus-visible 行（键盘聚焦）也保持可见，符合无障碍预期。
+ */
+.doc-row-delete {
+  flex-shrink: 0;
+  opacity: 0;
+  color: var(--text-on-dark-muted, #5c5b72);
+  transition: opacity 0.18s ease, color 0.18s ease, background 0.18s ease;
+}
+
+.doc-row:hover .doc-row-delete,
+.doc-row:focus-visible .doc-row-delete {
+  opacity: 1;
+}
+
+.doc-row-delete:hover {
+  color: var(--color-danger, #ef4444);
+  background: rgba(239, 68, 68, 0.10);
 }
 
 /* tab toggle：复用 sidebar 的 .view-toggle 编辑级风格 */
@@ -919,7 +1010,7 @@ export default {
 }
 
 .view-toggle :deep(.el-radio-button) {
-  width: 50%;
+  width: 33.3333%;
 }
 
 .view-toggle :deep(.el-radio-button__inner) {

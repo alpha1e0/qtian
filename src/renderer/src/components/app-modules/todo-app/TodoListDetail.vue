@@ -73,6 +73,7 @@
                 :rows="9"
                 :maxlength="TODO_DESCRIPTION_MAX_LENGTH"
                 show-word-limit
+                word-limit-position="outside"
                 @blur="handleSave"
               />
             </el-form-item>

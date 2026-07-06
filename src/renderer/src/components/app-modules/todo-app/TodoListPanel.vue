@@ -90,7 +90,6 @@
     -->
     <div v-if="listId" class="quick-input-bar">
       <span class="quick-path-chip" :title="quickInputPathFull">
-        <el-icon class="quick-path-glyph"><FolderOpened /></el-icon>
         <span class="quick-path-text">{{ quickInputPathPrefix }}</span>
       </span>
 
@@ -785,9 +784,9 @@ export default {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 24px;
+  min-width: 20px;
   height: 20px;
-  padding: 0 5px;
+  padding: 0 3px;
   border-radius: 6px;
   font-family: var(--font-mono, 'Cascadia Code', Consolas, monospace);
   font-size: 10px;

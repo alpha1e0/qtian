@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.0.0] 2026-07-06（TodoItemDetail 文档独立 tab + 列表化 + 行内删除）
+
+**User**: todo-app，待办条目详情中 TodoItemDetail.vue，当前"文档"放在"基本信息"中，优化为：1. 文档放到单独 tab（名称"文档"）；2. 放弃标签云，使用列表展示；3. 文档 Item 点击进入编辑页；4. 文档 Item 右侧增加删除按钮，点击弹框确认删除。
+
+**Summary**:
+
+将 `TodoItemDetail` 顶部 tab 由「基本信息 / AI任务」双 tab 扩展为「基本信息 / 文档 / AI任务」三 tab，把原本嵌在"基本信息"末尾的 `.doc-cloud` 标签云收敛到独立的"文档" tab，并改为纵向 `.doc-list` 列表样式（每行 icon + 名称 + 更新时间 meta + 右侧 hover 显形的删除按钮）。删除按钮 `@click.stop` 阻止冒泡到行 click，弹 `ElMessageBox.confirm` 确认后调既有 `deleteDocument` IPC（软删除，可在回收站恢复），成功后刷新 `documents` 列表。无需新增 IPC / Service。
+
+### 改动
+
+- **`TodoItemDetail.vue`**：
+  - 顶部 `.detail-header` 新增 `<el-radio-button value="docs">文档</el-radio-button>`；`.view-toggle :deep(.el-radio-button)` width 由 50% 改为 33.3333%（三等分）
+  - 基本信息 tab 移除末尾 `.docs-section`（关联文档区），基本信息表单恢复纯净
+  - 新增"文档" tab 分支（`v-else-if="view === 'docs'"`）：保留新建按钮，列表用 `.doc-list` + `.doc-row` 渲染；每行含 `Document` 图标 / 名称 / `formatDocTime(updated_at)` 次级 meta / 右侧 `Delete` 图标按钮
+  - 脚本：导入 `Delete` 图标并注册；新增 `handleDeleteDoc(doc)`（弹确认框 → `window.todoApp.deleteDocument(doc.id)` → `loadDocuments` 刷新 → `ElMessage.success`）+ `formatDocTime(ts)`（与 TodoListDetail.formatTime 同款）
+  - 样式：删除原 `.doc-cloud` / `.doc-chip` 块；新增 `.doc-list` / `.doc-row` / `.doc-row-icon` / `.doc-row-main` / `.doc-row-name` / `.doc-row-meta` / `.doc-row-delete`，删除按钮默认 `opacity:0`，行 hover 或键盘 focus 时显形，hover 时切红色危险色
+- **`docs/specs/100_todo-app-design.md`**：§9.2 组件清单 `TodoItemDetail.vue` 行更新 tab 描述（双 tab → 三 tab；列出文档 tab 的列表样式 + 删除按钮行为）
+
+### 设计决策
+
+- **抽到独立 tab 而非保留在基本信息底部**：标签云挤在长表单末尾，文档作为"关联资源"的入口权重被淹没；独立 tab 让"管理文档"成为一等公民，与 AI任务 tab 平级，也避免基本信息表单过长导致文档区被滚动到不可见。
+- **列表样式而非标签云**：标签云 chip 在文档数量较多时（10+ 条）排版混乱且无法承载次级 meta（更新时间）；列表纵向排列信息密度更可控，每行都能精确点击，并为右侧删除按钮预留挂载位。
+- **删除按钮 hover 显形（默认 opacity:0）**：扫视列表时不被操作图标干扰；hover 行或键盘 focus 行即暴露入口，符合无障碍预期（focus-visible 同步显形）。点击删除按钮时 `@click.stop` 阻止冒泡，避免误触发 `handleOpenDoc`。
+- **复用既有 `deleteDocument` IPC**：服务层早已支持软删除（写入 `deleted_at`，可在回收站恢复），无需新增 IPC / service 方法。删除后 `loadDocuments()` 重新拉一次列表保证 UI 与后端一致。
+- **`formatDocTime` 与 TodoListDetail.formatTime 同款但不抽公共**：两处都是组件内私有的小工具方法，抽公共 util 的成本收益不匹配，先保留同名重复，待第三处出现再合并（避免过早抽象）。
+
+### 测试
+
+- 主进程代码无改动，todo-app 现有 268 个单元测试不受影响
+- 纯 UI 改动（template + style），建议手动验证：① 切换三个 tab 正常；② 文档 tab 列表渲染 + 点击行打开编辑抽屉；③ 行 hover 显示删除按钮 + 点击弹确认框；④ 确认删除后列表刷新；⑤ 取消确认不触发删除
+
 ## [1.0.0] 2026-07-03（文档抽屉点击外部关闭）
 
 **User**: todo-app，`TodoDocumentEditor.vue` 的 el-drawer 点击空白，自动消失。

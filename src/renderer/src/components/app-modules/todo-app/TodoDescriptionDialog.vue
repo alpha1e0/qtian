@@ -22,7 +22,7 @@
           <el-icon class="header-icon"><EditPen /></el-icon>
         </div>
         <div class="header-text">
-          <div class="header-title">编辑 - {{ parentName || '描述' }} 描述信息</div>
+          <div class="header-title">编辑 - “{{ parentName || '描述' }}” - 描述信息</div>
           <div class="header-subtitle">最多 {{ TODO_DESCRIPTION_MAX_LENGTH }} 字</div>
         </div>
       </div>
@@ -37,7 +37,7 @@
           :rows="20"
           :maxlength="TODO_DESCRIPTION_MAX_LENGTH"
           show-word-limit
-          placeholder="补充描述，给阅读者交代背景 / 备注 / 链接等"
+          placeholder="请输入详细描述信息"
           resize="vertical"
         />
       </el-form-item>
