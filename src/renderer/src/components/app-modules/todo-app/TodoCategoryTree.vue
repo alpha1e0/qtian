@@ -219,6 +219,10 @@ export default {
       // data 为 null/undefined 时（理论上不会，但防御）直接放行浏览器默认菜单
       if (!data) return;
 
+      // 虚拟"无分类"节点（未分类）禁用右键菜单：不 preventDefault、不弹空菜单，
+      // 直接 return 让浏览器默认 contextmenu 正常触发，避免出现空白菜单条。
+      if (data.__type === 'category' && data.id === 0) return;
+
       event.preventDefault();
       // 阻止冒泡：否则 document 上的 contextmenu 监听器（TodoContextMenu 关闭用）
       // 会在本 handler 之后触发，把刚 open 的新菜单立刻关闭。
