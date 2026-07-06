@@ -102,7 +102,7 @@ export default {
   methods: {
     /**
      * SideBar 选择统一入口
-     * @param {string} key - 'ai-assistant' | 'quick-mode' | 'todo-app' | 'settings'
+     * @param {string} key - 'ai-assistant' | 'quick-mode' | 'todo-app' | 'settings' | 'quit'
      */
     handleSidebarSelect(key) {
       switch (key) {
@@ -119,9 +119,19 @@ export default {
         case 'settings':
           this.openSettings();
           break;
+        case 'quit':
+          this.quitApp();
+          break;
         default:
           console.warn('未知的侧栏选择:', key);
       }
+    },
+
+    /**
+     * 退出应用（经 preload 的 appQuit IPC）
+     */
+    quitApp() {
+      window.electron.appQuit();
     },
 
     /**

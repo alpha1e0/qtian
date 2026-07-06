@@ -1,7 +1,13 @@
 <template>
   <aside class="sidebar">
-    <!-- 顶部：模式切换 + 快捷模式 -->
+    <!-- 顶部：品牌图标 + 模式切换 + 快捷模式 -->
     <div class="sidebar-top">
+      <img
+        :src="iconUrl"
+        alt="Qtian"
+        class="sidebar-brand-icon"
+        title="Qtian"
+      />
       <button
         v-for="item in topItems"
         :key="item.key"
@@ -34,7 +40,8 @@
 
 <script>
 import { markRaw } from 'vue';
-import { ChatDotRound, ChatRound, Memo, Setting } from '@element-plus/icons-vue';
+import { ChatDotRound, ChatRound, Memo, Setting, SwitchButton } from '@element-plus/icons-vue';
+import iconUrl from '../../assets/icon.png';
 
 /**
  * 紧凑图标侧栏（Obsidian 风格）
@@ -64,6 +71,7 @@ export default {
   emits: ['select'],
   data() {
     return {
+      iconUrl,
       topItems: [
         { key: 'ai-assistant', icon: markRaw(ChatDotRound), label: 'AI 助手', aria: '切换到 AI 助手' },
         { key: 'quick-mode', icon: markRaw(ChatRound), label: '快捷模式', aria: '唤起快捷模式窗口' },
@@ -71,6 +79,7 @@ export default {
       ],
       bottomItems: [
         { key: 'settings', icon: markRaw(Setting), label: '设置', aria: '打开设置' },
+        { key: 'quit', icon: markRaw(SwitchButton), label: '退出', aria: '退出应用' },
       ],
     };
   },
@@ -118,6 +127,16 @@ export default {
   flex-direction: column;
   align-items: center;
   gap: 4px;
+}
+
+/* 品牌图标：纯展示，不参与按钮 hover/active，作为 .sidebar-top 的首项 */
+.sidebar-brand-icon {
+  width: 24px;
+  height: 24px;
+  margin-bottom: 8px;
+  opacity: 0.9;
+  user-select: none;
+  pointer-events: none;
 }
 
 .sidebar-btn {

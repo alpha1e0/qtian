@@ -18,8 +18,8 @@
 
 将主窗口外壳升级为类似 Obsidian 的现代布局：
 
-- 左侧 48px 紧凑图标侧栏承载模式切换
-- 标题栏仅保留品牌图标 + 动态功能名 + 标准窗口控制按钮
+- 左侧 48px 紧凑图标侧栏承载品牌图标 + 模式切换
+- 标题栏仅保留动态功能名 + 标准窗口控制按钮（品牌图标已迁至 SideBar 顶部）
 
 ### 1.3 改动边界
 
@@ -36,7 +36,7 @@
 
 ```
 ┌──────┬──────────────────────────────────────────┐
-│      │  [icon] AI 助手            [─][□][×]     │  TitleBar (32px)
+│ [ico]│  AI 助手                    [─][□][×]    │  TitleBar (32px)
 │      ├──────────────────────────────────────────┤
 │ Side │                                          │
 │ Bar  │                                          │
@@ -55,6 +55,7 @@
 │ └─┘  │                                          │
 │      │                                          │
 │   ⚙  │                                          │
+│   ⏻  │                                          │
 └──────┴──────────────────────────────────────────┘
 ```
 
@@ -62,8 +63,8 @@
 
 | 区域 | 宽 / 高 | 说明 |
 |---|---|---|
-| SideBar | 48px × 100vh | 紧凑图标列，顶部 3 个动作图标 + 底部 1 个设置图标 |
-| TitleBar | 100% × 32px | 品牌图标 + 动态功能名 + 最小化 / 最大化 / 关闭 |
+| SideBar | 48px × 100vh | 紧凑图标列：顶部品牌图标 + 3 个动作图标，底部 2 个动作图标（设置 + 退出） |
+| TitleBar | 100% × 32px | 动态功能名 + 最小化 / 最大化 / 关闭（品牌图标位于 SideBar 顶部） |
 | 主内容区 | flex:1 | AiAssistantPage 或 TodoAppPage |
 
 ### 2.3 设计令牌引用
@@ -100,7 +101,7 @@ props: {
     validator: (v) => ['ai-assistant', 'todo-app'].includes(v),
   },
 }
-emits: ['select']  // emit('select', key)，key ∈ {'ai-assistant','quick-mode','todo-app','settings'}
+emits: ['select']  // emit('select', key)，key ∈ {'ai-assistant','quick-mode','todo-app','settings','quit'}
 ```
 
 #### 按钮数据
@@ -111,6 +112,7 @@ emits: ['select']  // emit('select', key)，key ∈ {'ai-assistant','quick-mode'
 | `quick-mode` | `ChatRound` | 快捷模式 | 唤起快捷模式窗口 | ✗（瞬时动作） |
 | `todo-app` | `Memo` | 待办 | 切换到待办应用 | ✓ |
 | `settings`（底部） | `Setting` | 设置 | 打开设置 | ✗（瞬时动作） |
+| `quit`（底部） | `SwitchButton` | 退出 | 退出应用 | ✗（瞬时动作） |
 
 图标采用**局部 import**（与项目主流 `TodoSearchBar.vue` / `ChatSidebar.vue` 等一致），不用全局注册。
 
@@ -125,6 +127,7 @@ isActive(item) { return item.key === this.activeMode; }
 #### 视觉规范
 
 - 容器：宽 48px，`flex-direction: column; justify-content: space-between`，背景 `var(--surface-dark-secondary)`，右边界 `1px solid var(--border-light)`
+- **品牌图标**（顶部首个元素）：24×24、`margin-bottom: 8px` 与首个按钮分隔，纯展示（无 hover / 无激活态），与按钮组在 `.sidebar-top` 中作为 flex 首项
 - 按钮：40×40、圆角 `var(--radius-md)`、默认 `color: var(--text-on-dark-muted)`
 - hover：`background: var(--surface-dark-hover); color: var(--text-on-dark-secondary)`
 - **激活指示器**：`is-active` class + `::before` 伪元素（左侧 3px 竖条，`background: var(--accent)`）+ 文字 `color: var(--accent)` + 背景 `var(--accent-soft)`
@@ -152,12 +155,13 @@ props: {
 
 #### 保留项（不动）
 
-- `iconUrl` import + `<img class="titlebar-icon">`
 - `<div class="titlebar-controls">`（最小化 / 最大化 / 关闭三按钮）
 - `isMaximized` + `onMaximizeStateChanged` + IPC 监听 `window-maximize-state-changed`
 - `handleMinimize / Maximize / Close`
 - `-webkit-app-region: drag` + 按钮区 `no-drag`
 - `.custom-titlebar` 容器样式（32px 高、背景、border-bottom）
+
+> 品牌图标（`titlebar-icon`）已迁至 SideBar 顶部，TitleBar 不再持有 `iconUrl`。
 
 ### 3.3 MainComponent.vue（修改）
 
@@ -248,13 +252,20 @@ handleSidebarSelect(key) {
 3. MainComponent `openSettings()`（当前占位：`console.info('设置面板尚未实现')`，后续随设置面板实现补全）
 4. 无激活态变化
 
-### 4.5 Ctrl+Alt+A 快捷键回切
+### 4.5 退出应用
+
+1. 用户点击 SideBar 底部「退出」按钮（永不持续激活）
+2. SideBar `emit('select', 'quit')`
+3. MainComponent 调用 `window.electron.appQuit()`
+4. 主进程经 `qtian:app-quit` IPC 退出应用
+
+### 4.6 Ctrl+Alt+A 快捷键回切
 
 1. 用户在待办模式下按 `Ctrl+Alt+A`
 2. MainComponent.handleKeyDown → 调用 `this.handleSidebarSelect('ai-assistant')`
 3. 走 4.1 同样的路径
 
-### 4.6 跨窗口导航（快捷窗口 → 主窗口）
+### 4.7 跨窗口导航（快捷窗口 → 主窗口）
 
 1. 快捷窗口「切换到完整对话模式」→ 经主进程中转 → 主窗口收到 `qtian:quick-to-normal-navigate` 事件
 2. MainComponent.handleQuickToNormalNavigate 设置 pending* + `currentComponent = 'AiAssistantPage'`
@@ -286,6 +297,6 @@ TitleBar 现有的「最小化 / 最大化 / 关闭」按钮已具备 `aria-labe
 | 主窗口 `minWidth: 720` | `WindowManager.ts` 主进程小改动，避免缩放过小撑破布局 | P1 |
 | e2e 冒烟补强 | `tests/e2e/smoke/main-window-shell.spec.ts`，aria-label 切换断言 | P1 |
 | 设置面板实现 | 当前 `openSettings` 仅占位，后续随面板补全 | P1 |
-| 「关于 / 退出」补回 | 随设置面板复用既有 `window.electron.showAbout()` / `appQuit()` | P1 |
+| 「关于」补回 | 随设置面板复用既有 `window.electron.showAbout()`（退出已迁至 SideBar 底部） | P1 |
 | SideBar 折叠态 | 当前为固定 48px，未来可支持折叠 | P2 |
 | SideBar 单元测试 | 本次纯渲染层改动按 CLAUDE.md 不强制，后续可补 Vue Test Utils | P2 |

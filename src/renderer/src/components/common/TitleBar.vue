@@ -1,8 +1,7 @@
 <template>
   <div class="custom-titlebar">
-    <!-- 可拖拽区域 + 图标 + 动态功能名 -->
+    <!-- 可拖拽区域 + 动态功能名（品牌图标已迁至 SideBar 顶部） -->
     <div class="titlebar-drag">
-      <img :src="iconUrl" alt="Qtian" class="titlebar-icon" />
       <span class="titlebar-title" :title="title">{{ title }}</span>
     </div>
 
@@ -33,14 +32,13 @@
 </template>
 
 <script>
-import iconUrl from '../../assets/icon.png';
-
 /**
  * 主窗口自定义 TitleBar
  *
- * 极简结构：品牌图标 + 动态功能名 + 标准窗口控制按钮。
+ * 极简结构：动态功能名 + 标准窗口控制按钮。
  * 历史「下拉菜单（功能 / 应用 / 帮助）」已随主窗口外壳重构移除，
  * 模式切换迁移至 SideBar，关于 / 退出后续随设置面板补回。
+ * 品牌图标迁至 SideBar 顶部（docs/specs/003_main-window-shell-design.md §3.1）。
  *
  * 设计文档：docs/specs/003_main-window-shell-design.md §3.2
  */
@@ -57,7 +55,6 @@ export default {
   },
   data() {
     return {
-      iconUrl,
       isMaximized: false,
     };
   },
@@ -110,13 +107,6 @@ export default {
   color: var(--text-on-dark-secondary);
   font-weight: 500;
   letter-spacing: 0.3px;
-}
-
-.titlebar-icon {
-  width: 16px;
-  height: 16px;
-  margin-right: 6px;
-  opacity: 0.9;
 }
 
 .titlebar-controls {
