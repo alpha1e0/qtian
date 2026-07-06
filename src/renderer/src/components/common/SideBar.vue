@@ -9,7 +9,7 @@
         :class="{ 'is-active': isActive(item) }"
         :aria-label="item.aria"
         :title="item.aria"
-        @click="emit('select', item.key)"
+        @click="handleSelect(item.key)"
       >
         <el-icon :size="20"><component :is="item.icon" /></el-icon>
       </button>
@@ -24,7 +24,7 @@
         :class="{ 'is-active': isActive(item) }"
         :aria-label="item.aria"
         :title="item.aria"
-        @click="emit('select', item.key)"
+        @click="handleSelect(item.key)"
       >
         <el-icon :size="20"><component :is="item.icon" /></el-icon>
       </button>
@@ -33,6 +33,7 @@
 </template>
 
 <script>
+import { markRaw } from 'vue';
 import { ChatDotRound, ChatRound, Memo, Setting } from '@element-plus/icons-vue';
 
 /**
@@ -41,6 +42,9 @@ import { ChatDotRound, ChatRound, Memo, Setting } from '@element-plus/icons-vue'
  * 职责：纯展示组件，仅 emit('select', key)，不直接调 IPC。
  * 激活态单一数据源：由父组件通过 activeMode prop 传入；
  * 'quick-mode' / 'settings' 为瞬时动作型，永不持续激活。
+ *
+ * 图标组件必须用 markRaw 包装，否则会被 data() 的响应式系统深度代理，
+ * 触发 "Component that was made reactive" 警告并可能影响 <component :is> 渲染。
  *
  * 设计文档：docs/specs/003_main-window-shell-design.md §3.1
  */
@@ -61,12 +65,12 @@ export default {
   data() {
     return {
       topItems: [
-        { key: 'ai-assistant', icon: ChatDotRound, label: 'AI 助手', aria: '切换到 AI 助手' },
-        { key: 'quick-mode', icon: ChatRound, label: '快捷模式', aria: '唤起快捷模式窗口' },
-        { key: 'todo-app', icon: Memo, label: '待办', aria: '切换到待办应用' },
+        { key: 'ai-assistant', icon: markRaw(ChatDotRound), label: 'AI 助手', aria: '切换到 AI 助手' },
+        { key: 'quick-mode', icon: markRaw(ChatRound), label: '快捷模式', aria: '唤起快捷模式窗口' },
+        { key: 'todo-app', icon: markRaw(Memo), label: '待办', aria: '切换到待办应用' },
       ],
       bottomItems: [
-        { key: 'settings', icon: Setting, label: '设置', aria: '打开设置' },
+        { key: 'settings', icon: markRaw(Setting), label: '设置', aria: '打开设置' },
       ],
     };
   },
@@ -80,6 +84,13 @@ export default {
      */
     isActive(item) {
       return item.key === this.activeMode;
+    },
+    /**
+     * 点击分发 —— Options API 模板上下文中没有 emit，必须经 methods 走 this.$emit
+     * @param {string} key - 'ai-assistant' | 'quick-mode' | 'todo-app' | 'settings'
+     */
+    handleSelect(key) {
+      this.$emit('select', key);
     },
   },
 };
