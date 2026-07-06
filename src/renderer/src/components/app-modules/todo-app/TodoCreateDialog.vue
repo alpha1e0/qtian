@@ -13,7 +13,7 @@
     class="todo-create-dialog"
     :class="`mode-${mode}`"
     @update:model-value="onVisibleChange"
-    @open="onDialogOpen"
+    @opened="onDialogOpened"
   >
     <!-- 自定义标题：图标 + 主标题 + 副标题（parentName）
          比 ElMessageBox.prompt 信息量更大，副标题明示归属父级。
@@ -228,26 +228,27 @@ export default {
       };
     },
     /**
-     * 对话框完全打开后聚焦名称输入框，提升连续创建 / 重命名的效率。
-     * 比 watch visible + nextTick 更可靠（此时 DOM 已挂载完成）。
+     * 对话框打开动画结束后聚焦名称输入框，提升连续创建 / 重命名的效率。
+     *
+     * 必须用 @opened 而非 @open：@open 在动画起始立即触发，el-dialog 内置的
+     * focus trap 会在过渡过程中再次抢占焦点，导致手动 focus() 失效；
+     * @opened 在动画结束、focus trap 稳定后才触发，此时 focus 才会持久。
      * 重命名 mode 额外 select() 全选原名：方便用户直接覆盖输入或仅修改局部。
      */
-    onDialogOpen() {
-      this.$nextTick(() => {
-        const ref = this.$refs.nameInputRef;
-        // el-input 暴露 focus()；防御性判空避免钩子顺序差异导致报错
-        if (!ref || typeof ref.focus !== 'function') return;
-        ref.focus();
-        if (this.isRenameMode) {
-          // el-input 的 focus 不接受 select 参数；通过底层 input ref 全选
-          // 防御性 try/catch：少数版本/场景下 input 可能未暴露 select
-          try {
-            ref.input?.select();
-          } catch {
-            // 忽略：选中失败不影响功能，名称已预填可手动编辑
-          }
+    onDialogOpened() {
+      const ref = this.$refs.nameInputRef;
+      // el-input 暴露 focus()；防御性判空避免钩子顺序差异导致报错
+      if (!ref || typeof ref.focus !== 'function') return;
+      ref.focus();
+      if (this.isRenameMode) {
+        // el-input 的 focus 不接受 select 参数；通过底层 input ref 全选
+        // 防御性 try/catch：少数版本/场景下 input 可能未暴露 select
+        try {
+          ref.input?.select();
+        } catch {
+          // 忽略：选中失败不影响功能，名称已预填可手动编辑
         }
-      });
+      }
     },
     /** v-model:visible 透传 */
     onVisibleChange(val) {
