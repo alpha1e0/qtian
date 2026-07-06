@@ -51,11 +51,28 @@
             <el-form-item label="名称">
               <el-input v-model="formData.name" @blur="handleSave" />
             </el-form-item>
-            <el-form-item label="描述">
+            <el-form-item>
+              <template #label>
+                <span class="desc-label-wrap">
+                  描述
+                  <el-button
+                    text
+                    size="small"
+                    class="desc-maximize-btn"
+                    aria-label="最大化编辑描述"
+                    title="最大化编辑描述"
+                    @click="descDialogVisible = true"
+                  >
+                    <el-icon><FullScreen /></el-icon>
+                  </el-button>
+                </span>
+              </template>
               <el-input
                 v-model="formData.description"
                 type="textarea"
                 :rows="9"
+                :maxlength="TODO_DESCRIPTION_MAX_LENGTH"
+                show-word-limit
                 @blur="handleSave"
               />
             </el-form-item>
@@ -113,13 +130,23 @@
         </div>
       </div>
     </div>
+    <!-- 描述最大化编辑对话框（append-to-body teleport 到 body，不影响布局） -->
+    <TodoDescriptionDialog
+      v-if="formData"
+      v-model:visible="descDialogVisible"
+      v-model="formData.description"
+      :parent-name="formData.name"
+      @confirm="handleDescriptionConfirm"
+    />
   </div>
 </template>
 
 <script>
-import { Plus, Document, Loading, Check, Close } from '@element-plus/icons-vue';
+import { Plus, Document, Loading, Check, Close, FullScreen } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { resolveLabelIds } from '@/utils/todo-labels';
+import TodoDescriptionDialog from './TodoDescriptionDialog.vue';
+import { TODO_DESCRIPTION_MAX_LENGTH } from './constants';
 
 /**
  * TodoListDetail — 待办项目详情面板（spec §9.1）。
@@ -134,13 +161,15 @@ import { resolveLabelIds } from '@/utils/todo-labels';
  */
 export default {
   name: 'TodoListDetail',
-  components: { Plus, Document, Loading, Check, Close },
+  components: { Plus, Document, Loading, Check, Close, FullScreen, TodoDescriptionDialog },
   emits: ['updated', 'open-doc'],
   props: {
     listId: { type: Number, required: true },
   },
   data() {
     return {
+      // 暴露给模板的常量（spec 描述字段 1200 字上限，单一来源）
+      TODO_DESCRIPTION_MAX_LENGTH,
       loading: true,
       // 表单数据：与 IPC 字段对齐（name/description/label_ids 可编辑，时间戳只读展示）
       formData: null,
@@ -150,6 +179,8 @@ export default {
       // 顶部状态条：'idle' | 'saving' | 'saved' | 'error'
       saveStatus: 'idle',
       saveStatusTimer: null,
+      // 描述最大化编辑对话框显隐
+      descDialogVisible: false,
     };
   },
   watch: {
@@ -267,6 +298,18 @@ export default {
         }),
       );
       if (ok) this.$emit('updated');
+    },
+    /**
+     * 描述最大化对话框「保存」回调：对话框已 emit 出新描述并 v-model 写回 formData.description，
+     * 关闭对话框后复用既有 handleSave 流程（保留 save-status-bar 反馈、updated emit 等副作用），
+     * 避免重复一条 IPC 路径。与 TodoItemDetail 同名方法保持一致，便于后续抽公共 mixin。
+     * @param {string} newDesc - 用户在对话框中编辑后的描述内容
+     */
+    handleDescriptionConfirm(newDesc) {
+      if (!this.formData) return;
+      this.formData.description = newDesc;
+      this.descDialogVisible = false;
+      this.handleSave();
     },
     /**
      * 包装异步保存操作，统一驱动顶部状态条：
@@ -622,5 +665,34 @@ export default {
   border-radius: 999px;
   background: rgba(99, 102, 241, 0.08);
   flex-shrink: 0;
+}
+
+/*
+ * 描述字段 label 区：让「描述」文字与 FullScreen 最大化按钮水平排列。
+ * 最大化按钮沿用 doc-chip 的 indigo hover 反馈，与详情面板整体视觉语言一致；
+ * 默认弱化（透明底 + muted 色），hover 时 indigo 强调，避免喧宾夺主。
+ * 与 TodoItemDetail 同名 class 保持样式同源，便于后续抽公共 mixin。
+ */
+.desc-label-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.desc-maximize-btn {
+  --el-button-text-color: var(--text-on-dark-muted, #5c5b72);
+  padding: 0 4px;
+  height: 18px;
+  color: var(--text-on-dark-muted, #5c5b72);
+  transition: color 0.18s ease, background 0.18s ease;
+}
+
+.desc-maximize-btn :deep(.el-icon) {
+  font-size: 13px;
+}
+
+.desc-maximize-btn:hover {
+  color: var(--accent, #6366f1);
+  background: rgba(99, 102, 241, 0.10);
 }
 </style>

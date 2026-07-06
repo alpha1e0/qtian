@@ -1232,6 +1232,7 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 | `TodoItemDetail.vue` | 右侧详情面板，分「基本信息 / AI任务」两个 tab（与 sidebar 同款 radio-button toggle）。基本信息含：标题/状态/优先级/截止时间/描述/进度/手动进度/关联文档；AI任务含 task_prompt + Agent/LLM/额外 prompt 内联表单 + 运行/重跑/查看面板 | props: `itemId`；emit `updated`, `open-doc`, `run-task({agentName,llmConfigName,extraPrompt})`, `view-task` |
 | `TodoCategoryDetail.vue` | 右侧分类详情面板：总结信息（创建/修改时间 + 直接子项目数）+ 名称可编辑（失焦自动保存） | props: `categoryId`；emit `updated` |
 | `TodoListDetail.vue` | 右侧待办项目详情面板：总结信息（创建/修改时间）+ 名称/描述/标签可编辑（失焦自动保存）+ 项目文档列表 | props: `listId`；emit `updated`, `open-doc` |
+| `TodoDescriptionDialog.vue` | 编辑描述对话框（被 TodoItemDetail / TodoListDetail 复用）：640px 宽模态，rows=20 大 textarea + 1200 字硬上限 + show-word-limit；打开时把 modelValue 快照到 draft，保存才 emit confirm，取消丢弃草稿，不脏主表单 | props: `visible`(v-model:visible), `modelValue`(v-model), `parentName`；emit `update:visible`, `update:modelValue`, `confirm(value)` |
 | `TodoDocumentEditor.vue` | Markdown 编辑器（建议 milkdown / vditor） | props: `docId` |
 | `TaskPanel.vue` | 任务面板（嵌入详情区，展示对话流 + 历史 + 总结链接） | props: `taskId` |
 | `TaskHistoryList.vue` | 历史 task 列表，可切换查看每次执行结果 | props: `itemId` |
@@ -1274,6 +1275,13 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
     - `rename-category` / `rename-list`：仅名称字段，标题图标切换为 `Edit`，主按钮文案为"保存"。打开时通过 `initialName` prop 预填当前名称并全选（`ref.input.select()`），用户可在原名基础上直接覆盖或局部修改；调用方（`TodoCategoryTree.handleRename`）把被重命名节点作为 `parentData` 传入，`dialogInitialName` computed 据此取原名称预填，`onCreateDialogConfirm` 按 mode 分流 emit `rename({ id, name })` / `rename-list({ id, name })`。
     - 对话框组件本身不调 IPC：用户点"创建 / 保存"且名称非空时 emit `confirm(payload)`，由调用方（`TodoCategoryTree` / `TodoListPanel`）按 mode 分流到对应 IPC。打开对话框时（`watch visible` 由 false → true）重置表单到默认值（重命名 mode 额外预填 `initialName`），避免上次输入残留。
     - 视觉上延续 todo-app Aurora 浅色基调（白底 + indigo 细描边 + 柔和投影），复用 `TodoItemDetail` / `TodoListDetail` 的 `:deep(.el-input__wrapper)` / `.priority-group` / `el-select` 浅色样式（`rgba(99,102,241,0.04)` 晕染），让对话框与详情面板观感一致。
+- **描述最大化编辑**：`TodoItemDetail` / `TodoListDetail` 的描述字段是高频编辑入口，原内联 textarea `:rows="9"` 长 description 需反复滚动。两处描述 `el-form-item` 的 label 文案右侧追加一个 `FullScreen` 图标的 text 按钮（size small，class `.desc-maximize-btn`，`aria-label="最大化编辑描述"`），点击后打开 `TodoDescriptionDialog`：
+    - 对话框宽度 `640px`（比 TodoCreateDialog 的 440px 更宽，承载 rows=20 的大 textarea），`append-to-body` 避免被父容器 overflow 裁切；header 自定义 `#header` slot 渲染「编辑 {parentName} 描述信息」+ 默认关闭按钮；footer 右对齐主按钮「保存」（`<el-button type="primary">` 含 `<el-icon><Check /></el-icon>` + 文字）。
+    - 草稿隔离：打开时把 `modelValue` 快照到内部 `draft`，关闭（取消 / Esc / 点遮罩关闭按钮）不回写；只有点保存才 `emit('confirm', draft)` 后关闭，避免取消时把主表单 `formData.description` 改脏。`@opened` 钩子聚焦 textarea（复用 TodoCreateDialog 的 onDialogOpened 模式）。
+    - 对话框不直接调 IPC：confirm 事件回传新描述字符串，由调用方写入 `formData.description` 后复用既有 `handleSave()` 流程（保持「编辑自动激活 init→in_progress」「顶部 save-status-bar 反馈」「updated emit」等副作用）。
+    - 详情面板内联 textarea 同步加 `:maxlength` + `show-word-limit`；对话框 textarea `:rows="20"` + `:maxlength` + `show-word-limit`。
+    - 描述上限统一引用常量 `TODO_DESCRIPTION_MAX_LENGTH = 1200`（spec §3.2 / §3.3 / 需求文档 L21/L28 已明确 1200 字上限），集中放在 `src/renderer/src/components/app-modules/todo-app/constants.ts`（避免魔鬼数字、与 spec 单一来源对齐）。TodoItemDetail 传 `parentName=formData.title`，TodoListDetail 传 `parentName=formData.name`。
+    - 视觉沿用 TodoCreateDialog 的浅色 Aurora 输入框 / 按钮配置；命名空间 `.todo-description-dialog` 非 scoped 样式（dialog teleport 到 body 后 scoped 选择器失效）。
 
 ## 10 实现分期建议
 

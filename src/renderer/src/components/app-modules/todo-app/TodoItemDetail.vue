@@ -82,11 +82,29 @@
             />
           </el-form-item>
 
-          <el-form-item label="描述">
+          <el-form-item>
+            <template #label>
+              <span class="desc-label-wrap">
+                描述
+                <el-button
+                  text
+                  size="small"
+                  class="desc-maximize-btn"
+                  aria-label="最大化编辑描述"
+                  title="最大化编辑描述"
+                  @click="descDialogVisible = true"
+                >
+                  <el-icon><FullScreen /></el-icon>
+                </el-button>
+              </span>
+            </template>
             <el-input
               v-model="formData.description"
               type="textarea"
               :rows="9"
+              :maxlength="TODO_DESCRIPTION_MAX_LENGTH"
+              show-word-limit
+              word-limit-position="outside"
               @blur="handleSave"
             />
           </el-form-item>
@@ -226,12 +244,22 @@
         </div>
       </div>
     </div>
+    <!-- 描述最大化编辑对话框（append-to-body teleport 到 body，不影响布局） -->
+    <TodoDescriptionDialog
+      v-if="formData"
+      v-model:visible="descDialogVisible"
+      v-model="formData.description"
+      :parent-name="formData.title"
+      @confirm="handleDescriptionConfirm"
+    />
   </div>
 </template>
 
 <script>
-import { Plus, Document, VideoPlay, View, Refresh, Loading, Check, Close } from '@element-plus/icons-vue';
+import { Plus, Document, VideoPlay, View, Refresh, Loading, Check, Close, FullScreen } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import TodoDescriptionDialog from './TodoDescriptionDialog.vue';
+import { TODO_DESCRIPTION_MAX_LENGTH } from './constants';
 
 /**
  * TodoItemDetail —— todo_item 详情面板（基本信息 / AI任务 双 tab）。
@@ -245,7 +273,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
  */
 export default {
   name: 'TodoItemDetail',
-  components: { Plus, Document, VideoPlay, View, Refresh, Loading, Check, Close },
+  components: { Plus, Document, VideoPlay, View, Refresh, Loading, Check, Close, FullScreen, TodoDescriptionDialog },
   // run-task 携带 { agentName, llmConfigName, extraPrompt } 负载（首次运行 + 重跑共用）
   emits: ['updated', 'open-doc', 'run-task', 'view-task'],
   props: {
@@ -253,6 +281,8 @@ export default {
   },
   data() {
     return {
+      // 暴露给模板的常量（spec 描述字段 1200 字上限，单一来源）
+      TODO_DESCRIPTION_MAX_LENGTH,
       // 当前 tab：'basic' | 'task'
       view: 'basic',
       loading: true,
@@ -274,6 +304,8 @@ export default {
       llmConfigOptions: [],
       // 懒加载标记：首次切到 AI任务 tab 才拉 Agent/LLM 选项，避免每个 item 都打两个 IPC
       taskOptionsLoaded: false,
+      // 描述最大化编辑对话框显隐
+      descDialogVisible: false,
     };
   },
   computed: {
@@ -382,6 +414,18 @@ export default {
         due_at: this.formData.dueAt ? parseInt(this.formData.dueAt, 10) : null,
       }));
       if (ok) this.$emit('updated');
+    },
+    /**
+     * 描述最大化对话框「保存」回调：对话框已 emit 出新描述并 v-model 写回 formData.description，
+     * 关闭对话框后复用既有 handleSave 流程（保留编辑自动激活 init→in_progress、
+     * save-status-bar 反馈、updated emit 等副作用），避免重复一条 IPC 路径。
+     * @param {string} newDesc - 用户在对话框中编辑后的描述内容
+     */
+    handleDescriptionConfirm(newDesc) {
+      if (!this.formData) return;
+      this.formData.description = newDesc;
+      this.descDialogVisible = false;
+      this.handleSave();
     },
     /**
      * 编辑自动激活：详情页内编辑可写字段（标题 / 描述 / 进度等）时，
@@ -893,5 +937,33 @@ export default {
 
 .view-toggle :deep(.el-radio-button__inner:hover) {
   color: var(--text-on-dark);
+}
+
+/*
+ * 描述字段 label 区：让「描述」文字与 FullScreen 最大化按钮水平排列。
+ * 最大化按钮沿用 doc-chip 的 indigo hover 反馈，与详情面板整体视觉语言一致；
+ * 默认弱化（透明底 + muted 色），hover 时 indigo 强调，避免喧宾夺主。
+ */
+.desc-label-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.desc-maximize-btn {
+  --el-button-text-color: var(--text-on-dark-muted, #5c5b72);
+  padding: 0 4px;
+  height: 18px;
+  color: var(--text-on-dark-muted, #5c5b72);
+  transition: color 0.18s ease, background 0.18s ease;
+}
+
+.desc-maximize-btn :deep(.el-icon) {
+  font-size: 13px;
+}
+
+.desc-maximize-btn:hover {
+  color: var(--accent, #6366f1);
+  background: rgba(99, 102, 241, 0.10);
 }
 </style>
