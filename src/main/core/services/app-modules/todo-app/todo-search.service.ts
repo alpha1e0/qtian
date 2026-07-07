@@ -27,6 +27,13 @@ const SNIPPET_MARK_CLOSE = '</mark>';
 const SNIPPET_ELLIPSIS = '...';
 /** 列表历史默认返回上限 */
 const DEFAULT_HISTORY_LIMIT = 10;
+/**
+ * 前缀 token 中需剔除的 FTS5 操作符 / 控制字符。
+ *
+ * 最后一个 token 以 bare 形式（不带双引号）输出为 `token*`，无法用 phrase
+ * 转义机制屏蔽操作符，故在这里显式清洗，避免破坏 FTS5 表达式语法。
+ */
+const FTS5_OPERATOR_CHARS = /["*:^()[\]{}]/g;
 
 /**
  * 全文搜索 Service（Phase 3）
@@ -35,7 +42,7 @@ const DEFAULT_HISTORY_LIMIT = 10;
  * - `syncFts(type, id, rawText | null)`：UPSERT 单条 FTS 索引（DELETE + INSERT）
  * - `syncFtsBatch(type, ids[])`：批量删除（级联软删除时调用，不带自有事务）
  * - `search(query, limit)`：jieba 分词 → FTS5 MATCH → bm25 排序 → snippet → 二次查主表补全 → UPSERT 历史
- * - `buildFtsQuery(query)`：构造 FTS5 phrase-AND 查询（双引号包裹 token 转义）
+ * - `buildFtsQuery(query)`：构造 FTS5 查询——最后一个 token 走前缀匹配（边打边搜），其余 phrase 精确匹配
  * - `resolveCategoryPath(categoryId)`：递归反查 parent_id 链
  * - 搜索历史：list / delete / clear
  *
@@ -183,14 +190,22 @@ export class TodoSearchService {
   }
 
   /**
-   * 构造 FTS5 phrase-AND 查询：jieba 分词后每个 token 双引号包裹成 phrase。
+   * 构造 FTS5 查询：jieba 分词后，最后一个 token 走前缀匹配（`token*`），
+   * 其余 token 用 phrase 双引号包裹做精确匹配。
    *
-   * FTS5 默认 `AND` 语义：phrase 之间用空格连接即要求同时命中。
-   * 双引号包裹后，token 内的 FTS5 操作符（`*`, `:`, `^`, `(`, `)`）失效，
-   * 避免恶意/误输入导致语法错误或注入。
+   * 设计动机（边打边搜）：FTS5 索引按 jieba 完整词存储（如 "白板" 是一个 token），
+   * 若所有 token 都用 phrase 精确匹配，输入 "白" 时 `"白"` 无法命中 "白板"。
+   * 让最后一个未完成 token 走 `白*` 前缀查询，可匹配所有以 "白" 开头的索引 token；
+   * 前面已完成的 token 保持 phrase 精确匹配，避免误命中。
+   *
+   * 注意：
+   * - phrase token 内字面双引号用 `""` 转义；FTS5 操作符（`* : ^ ( )` 等）因双引号包裹自动失效。
+   * - 前缀 token 以 bare 形式输出（不带双引号），无法用 phrase 转义，故先剔除
+   *   `FTS5_OPERATOR_CHARS` 中的字符再追加 `*`，避免破坏表达式语法。
+   * - 清洗后前缀为空（如纯标点 token）则跳过，避免产出独立的 `*` 通配。
    *
    * @param query - 用户原始输入（已 trim）
-   * @returns FTS5 MATCH 表达式；空输入返回空串
+   * @returns FTS5 MATCH 表达式；空输入或清洗后无 token 返回空串
    */
   buildFtsQuery(query: string): string {
     if (!query) {
@@ -206,13 +221,15 @@ export class TodoSearchService {
       return '';
     }
 
-    return tokens
-      .map((t) => {
-        // token 内字面双引号用 "" 转义（FTS5 phrase 规范）
-        const escaped = t.replace(/"/g, '""');
-        return `"${escaped}"`;
-      })
-      .join(' ');
+    // 前面 token：phrase 精确匹配（双引号包裹，内部 " 用 "" 转义）
+    const phrases = tokens.slice(0, -1).map((t) => `"${t.replace(/"/g, '""')}"`);
+    // 最后一个 token：清洗 FTS5 操作符字符后追加 * 作为前缀
+    const cleanedLast = tokens[tokens.length - 1].replace(FTS5_OPERATOR_CHARS, '');
+    if (cleanedLast.length === 0) {
+      // 最后 token 清洗后为空（纯符号）：仅返回前面的 phrase，避免独立的 `*` 通配
+      return phrases.join(' ');
+    }
+    return [...phrases, `${cleanedLast}*`].join(' ');
   }
 
   // =========================================================================

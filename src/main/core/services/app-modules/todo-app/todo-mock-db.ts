@@ -548,9 +548,10 @@ export function createTodoMemDbFactory(): { default: any; Database: any } {
      * 真实 FTS5 由 better-sqlite3 提供（含 bm25/snippet），但在 vitest 下
      * better-sqlite3 原生模块无法加载（编译为 Electron ABI），故用 token
      * 集合匹配近似实现：
-     * - 解析 MATCH 参数（双引号包裹的 phrase）→ query token 列表
+     * - 解析 MATCH 参数：双引号包裹的 phrase（精确匹配）+ 末尾 bare token
+     *   形如 `xxx*` 的前缀 token（startsWith 匹配）—— 与 `buildFtsQuery` 对齐
      * - 对每条 todo_fts 行，拆分 title/body 为 token 集合
-     * - AND 语义：所有 query token 必须在 title∪body 中出现
+     * - AND 语义：所有 query token 必须在 title∪body 中出现（前缀用 startsWith）
      * - rank 近似：title 命中 -10*count，body 命中 -1*count（越小越相关）
      * - snippet：命中 token 包裹 `<mark>`
      *
@@ -562,16 +563,29 @@ export function createTodoMemDbFactory(): { default: any; Database: any } {
       // MATCH 参数位于索引 10，LIMIT 位于索引 11
       const ftsQueryRaw = String(params[10] ?? '');
       const limit = typeof params[11] === 'number' ? params[11] : 30;
-      const markOpen = String(params[0] ?? '<mark>');
-      const markClose = String(params[3] ? '<mark>' : '<mark>'); // 占位，实际用 params[0]
 
-      // 解析 MATCH 查询：抽取双引号包裹的 phrase token
-      const queryTokens: string[] = [];
+      // 解析 MATCH 查询：
+      //   phrase token（"xxx"，双引号包裹）→ 精确匹配
+      //   bare prefix token（xxx*，无引号、以 * 结尾）→ startsWith 匹配
+      const queryTokens: { value: string; isPrefix: boolean }[] = [];
       const phraseRe = /"([^"]*)"/g;
       let pm: RegExpExecArray | null;
       while ((pm = phraseRe.exec(ftsQueryRaw)) !== null) {
         const tok = pm[1].trim().toLowerCase();
-        if (tok.length > 0) queryTokens.push(tok);
+        if (tok.length > 0) {
+          queryTokens.push({ value: tok, isPrefix: false });
+        }
+      }
+      // 移除已识别的 phrase，剩余应为 bare prefix token（buildFtsQuery 末尾产物）
+      const tail = ftsQueryRaw.replace(/"[^"]*"/g, '').trim();
+      if (tail.length > 0) {
+        const prefixMatch = tail.match(/^(\S+)\*$/);
+        if (prefixMatch) {
+          const v = prefixMatch[1].trim().toLowerCase();
+          if (v.length > 0) {
+            queryTokens.push({ value: v, isPrefix: true });
+          }
+        }
       }
       if (queryTokens.length === 0) return [];
 
@@ -588,19 +602,28 @@ export function createTodoMemDbFactory(): { default: any; Database: any } {
           .filter(Boolean);
         const titleSet = new Set(titleTokens);
         const bodySet = new Set(bodyTokens);
+        const allTokens = [...titleSet, ...bodySet];
 
-        // AND 匹配
-        const allPresent = queryTokens.every(
-          (q) => titleSet.has(q) || bodySet.has(q),
-        );
+        // AND 匹配：phrase 精确命中，prefix 用 startsWith 命中
+        const allPresent = queryTokens.every(({ value, isPrefix }) => {
+          if (isPrefix) {
+            return allTokens.some((t) => t.startsWith(value));
+          }
+          return titleSet.has(value) || bodySet.has(value);
+        });
         if (!allPresent) continue;
 
-        // 计算 rank（越小越相关）
+        // 计算 rank（越小越相关）：prefix 命中按 phrase 命中同等计权
         let titleHits = 0;
         let bodyHits = 0;
-        for (const q of queryTokens) {
-          if (titleSet.has(q)) titleHits += 1;
-          if (bodySet.has(q)) bodyHits += 1;
+        for (const { value, isPrefix } of queryTokens) {
+          if (isPrefix) {
+            if (titleTokens.some((t) => t.startsWith(value))) titleHits += 1;
+            if (bodyTokens.some((t) => t.startsWith(value))) bodyHits += 1;
+          } else {
+            if (titleSet.has(value)) titleHits += 1;
+            if (bodySet.has(value)) bodyHits += 1;
+          }
         }
         // title 权重 10、body 权重 1；负值使命中越多 rank 越小（越相关）
         const rank = -(titleHits * 10 + bodyHits * 1);
@@ -635,21 +658,24 @@ export function createTodoMemDbFactory(): { default: any; Database: any } {
       return results.slice(0, limit);
     }
 
-    /** 构造 snippet 字符串：命中 token 包裹 mark 标签 */
+    /** 构造 snippet 字符串：命中 token（精确或前缀）包裹 mark 标签 */
     private buildSnippet(
       tokens: string[],
-      queryTokens: string[],
+      queryTokens: { value: string; isPrefix: boolean }[],
       markOpen: string,
       markClose: string,
       ellipsis: string,
     ): string {
       if (tokens.length === 0) return '';
-      const querySet = new Set(queryTokens);
+      const isHit = (t: string) =>
+        queryTokens.some(
+          (q) => t === q.value || (q.isPrefix && t.startsWith(q.value)),
+        );
       const parts = tokens.map((t) =>
-        querySet.has(t) ? `${markOpen}${t}${markClose}` : t,
+        isHit(t) ? `${markOpen}${t}${markClose}` : t,
       );
       // 简单实现：只返回包含命中 token 的局部上下文
-      const firstHit = tokens.findIndex((t) => querySet.has(t));
+      const firstHit = tokens.findIndex((t) => isHit(t));
       if (firstHit === -1) return '';
       return parts.join(' ');
     }

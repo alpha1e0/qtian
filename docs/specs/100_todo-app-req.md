@@ -5,7 +5,7 @@ todo应用模块是一个和agent结合到一起的待办应用模块，可以�
 1. 分组（category），支持多级分组，增删改查
 2. 待办项目（todo_list），todo 条目增删改差
 3. 待办条目（todo_item），支持子条目，可以关联**文档**
-4. 全文搜索功能，能够搜索category、todo_list、todo_item（使用sqlite + FTS5插件实现）
+4. 全文搜索功能，能够搜索category、todo_list、todo_item（使用sqlite + FTS5插件实现）；支持前缀匹配（输入不完整词也能命中以该词为开头的索引词，满足"边打边搜"体验）
 5. 文档系统，文档为markdown文档，支持图片
 
 **category要包含如下字段**：

@@ -675,7 +675,8 @@ class TodoSearchService {
 
   /**
    * jieba 分词后拼装 FTS5 query：token 之间用 AND（空格分隔）
-   * 例如 "vue 组件设计" -> 'vue 组件 设计'（FTS5 默认 AND 语义）
+   * 最后一个 token 走前缀匹配（边打边搜），其余 token 用 phrase 精确匹配
+   * 例如 "vue 组件设计" -> '"vue" 组件*'（FTS5 默认 AND 语义）
    */
   private buildFtsQuery(query: string): string;
 
@@ -1018,7 +1019,7 @@ LIMIT ?;
 #### FTS5 关键技术点
 
 - **bm25 权重**：`bm25(todo_fts, 10.0, 1.0)` 中 10.0 对应 title 列、1.0 对应 body 列（按非 UNINDEXED 列顺序）；bm25 越小越相关，`ORDER BY rank` 升序
-- **MATCH 转义**：jieba 分词后用双引号包裹每个 token 成 phrase（`buildFtsQuery`），所有 FTS5 操作符（`*`, `:`, `^`, `(`, `)`）失效；token 内字面双引号用 `""` 转义
+- **MATCH 转义 + 前缀匹配**：jieba 分词后，最后一个 token 以 bare 形式 `token*` 输出走前缀匹配（满足"边打边搜"——输入 "白" 可命中含 "白板" 的索引词），其余 token 用 phrase 双引号包裹做精确匹配，避免误命中。phrase 内 FTS5 操作符（`*`, `:`, `^`, `(`, `)`）因双引号包裹自动失效，token 内字面双引号用 `""` 转义；最后一个 token 因 bare 形式无法用 phrase 转义，先剔除 `["*:^()[\]{}]` 等操作符字符再追加 `*`，清洗后为空（纯标点）则跳过避免独立的 `*` 通配
 - **不支持 INSERT OR REPLACE**：`syncFts` 用 DELETE + INSERT 实现 UPSERT
 - **空文本不入库**：`syncFts` 在 title + body 全空时跳过 INSERT（避免空 token 干扰 MATCH）
 - **search 历史策略**：非空 trimmed 输入（含纯标点）记录历史（hit_count=0）；空串不记录（不算有效搜索动作）

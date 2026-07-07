@@ -216,6 +216,25 @@ describe('TodoSearchService', () => {
         expect(results[i].rank).toBeGreaterThanOrEqual(results[i - 1].rank);
       }
     });
+
+    it('前缀匹配：索引"白板会议"，搜索"白"命中（边打边搜）', () => {
+      const id = insertCategory('白板会议');
+      svc.syncFts('category', id, { title: '白板会议', body: '' });
+      const results = svc.search('白');
+      expect(results.length).toBeGreaterThanOrEqual(1);
+      expect(results[0].id).toBe(id);
+      // snippet 应高亮以"白"开头的 token（如"白板"）
+      expect(results[0].snippet).toContain('<mark>');
+    });
+
+    it('多 token 前缀：搜索"vue 组"命中"vue 组件设计"', () => {
+      const listId = insertList('L');
+      const id = insertItem('vue 组件设计', listId);
+      svc.syncFts('todo_item', id, { title: 'vue 组件设计', body: '' });
+      const results = svc.search('vue 组');
+      expect(results.length).toBeGreaterThanOrEqual(1);
+      expect(results[0].id).toBe(id);
+    });
   });
 
   describe('buildFtsQuery', () => {
@@ -224,26 +243,51 @@ describe('TodoSearchService', () => {
       expect(svc.buildFtsQuery('   ')).toBe('');
     });
 
-    it('中文分词后双引号包裹每个 token', () => {
+    it('中文分词：除最后一个 token 外，其余被 phrase 包裹；最后一个以 * 结尾（前缀）', () => {
       const q = svc.buildFtsQuery('工作计划');
-      // 至少 2 个 phrase，且每个被双引号包裹
-      const phrases = q.match(/"[^"]+"/g);
-      expect(phrases).not.toBeNull();
-      expect(phrases!.length).toBeGreaterThanOrEqual(2);
+      // 至少分出 2 个 token
+      const parts = q.split(' ').filter(Boolean);
+      expect(parts.length).toBeGreaterThanOrEqual(2);
+      // 最后一个 token 是 bare prefix（无引号、以 * 结尾）
+      const last = parts[parts.length - 1];
+      expect(last.endsWith('*')).toBe(true);
+      expect(last.startsWith('"')).toBe(false);
+      // 前面的 token 都是 phrase（双引号包裹）
+      for (let i = 0; i < parts.length - 1; i++) {
+        expect(parts[i].startsWith('"')).toBe(true);
+        expect(parts[i].endsWith('"')).toBe(true);
+      }
     });
 
     it('英文单词保持完整并被包裹', () => {
       const q = svc.buildFtsQuery('hello world');
+      // hello 在前 → phrase；world 在末 → 前缀
       expect(q).toContain('"hello"');
-      expect(q).toContain('"world"');
+      expect(q.endsWith('world*')).toBe(true);
     });
 
-    it('FTS5 操作符应被双引号包裹失效（不破坏语法）', () => {
-      // 含 * 的输入不应破坏 buildFtsQuery 输出
+    it('FTS5 操作符字符不破坏 query 语法（清洗后末尾追加前缀 *）', () => {
+      // jieba 将 * 作为分隔符切出 foo / bar 两个 token；输出形如 `"foo" bar*`
       const q = svc.buildFtsQuery('foo*bar');
-      expect(q.length).toBeGreaterThan(0);
-      // 整体被双引号包裹，* 不再是 FTS5 通配符
-      expect(q.startsWith('"')).toBe(true);
+      expect(q.endsWith('*')).toBe(true);
+      // 除末尾前缀通配符外，q 中不应残留输入的 * 字面字符（避免破坏 FTS5 语法）
+      expect(q.slice(0, -1)).not.toContain('*');
+    });
+
+    it('单 token：中文/英文均以 * 结尾（前缀语义）', () => {
+      expect(svc.buildFtsQuery('白')).toBe('白*');
+      expect(svc.buildFtsQuery('vue')).toBe('vue*');
+    });
+
+    it('多 token：前面 phrase 精确匹配，最后一个走前缀', () => {
+      const q = svc.buildFtsQuery('vue 组件');
+      expect(q.startsWith('"vue"')).toBe(true);
+      expect(q.endsWith('组件*')).toBe(true);
+    });
+
+    it('纯标点输入：jieba 过滤后返回空串', () => {
+      expect(svc.buildFtsQuery('***')).toBe('');
+      expect(svc.buildFtsQuery('（）')).toBe('');
     });
   });
 
