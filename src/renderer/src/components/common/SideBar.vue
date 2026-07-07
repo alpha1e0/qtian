@@ -40,7 +40,7 @@
 
 <script>
 import { markRaw } from 'vue';
-import { ChatDotRound, ChatRound, Memo, Setting, SwitchButton } from '@element-plus/icons-vue';
+import { ChatDotRound, ChatRound, Tickets, Setting, SwitchButton } from '@element-plus/icons-vue';
 import iconUrl from '../../assets/icon.png';
 
 /**
@@ -75,7 +75,7 @@ export default {
       topItems: [
         { key: 'ai-assistant', icon: markRaw(ChatDotRound), label: 'AI 助手', aria: '切换到 AI 助手' },
         { key: 'quick-mode', icon: markRaw(ChatRound), label: '快捷模式', aria: '唤起快捷模式窗口' },
-        { key: 'todo-app', icon: markRaw(Memo), label: '待办', aria: '切换到待办应用' },
+        { key: 'todo-app', icon: markRaw(Tickets), label: '待办', aria: '切换到待办应用' },
       ],
       bottomItems: [
         { key: 'settings', icon: markRaw(Setting), label: '设置', aria: '打开设置' },
