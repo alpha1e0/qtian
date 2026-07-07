@@ -585,6 +585,9 @@ export default {
       // list 的标签关联可能变化（增/删标签），同步刷新 sidebar 标签 tab 下段
       await this.$refs.sidebar?.refreshLabelLists?.();
       await this.$refs.sidebar?.refreshFavoriteLists?.();
+      // 描述字段右键「转换为待办条目」会创建根级条目，需刷新中间面板 itemTree
+      // 才能看到新条目（TodoListPanel 仅 watch listId，selectedListId 不变时不自动 reload）
+      this.$refs.listPanel?.loadItemTree?.();
     },
     /**
      * 子组件请求打开文档：拉起文档抽屉（不再切换 rightPanelView）。
