@@ -1,7 +1,16 @@
 <template>
   <div class="todo-search-bar">
+    <!--
+      使用单向 :visible 绑定（非 v-model:visible）：
+      Element Plus 的 popover 内部 onClickOutside 仅在 `controlled = false` 时生效，
+      而 controlled = isBoolean(visible) && !hasUpdateHandler。
+      v-model 会注入 onUpdate:visible → hasUpdateHandler=true → controlled=false，
+      导致 trigger="manual" 模式下，点击 reference(input) 仍被判定为 click outside，
+      popover 显示后会被立即关闭（"闪一下"问题）。
+      所有关闭路径（Esc / 选结果 / blur）已通过 popoverVisible 手动管理，无需双向同步。
+    -->
     <el-popover
-      v-model:visible="popoverVisible"
+      :visible="popoverVisible"
       placement="bottom-start"
       :width="popoverWidth"
       trigger="manual"
@@ -36,27 +45,30 @@
           <el-icon><Search /></el-icon>
           <span>未找到相关结果</span>
         </div>
-        <div
-          v-for="(r, idx) in results"
-          :key="`${r.type}-${r.id}`"
-          class="result-item"
-          :class="{ active: idx === activeIndex }"
-          @mouseenter="activeIndex = idx"
-          @click="emitJump(r)"
-        >
-          <el-icon class="type-icon"><component :is="typeIcon(r.type)" /></el-icon>
-          <div class="result-main">
-            <div class="result-title">{{ r.title }}</div>
-            <div
-              v-if="r.snippet"
-              class="result-snippet"
-              v-html="r.snippet"
-            ></div>
-            <div v-if="r.category_path && r.category_path.length > 0" class="result-breadcrumb">
-              {{ r.category_path.join(' / ') }}
+        <!-- 结果列表限长 + 内部滚动，避免条目过多时 popover 撑高触发整页滚动 -->
+        <div v-else class="result-list" ref="resultList">
+          <div
+            v-for="(r, idx) in results"
+            :key="`${r.type}-${r.id}`"
+            class="result-item"
+            :class="{ active: idx === activeIndex }"
+            @mouseenter="activeIndex = idx"
+            @click="emitJump(r)"
+          >
+            <el-icon class="type-icon"><component :is="typeIcon(r.type)" /></el-icon>
+            <div class="result-main">
+              <div class="result-title">{{ r.title }}</div>
+              <div
+                v-if="r.snippet"
+                class="result-snippet"
+                v-html="r.snippet"
+              ></div>
+              <div v-if="r.category_path && r.category_path.length > 0" class="result-breadcrumb">
+                {{ r.category_path.join(' / ') }}
+              </div>
             </div>
+            <el-tag size="small" type="info" class="type-tag">{{ typeLabel(r.type) }}</el-tag>
           </div>
-          <el-tag size="small" type="info" class="type-tag">{{ typeLabel(r.type) }}</el-tag>
         </div>
       </div>
 
@@ -72,27 +84,30 @@
               清空
             </el-button>
           </div>
-          <div
-            v-for="(h, idx) in history"
-            :key="`h-${h.id}`"
-            class="history-item"
-            :class="{ active: idx === activeIndex }"
-            @mouseenter="activeIndex = idx"
-            @click="handlePickHistory(h.query)"
-          >
-            <el-icon class="history-icon"><Clock /></el-icon>
-            <span class="history-query">{{ h.query }}</span>
-            <span class="history-meta">命中 {{ h.hit_count }}</span>
-            <el-button
-              size="small"
-              text
-              class="history-delete"
-              title="删除此搜索历史"
-              aria-label="删除此搜索历史"
-              @click.stop="handleDeleteHistory(h.id)"
+          <!-- 与 result-list 同步限长 + 内部滚动；toolbar 固定在顶部不随列表滚 -->
+          <div class="history-list" ref="historyList">
+            <div
+              v-for="(h, idx) in history"
+              :key="`h-${h.id}`"
+              class="history-item"
+              :class="{ active: idx === activeIndex }"
+              @mouseenter="activeIndex = idx"
+              @click="handlePickHistory(h.query)"
             >
-              <el-icon><Close /></el-icon>
-            </el-button>
+              <el-icon class="history-icon"><Clock /></el-icon>
+              <span class="history-query">{{ h.query }}</span>
+              <span class="history-meta">命中 {{ h.hit_count }}</span>
+              <el-button
+                size="small"
+                text
+                class="history-delete"
+                title="删除此搜索历史"
+                aria-label="删除此搜索历史"
+                @click.stop="handleDeleteHistory(h.id)"
+              >
+                <el-icon><Close /></el-icon>
+              </el-button>
+            </div>
           </div>
         </template>
       </div>
@@ -209,6 +224,7 @@ export default {
       const total = this.currentListLength();
       if (total === 0) return;
       this.activeIndex = (this.activeIndex + 1) % total;
+      this.scrollActiveIntoView();
     },
     handleArrowUp() {
       if (!this.popoverVisible) {
@@ -218,6 +234,27 @@ export default {
       const total = this.currentListLength();
       if (total === 0) return;
       this.activeIndex = (this.activeIndex - 1 + total) % total;
+      this.scrollActiveIntoView();
+    },
+    /**
+     * 键盘导航时把 active 项滚入列表可视区，避免选中项被 max-height 截断后不可见。
+     * 仅在键盘移动时调用——mouseenter 触发的 active 变化无需滚动（鼠标本就在项上）。
+     * 手动用 getBoundingClientRect 计算偏移而非 scrollIntoView，避免触发父级滚动。
+     */
+    scrollActiveIntoView() {
+      const container = this.isResultMode()
+        ? this.$refs.resultList
+        : this.$refs.historyList;
+      if (!container) return;
+      const active = container.querySelector('.active');
+      if (!active) return;
+      const cRect = container.getBoundingClientRect();
+      const aRect = active.getBoundingClientRect();
+      if (aRect.top < cRect.top) {
+        container.scrollTop -= cRect.top - aRect.top;
+      } else if (aRect.bottom > cRect.bottom) {
+        container.scrollTop += aRect.bottom - cRect.bottom;
+      }
     },
     handleEnter() {
       const list = this.currentList();
@@ -368,6 +405,25 @@ export default {
   font-style: italic;
   justify-content: center;
   letter-spacing: 0.02em;
+}
+
+/*
+ * 列表限长 + 内部滚动：
+ * - max-height 约 6 条平均结果的高度（result-item 含 snippet 约 74px、history-item 约 36px），
+ *   超出在 popover 内部滚动，避免 popover 撑高触发整页滚动。
+ * - overscroll-behavior: contain 阻止列表触底/触顶时滚动链传到 body。
+ * - scroll-behavior: smooth 让键盘导航滚入更平滑（鼠标滚轮不受影响）。
+ */
+.result-list,
+.history-list {
+  /* 6 条典型结果（含 snippet）的高度上限 */
+  max-height: 400px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  /* 2px 边距避免 active 项 inset box-shadow / hover 背景在边缘被裁切 */
+  padding: 2px;
+  margin: -2px;
 }
 
 .result-item,
