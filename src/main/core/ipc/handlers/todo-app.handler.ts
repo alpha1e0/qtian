@@ -200,6 +200,23 @@ export function registerTodoAppHandlers(todoAppService: TodoAppService): void {
     },
   );
 
+  // ===== 描述字段选中批量创建（详见 §9.4「描述字段右键快捷创建待办条目」）=====
+  // 与 TODO_CREATE_ITEM_QUICK 区别：不解析 #N，整段文本按 \n 拆为多条 title。
+  // 一次事务批量 INSERT + 事务外 recalcParentProgress 一次。
+  ipcMain.handle(
+    IPC_CHANNELS.TODO_CREATE_ITEMS_FROM_TEXT,
+    async (_e, text: string, listId: number, parentId: number | null) => {
+      const items = item.createFromText(text, {
+        todo_list_id: listId,
+        parent_id: parentId,
+      });
+      logger.info(
+        `Create items from text: count=${items.length}, listId=${listId}, parentId=${parentId}`,
+      );
+      return items;
+    },
+  );
+
   // ===== Label =====
   ipcMain.handle(IPC_CHANNELS.TODO_LIST_LABELS, async () => {
     return label.list();

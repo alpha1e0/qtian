@@ -424,6 +424,128 @@ describe('TodoItemService', () => {
     });
   });
 
+  describe('createFromText 描述字段批量创建', () => {
+    it('多条文本：按行创建为根级条目', () => {
+      const items = svc.createFromText('买菜\n写报告\n读书', {
+        todo_list_id: 1,
+        parent_id: null,
+      });
+      expect(items).toHaveLength(3);
+      expect(items.map((i) => i.title)).toEqual(['买菜', '写报告', '读书']);
+      // 全部为根级（parent_id=null）
+      expect(items.every((i) => i.parent_id === null)).toBe(true);
+      // 默认值校验
+      expect(items[0].status).toBe('init');
+      expect(items[0].progress).toBe(0);
+      expect(items[0].priority).toBe('normal');
+      expect(items[0].is_manual_progress).toBe(false);
+    });
+
+    it('多条文本：parent_id 有值时创建为子条目', () => {
+      const parent = svc.create({ title: '父', todo_list_id: 1 });
+      const items = svc.createFromText('子1\n子2', {
+        todo_list_id: 1,
+        parent_id: parent.id,
+      });
+      expect(items).toHaveLength(2);
+      expect(items.every((i) => i.parent_id === parent.id)).toBe(true);
+    });
+
+    it('过滤空行：3 行（含 1 空行）→ 创建 2 条', () => {
+      const items = svc.createFromText('a\n\nb', {
+        todo_list_id: 1,
+        parent_id: null,
+      });
+      expect(items).toHaveLength(2);
+      expect(items.map((i) => i.title)).toEqual(['a', 'b']);
+    });
+
+    it('兼容 \\r\\n：trim 清掉 \\r', () => {
+      const items = svc.createFromText('a\r\nb\r\nc', {
+        todo_list_id: 1,
+        parent_id: null,
+      });
+      expect(items.map((i) => i.title)).toEqual(['a', 'b', 'c']);
+    });
+
+    it('空文本返回 []，不写库', () => {
+      const items = svc.createFromText('', { todo_list_id: 1, parent_id: null });
+      expect(items).toEqual([]);
+      expect(svc.getTreeByList(1)).toHaveLength(0);
+    });
+
+    it('纯空白行返回 []，不写库', () => {
+      const items = svc.createFromText('\n\n  \n', {
+        todo_list_id: 1,
+        parent_id: null,
+      });
+      expect(items).toEqual([]);
+      expect(svc.getTreeByList(1)).toHaveLength(0);
+    });
+
+    it('parent_id=null 时不触发父进度联动', () => {
+      // 直接断言不抛错即可（recalcParentProgress 对 null parent 无作用）
+      const items = svc.createFromText('a\nb', {
+        todo_list_id: 1,
+        parent_id: null,
+      });
+      expect(items).toHaveLength(2);
+    });
+
+    it('parent_id 有值时触发一次父进度联动', () => {
+      // parent 默认 progress=0；创建 2 个 progress=0 的子项后联动 → parent 仍为 0。
+      // 用「已有非 0 进度子项」场景验证联动：先建一个 progress=80 的子项，
+      // 再批量创建会触发 recalc，parent 应为 (80+0+0)/3 = 26（Math.round）。
+      const parent = svc.create({ title: '父', todo_list_id: 1 });
+      svc.create({
+        title: '已有子',
+        todo_list_id: 1,
+        parent_id: parent.id,
+        progress: 80,
+      });
+      // 此时 parent = 80（单子项均值）
+      expect(svc.getById(parent.id)!.progress).toBe(80);
+
+      svc.createFromText('新子1\n新子2', {
+        todo_list_id: 1,
+        parent_id: parent.id,
+      });
+      // 批量创建后触发一次 recalc：(80+0+0)/3 = 26.67 → Math.round = 27
+      expect(svc.getById(parent.id)!.progress).toBe(27);
+    });
+
+    it('深度校验失败抛错（与 create 一致）', () => {
+      // 构造到第 4 层（MAX_TODO_ITEM_DEPTH），再尝试在第 4 层下批量创建应抛错
+      const l1 = svc.create({ title: 'L1', todo_list_id: 1 });
+      const l2 = svc.create({ title: 'L2', todo_list_id: 1, parent_id: l1.id });
+      const l3 = svc.create({ title: 'L3', todo_list_id: 1, parent_id: l2.id });
+      // 在 l3（第 3 层）下创建 → 新 item 为第 4 层，允许；再下一层才超限。
+      // 这里在 l3 下批量创建本身合法，需进一步嵌套到第 4 层再尝试。
+      const l4 = svc.create({ title: 'L4', todo_list_id: 1, parent_id: l3.id });
+      expect(() =>
+        svc.createFromText('L5-a\nL5-b', { todo_list_id: 1, parent_id: l4.id }),
+      ).toThrow(/最大递归层级/);
+    });
+
+    it('返回的 TodoItem[] 顺序与输入行顺序一致', () => {
+      const items = svc.createFromText('first\nsecond\nthird', {
+        todo_list_id: 1,
+        parent_id: null,
+      });
+      expect(items.map((i) => i.title)).toEqual(['first', 'second', 'third']);
+    });
+
+    it('不解析 #N 控制符（描述里的 #数字 视为普通 title）', () => {
+      const items = svc.createFromText('依赖 #3\n备份 #5', {
+        todo_list_id: 1,
+        parent_id: null,
+      });
+      expect(items.map((i) => i.title)).toEqual(['依赖 #3', '备份 #5']);
+      // 优先级全部为默认 normal（未被 #3 / #5 影响）
+      expect(items.every((i) => i.priority === 'normal')).toBe(true);
+    });
+  });
+
   describe('bulkCreateForImport 导入批量重建', () => {
     it('单层 item：全部插入，parent_id=null', () => {
       const nodes = [

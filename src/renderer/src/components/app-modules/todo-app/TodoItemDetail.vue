@@ -100,6 +100,7 @@
               </span>
             </template>
             <el-input
+              ref="descInput"
               v-model="formData.description"
               type="textarea"
               :rows="9"
@@ -268,7 +269,22 @@
       v-model:visible="descDialogVisible"
       v-model="formData.description"
       :parent-name="formData.title"
+      :context="{ type: 'item', itemId: itemId, listId: formData.todo_list_id }"
       @confirm="handleDescriptionConfirm"
+      @created="handleDescriptionCreated"
+    />
+
+    <!--
+      内联 textarea 右键菜单（与对话框内同名菜单共用逻辑）：
+      选中描述文本后「转换为待办条目」→ 创建为该 item 的子条目。
+    -->
+    <TodoContextMenu
+      :visible="ctxMenu.visible"
+      :x="ctxMenu.x"
+      :y="ctxMenu.y"
+      :items="ctxMenuItems"
+      @command="onCtxCommand"
+      @close="ctxMenu.visible = false"
     />
   </div>
 </template>
@@ -276,7 +292,10 @@
 <script>
 import { Plus, Document, VideoPlay, View, Refresh, Loading, Check, Close, FullScreen, Delete } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { markRaw } from 'vue';
 import TodoDescriptionDialog from './TodoDescriptionDialog.vue';
+import TodoContextMenu from './TodoContextMenu.vue';
+import { getDescriptionSelection } from './description-selection';
 import { TODO_DESCRIPTION_MAX_LENGTH } from './constants';
 
 /**
@@ -292,7 +311,7 @@ import { TODO_DESCRIPTION_MAX_LENGTH } from './constants';
  */
 export default {
   name: 'TodoItemDetail',
-  components: { Plus, Document, VideoPlay, View, Refresh, Loading, Check, Close, FullScreen, Delete, TodoDescriptionDialog },
+  components: { Plus, Document, VideoPlay, View, Refresh, Loading, Check, Close, FullScreen, Delete, TodoDescriptionDialog, TodoContextMenu },
   // run-task 携带 { agentName, llmConfigName, extraPrompt } 负载（首次运行 + 重跑共用）
   emits: ['updated', 'open-doc', 'run-task', 'view-task'],
   props: {
@@ -325,12 +344,27 @@ export default {
       taskOptionsLoaded: false,
       // 描述最大化编辑对话框显隐
       descDialogVisible: false,
+      // 内联 textarea 右键菜单状态（visible + 鼠标坐标 + 选中文本缓存）
+      ctxMenu: {
+        visible: false,
+        x: 0,
+        y: 0,
+      },
+      selectedText: '',
+      // 菜单项图标（markRaw 避免组件进入响应式，与 TodoItemRow 同款）
+      icons: {
+        convert: markRaw(Plus),
+      },
     };
   },
   computed: {
     /** Agent 与 LLM 配置均非空时才允许运行/重跑 */
     canRunTask() {
       return Boolean(this.taskForm.agentName && this.taskForm.llmConfigName);
+    },
+    /** 内联 textarea 右键菜单项：单项「转换为待办条目」 */
+    ctxMenuItems() {
+      return [{ command: 'convert', label: '转换为待办条目', icon: this.icons.convert }];
     },
   },
   watch: {
@@ -339,15 +373,24 @@ export default {
     },
     // 切到 AI任务 tab 时懒加载选项（仅首次）
     view(val) {
-      if (val === 'task') this.ensureTaskOptionsLoaded();
+      if (val === 'task') {
+        this.ensureTaskOptionsLoaded();
+      }
     },
   },
   async mounted() {
+    // 在根元素 capture 阶段委托 contextmenu 事件，onDelegatedContextMenu 内部按 ref
+    // 精确比对 event.target，只处理描述 textarea 的右键。
+    // capture 在根监听，绕过 el-input inheritAttrs:false 的透传失败，
+    // 也无需关心 ref 挂载时序（事件触发时 textarea 必已渲染、ref 必已就绪）。
+    this.$el.addEventListener('contextmenu', this.onDelegatedContextMenu, true);
     await this.loadDetail();
   },
   beforeUnmount() {
     // 清理状态条定时器，避免组件卸载后回调触发 setState on unmounted
     if (this.saveStatusTimer) clearTimeout(this.saveStatusTimer);
+    // 移除根元素 capture 阶段的 contextmenu 委托监听
+    this.$el.removeEventListener('contextmenu', this.onDelegatedContextMenu, true);
   },
   methods: {
     /**
@@ -402,6 +445,8 @@ export default {
             dueAt: item.due_at ? String(item.due_at) : null,
             is_manual_progress: item.is_manual_progress,
             agent_task_id: item.agent_task_id ?? null,
+            // todo_list_id 用于 TodoDescriptionDialog context（创建子条目归属）
+            todo_list_id: item.todo_list_id,
           };
           await this.loadDocuments();
         } else {
@@ -413,6 +458,35 @@ export default {
       } finally {
         this.loading = false;
       }
+    },
+    /**
+     * 根元素 capture 阶段 contextmenu 委托处理：
+     * 只处理描述 textarea 的右键（通过 ref 精确比对 event.target 过滤），
+     * 其他元素右键（标题/状态/优先级/task_prompt 等）一律放行，保留原生菜单。
+     *
+     * 设计动机：el-input inheritAttrs:false 导致模板 @contextmenu 不能透传到
+     * 内部 textarea；用根元素 capture 委托既绕过该限制，又无需关心 ref 的挂载时序
+     * （用户能右键到 textarea 时，它必已渲染、ref 必已就绪）。
+     *
+     * 关键：命中后必须 stopPropagation——capture 在根拦截后事件本会继续走
+     * target→bubble→document；TodoContextMenu 的 close 监听器（document 级）
+     * 恰好会在 $nextTick(attachListeners) 后挂上，若放行原事件继续冒泡到 document，
+     * 会立刻触发 onDocClick→close 把刚弹出的菜单关掉（仅 textarea 右键在 Electron
+     * 下有此现象；TodoItemRow 的 @contextmenu 模板绑走 bubble 不受影响）。
+     * stopPropagation + preventDefault 确保原生菜单不弹、事件不冒泡，只展示自定义菜单。
+     */
+    onDelegatedContextMenu(event) {
+      const descTa = this.$refs.descInput?.textarea
+        ?? this.$refs.descInput?.$el?.querySelector?.('textarea');
+      if (!descTa || event.target !== descTa) return;
+      const text = getDescriptionSelection(event);
+      if (text === null) return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.selectedText = text;
+      this.ctxMenu.x = event.clientX;
+      this.ctxMenu.y = event.clientY;
+      this.ctxMenu.visible = true;
     },
     async loadDocuments() {
       try {
@@ -445,6 +519,43 @@ export default {
       this.formData.description = newDesc;
       this.descDialogVisible = false;
       this.handleSave();
+    },
+    /**
+     * TodoDescriptionDialog / 内联 textarea 「转换为待办条目」成功后回调：
+     * emit updated 让 TodoAppPage 重载 item 树（新子条目出现在中间面板）。
+     * 不在此处调 loadDetail（描述文本未变，无需刷新表单）。
+     * @param {Array} items - 主进程返回的 TodoItem[]
+     */
+    handleDescriptionCreated(items) {
+      // 仅需让父组件刷新 item 树；items 数组本身不直接消费
+      this.$emit('updated');
+    },
+    onCtxCommand({ command }) {
+      this.ctxMenu.visible = false;
+      if (command === 'convert') {
+        this.handleConvert();
+      }
+    },
+    /**
+     * 调 IPC 批量创建为该 item 的子条目（parent_id=itemId）。
+     * 成功后 emit updated 刷新中间面板 item 树。
+     */
+    async handleConvert() {
+      if (!this.formData?.todo_list_id) {
+        ElMessage.warning('缺少创建上下文');
+        return;
+      }
+      try {
+        const items = await window.todoApp.createTodoItemsFromText(
+          this.selectedText,
+          this.formData.todo_list_id,
+          this.itemId,
+        );
+        ElMessage.success(`已创建 ${items.length} 个条目`);
+        this.$emit('updated');
+      } catch (err) {
+        ElMessage.error(err?.message || '创建失败');
+      }
     },
     /**
      * 编辑自动激活：详情页内编辑可写字段（标题 / 描述 / 进度等）时，

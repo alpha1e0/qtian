@@ -113,6 +113,8 @@ export const IPC_CHANNELS = {
   TODO_UPDATE_TODO_ITEM_STATUS: 'qtian:todo:update-todo-item-status',
   // TodoItem 快捷创建（中间面板底部输入框：解析结尾 #N 控制符 + 落库）
   TODO_CREATE_ITEM_QUICK: 'qtian:todo:create-item-quick',
+  // 描述字段选中文本批量创建待办条目（不解析 #N，整行作为 title）
+  TODO_CREATE_ITEMS_FROM_TEXT: 'qtian:todo:create-items-from-text',
 
   // Label
   TODO_LIST_LABELS: 'qtian:todo:list-labels',

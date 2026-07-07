@@ -10,6 +10,7 @@ import {
   VALID_STATUS_TRANSITIONS,
 } from './types';
 import { TodoSearchService } from './todo-search.service';
+import { splitSelectionToTitles } from './todo-selection-create';
 
 const logger = createLogger('TodoItemService');
 
@@ -128,6 +129,86 @@ export class TodoItemService {
       this.recalcParentProgress(parentId);
     }
     return item;
+  }
+
+  /**
+   * 描述字段选中文本批量创建 todo_item（详见 docs/specs/100_todo-app-design.md §9.4）。
+   *
+   * 与 `create()` 的区别：
+   * - 输入是多行文本，按 `\n` 拆为多个 title，循环 INSERT
+   * - **单事务批量**：避免 N 次嵌套事务（参考 `bulkCreateForImport`）
+   * - **不解析 `#N` 控制符**：描述场景里的 `#数字` 是正文，不应被识别为优先级
+   * - 仅 title 必填，其余字段取默认值（status=init / progress=0 / priority=normal）
+   *
+   * 与 `bulkCreateForImport` 的区别：
+   * - 不递归（导入是 DFS 自顶向下嵌套结构；本方法是单层平铺）
+   * - 事务外触发 `recalcParentProgress` 一次（导入是快照语义不重算进度）
+   * - 返回完整 `TodoItem[]`（导入只返回 count）
+   *
+   * 空文本（titles 为空）→ 返回 `[]`，不写库、不抛错（描述"空选区"已由前端拦截，
+   * 此处做幂等防御）。
+   *
+   * @param text - 选中的原始文本（可能含 `\n` / `\r\n` / 空行）
+   * @param opts.todo_list_id - 目标 list（必填）
+   * @param opts.parent_id - 父 item（null → 创建为根级条目）
+   * @returns 按创建顺序排列的 TodoItem 数组
+   * @throws 超出最大递归层级（与 `create` 一致）
+   */
+  createFromText(
+    text: string,
+    opts: { todo_list_id: number; parent_id: number | null },
+  ): TodoItem[] {
+    const titles = splitSelectionToTitles(text);
+    if (titles.length === 0) {
+      return [];
+    }
+
+    const parentId = opts.parent_id;
+    // 校验递归深度（与 create 一致；titles 共用同一 parent，只校验一次）
+    this.validateDepth(parentId, opts.todo_list_id, MAX_TODO_ITEM_DEPTH);
+
+    const now = Date.now();
+    const insertedIds: number[] = this.db.transaction(() => {
+      const ids: number[] = [];
+      for (const title of titles) {
+        const result = this.db.insert(
+          `INSERT INTO todo_item
+            (title, description, task_prompt, parent_id, status, progress, priority, due_at,
+             todo_list_id, agent_task_id, is_manual_progress, created_at, updated_at, deleted_at)
+           VALUES (?, '', '', ?, ?, 0, ?, NULL, ?, NULL, 0, ?, ?, NULL)`,
+          [
+            title,
+            parentId,
+            DEFAULT_STATUS,
+            DEFAULT_PRIORITY,
+            opts.todo_list_id,
+            now,
+            now,
+          ],
+        );
+        const newId = result.lastRowid;
+        ids.push(newId);
+        // FTS 同步：仅 title，body 为空（description/task_prompt 均为空串）
+        this.searchService?.syncFts('todo_item', newId, {
+          title,
+          body: this.buildItemFtsBody({ description: '', task_prompt: '' }),
+        });
+      }
+      return ids;
+    });
+
+    logger.info(
+      `createFromText: count=${insertedIds.length}, listId=${opts.todo_list_id}, parentId=${parentId}`,
+    );
+
+    // 事务外触发一次父进度重算（避免事务内 N 次重算）；与 create() 保持一致
+    if (parentId !== null) {
+      this.recalcParentProgress(parentId);
+    }
+
+    return insertedIds
+      .map((id) => this.getById(id))
+      .filter((item): item is TodoItem => item !== undefined);
   }
 
   /**

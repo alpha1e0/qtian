@@ -14,6 +14,7 @@
     class="todo-description-dialog"
     @update:model-value="onVisibleChange"
     @opened="onDialogOpened"
+    @closed="onDialogClosed"
   >
     <!-- 自定义标题：标题文案明示归属父级（条目标题 / 项目名） -->
     <template #header>
@@ -51,11 +52,29 @@
         </el-button>
       </div>
     </template>
+
+    <!--
+      右键菜单：选中描述文本后「转换为待办条目」（详见 §9.4）。
+      复用 TodoContextMenu，与 TodoItemRow 行右键菜单同款（fixed 跟随鼠标）。
+      context prop 决定创建归属：item → 子条目 / list → 根级条目。
+    -->
+    <TodoContextMenu
+      :visible="ctxMenu.visible"
+      :x="ctxMenu.x"
+      :y="ctxMenu.y"
+      :items="ctxMenuItems"
+      @command="onCtxCommand"
+      @close="ctxMenu.visible = false"
+    />
   </el-dialog>
 </template>
 
 <script>
-import { Check, EditPen } from '@element-plus/icons-vue';
+import { Check, EditPen, Plus } from '@element-plus/icons-vue';
+import { ElMessage } from 'element-plus';
+import { markRaw } from 'vue';
+import TodoContextMenu from './TodoContextMenu.vue';
+import { getDescriptionSelection } from './description-selection';
 import { TODO_DESCRIPTION_MAX_LENGTH } from './constants';
 
 /**
@@ -74,11 +93,17 @@ import { TODO_DESCRIPTION_MAX_LENGTH } from './constants';
  *
  * v-model:visible 配套 update:visible；v-model(modelValue) 配套 update:modelValue
  *   仅在保存时触发，作为父组件的一种监听方式（confirm 与 update:modelValue 同步发出）。
+ *
+ * 描述字段右键快捷创建待办条目（§9.4）：
+ *   - textarea 加 @contextmenu，无选区不 prevent（保留浏览器原生菜单）
+ *   - 有选区时弹 TodoContextMenu 单项「转换为待办条目」
+ *   - 选中 context.type === 'item' → 创建为该 item 子条目；'list' → list 根级条目
+ *   - 创建成功 emit 'created(items)'，父组件 emit 'updated' 刷新 item 树
  */
 export default {
   name: 'TodoDescriptionDialog',
-  components: { Check, EditPen },
-  emits: ['update:visible', 'update:modelValue', 'confirm'],
+  components: { Check, EditPen, TodoContextMenu },
+  emits: ['update:visible', 'update:modelValue', 'confirm', 'created'],
   props: {
     /** 对话框显隐（v-model:visible） */
     visible: { type: Boolean, default: false },
@@ -86,6 +111,16 @@ export default {
     modelValue: { type: String, default: '' },
     /** 标题占位的父级名称（条目标题 / 项目名），用于「编辑 {parentName} 描述信息」 */
     parentName: { type: String, default: '' },
+    /**
+     * 创建归属上下文：决定「转换为待办条目」的 parent_id。
+     *   - { type: 'item', itemId, listId } → parent_id=itemId（子条目）
+     *   - { type: 'list', itemId: null, listId } → parent_id=null（根级条目）
+     * 必填；未提供时禁用转换入口（保守降级）。
+     */
+    context: {
+      type: Object,
+      default: () => ({ type: 'list', itemId: null, listId: null }),
+    },
   },
   data() {
     return {
@@ -93,7 +128,25 @@ export default {
       TODO_DESCRIPTION_MAX_LENGTH,
       // 内部草稿：打开时从 modelValue 快照，编辑期间不污染父组件 formData
       draft: '',
+      // 右键菜单状态（visible + 鼠标坐标 + 选中文本缓存）
+      ctxMenu: {
+        visible: false,
+        x: 0,
+        y: 0,
+      },
+      // 当前选中的文本（菜单弹出时缓存；command 处理时消费）
+      selectedText: '',
+      // 菜单项图标（markRaw 避免组件进入响应式，与 TodoItemRow 同款）
+      icons: {
+        convert: markRaw(Plus),
+      },
     };
+  },
+  computed: {
+    /** 右键菜单项：单项「转换为待办条目」 */
+    ctxMenuItems() {
+      return [{ command: 'convert', label: '转换为待办条目', icon: this.icons.convert }];
+    },
   },
   watch: {
     /**
@@ -117,11 +170,24 @@ export default {
      * 对话框打开动画结束后聚焦 textarea，提升连续编辑效率。
      * 必须用 @opened 而非 @open：el-dialog 的 focus trap 在动画过程中会
      * 抢占焦点，@opened 在动画结束、trap 稳定后才触发，focus 才持久。
+     *
+     * 同时挂 document capture 阶段 contextmenu 委托：el-dialog append-to-body
+     * 把内容 teleport 到 body，this.$el 不能覆盖，所以在 document 上委托。
+     * onDelegatedContextMenu 内部按 ref 比对 event.target 精确过滤，只处理
+     * 本对话框内 textarea 的右键（与 TodoItemDetail/TodoListDetail 同方案）。
      */
     onDialogOpened() {
       const ref = this.$refs.textareaRef;
-      if (!ref || typeof ref.focus !== 'function') return;
-      ref.focus();
+      if (ref && typeof ref.focus === 'function') {
+        ref.focus();
+      }
+      document.addEventListener('contextmenu', this.onDelegatedContextMenu, true);
+    },
+    /**
+     * 对话框关闭时移除 document capture 委托监听（防止内存泄漏 / 影响其他页面）。
+     */
+    onDialogClosed() {
+      document.removeEventListener('contextmenu', this.onDelegatedContextMenu, true);
     },
     /**
      * 保存：emit confirm(draft) 由父组件处理 IPC（复用 handleSave 流程），
@@ -131,6 +197,55 @@ export default {
       this.$emit('update:modelValue', this.draft);
       this.$emit('confirm', this.draft);
       this.$emit('update:visible', false);
+    },
+    /**
+     * document capture 阶段 contextmenu 委托处理：
+     * 只处理本对话框内 textarea 的右键（通过 ref 比对 event.target 精确过滤）。
+     * 与 TodoItemDetail/TodoListDetail 的 onDelegatedContextMenu 同方案，区别仅在
+     * 因 el-dialog append-to-body teleport，监听挂在 document 而非组件根元素。
+     * 命中后 stopPropagation 阻止事件继续到 bubble 阶段触发 TodoContextMenu 的 close。
+     */
+    onDelegatedContextMenu(event) {
+      const descTa = this.$refs.textareaRef?.textarea
+        ?? this.$refs.textareaRef?.$el?.querySelector?.('textarea');
+      if (!descTa || event.target !== descTa) return;
+      const text = getDescriptionSelection(event);
+      if (text === null) return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.selectedText = text;
+      this.ctxMenu.x = event.clientX;
+      this.ctxMenu.y = event.clientY;
+      this.ctxMenu.visible = true;
+    },
+    onCtxCommand({ command }) {
+      this.ctxMenu.visible = false;
+      if (command === 'convert') {
+        this.handleConvert();
+      }
+    },
+    /**
+     * 调 IPC 批量创建：parent_id 由 context.type 决定（item → itemId / list → null）。
+     * 成功后 emit 'created(items)' 让父组件刷新 item 树；ElMessage 反馈条数。
+     */
+    async handleConvert() {
+      const listId = this.context?.listId;
+      if (!listId) {
+        ElMessage.warning('缺少创建上下文');
+        return;
+      }
+      const parentId = this.context.type === 'item' ? this.context.itemId : null;
+      try {
+        const items = await window.todoApp.createTodoItemsFromText(
+          this.selectedText,
+          listId,
+          parentId,
+        );
+        ElMessage.success(`已创建 ${items.length} 个条目`);
+        this.$emit('created', items);
+      } catch (err) {
+        ElMessage.error(err?.message || '创建失败');
+      }
     },
   },
 };

@@ -222,6 +222,9 @@ const api = {
     // 快捷创建（中间面板底部输入框：main 侧解析结尾 #N 控制符 + 落库）
     createTodoItemQuick: (raw, listId, parentId) =>
       ipcRenderer.invoke(IPC_CHANNELS.TODO_CREATE_ITEM_QUICK, raw, listId, parentId),
+    // 描述字段选中文本批量创建（不解析 #N，整行作为 title；详见 §9.4）
+    createTodoItemsFromText: (text, listId, parentId) =>
+      ipcRenderer.invoke(IPC_CHANNELS.TODO_CREATE_ITEMS_FROM_TEXT, text, listId, parentId),
 
     // Label
     listLabels: () => ipcRenderer.invoke(IPC_CHANNELS.TODO_LIST_LABELS),
