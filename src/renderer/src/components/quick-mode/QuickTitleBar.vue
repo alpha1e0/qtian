@@ -25,12 +25,13 @@
           </svg>
         </button>
       </el-tooltip>
-      <button class="ctrl-btn ctrl-btn-close" @click="handleClose" title="关闭" aria-label="关闭">
-        <svg width="12" height="12" viewBox="0 0 12 12">
-          <line x1="1" y1="1" x2="11" y2="11" stroke="currentColor" stroke-width="1.4" />
-          <line x1="11" y1="1" x2="1" y2="11" stroke="currentColor" stroke-width="1.4" />
-        </svg>
-      </button>
+      <el-tooltip content="隐藏" placement="bottom" :show-after="300">
+        <button class="ctrl-btn hide-btn" @click="handleClose" aria-label="隐藏">
+          <svg width="12" height="12" viewBox="0 0 12 12">
+            <line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" stroke-width="1.4" />
+          </svg>
+        </button>
+      </el-tooltip>
     </div>
   </div>
 </template>
@@ -140,7 +141,7 @@ export default {
   color: var(--accent);
 }
 
-.ctrl-btn-close:hover {
+.hide-btn:hover {
   background: #e81123;
   color: white;
 }
