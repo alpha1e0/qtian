@@ -644,7 +644,7 @@ export default {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 18px 18px 24px;
+  padding: 6px 18px 24px;
 }
 
 /* 章节标题：editorial eyebrow */
@@ -660,8 +660,27 @@ export default {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
-  padding: 0 2px;
+  /* margin-bottom: 10px; */
+  margin: 3px;
+  padding: 1px 10px 1px 10px;
+  /*
+   * 固定在滚动容器顶部：items 在 .list-panel-scroll 内滚动时，工具栏（list 名 +
+   * 新建/筛选/收藏按钮）保持可见可操作，不会随滚动消失。
+   * 半透明米白底 + backdrop-blur：遮蔽下方滚动的 items 防止透视重叠，同时保留
+   * Aurora 渐变底色的柔和氛围（与底部 .quick-input-bar 同语言）。
+   * z-index 确保浮于 TodoItemRow 之上。
+   *
+   * top 取 6px（= .list-panel-scroll 的 padding-top）：让 sticky 吸附位置与初始
+   * 自然位置重合（border-box 同处 9px），sticky 在 scroll=0 即生效，避免滚动时
+   * 工具栏从初始位置向 top:0 平移所产生的「过渡位移」抖动。
+   */
+  position: sticky;
+  top: 6px;
+  z-index: 2;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(10px) saturate(140%);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  border-radius: 18px;
 }
 
 .tree-toolbar .section-title {
