@@ -232,6 +232,20 @@ export interface TodoSearchHistory {
   searched_at: number;
 }
 
+/**
+ * 项目内搜索范围（scope 模式）。
+ *
+ * 传入 `search()` 时将结果限定在指定 `todoListId` 项目内的
+ * `todo_item` + `todo_document`（document 双路径：直接关联 list 或经 item）。
+ * 不传时为全局搜索（覆盖 category / todo_list / todo_item / document）。
+ *
+ * 与 docs/specs/100_todo-app-design.md §7.7 一致。
+ */
+export interface TodoSearchScope {
+  /** 限定搜索的项目 ID（todo_list.id） */
+  todoListId: number;
+}
+
 // ============================================================================
 // 回收站（Phase 4）
 // ============================================================================

@@ -559,10 +559,34 @@ export function createTodoMemDbFactory(): { default: any; Database: any } {
      * history、category_path），不保证与真实 FTS5 排序完全一致。
      */
     private execFtsSearch(sql: string, params: any[]): Record<string, any>[] {
-      // 参数布局：snippet(title) 4 + snippet(body) 4 + bm25 2 + MATCH 1 + LIMIT 1 = 12
-      // MATCH 参数位于索引 10，LIMIT 位于索引 11
+      // 模式判定：params.length >= 15 → scope 模式（15 参数），否则全局模式（12 参数）。
+      //   全局：snippet(title) 4 + snippet(body) 4 + bm25 2 + MATCH 1 + LIMIT 1
+      //   scope：base 11 + listId×3 + LIMIT 1（listId 位于 11/12/13，LIMIT 位于 14）
+      const isScopeMode = params.length >= 15;
       const ftsQueryRaw = String(params[10] ?? '');
-      const limit = typeof params[11] === 'number' ? params[11] : 30;
+      const limitIndex = isScopeMode ? 14 : 11;
+      const limit = typeof params[limitIndex] === 'number' ? params[limitIndex] : 30;
+
+      // scope 模式：预计算白名单（item/document id 集合），与真实 SQL 的子查询谓词一致。
+      let itemIdsInScope: Set<number> | null = null;
+      let docIdsInScope: Set<number> | null = null;
+      if (isScopeMode) {
+        const scopeListId = params[11];
+        const itemsInList = (this.tables.get('todo_item') ?? [])
+          .filter((r) => r.todo_list_id === scopeListId && r.deleted_at == null)
+          .map((r) => r.id as number);
+        itemIdsInScope = new Set(itemsInList);
+        // document 双路径：todo_list_id === X OR todo_item_id ∈ itemIdsInScope
+        const docsInScope = (this.tables.get('todo_document') ?? [])
+          .filter(
+            (r) =>
+              r.deleted_at == null &&
+              (r.todo_list_id === scopeListId ||
+                (r.todo_item_id != null && itemIdsInScope!.has(r.todo_item_id))),
+          )
+          .map((r) => r.id as number);
+        docIdsInScope = new Set(docsInScope);
+      }
 
       // 解析 MATCH 查询：
       //   phrase token（"xxx"，双引号包裹）→ 精确匹配
@@ -592,6 +616,18 @@ export function createTodoMemDbFactory(): { default: any; Database: any } {
       const rows = this.tables.get('todo_fts') ?? [];
       const results: Record<string, any>[] = [];
       for (const row of rows) {
+        // scope 模式：FTS token 匹配前先按 entity_type + 白名单过滤，
+        // 与真实 SQL 的 entity_id IN (子查询) 谓词一致；非 todo_item/document 直接跳过。
+        if (isScopeMode) {
+          if (row.entity_type === 'todo_item') {
+            if (!itemIdsInScope!.has(row.entity_id)) continue;
+          } else if (row.entity_type === 'document') {
+            if (!docIdsInScope!.has(row.entity_id)) continue;
+          } else {
+            continue;
+          }
+        }
+
         const titleTokens = String(row.title ?? '')
           .split(' ')
           .map((t) => t.trim().toLowerCase())
@@ -653,7 +689,7 @@ export function createTodoMemDbFactory(): { default: any; Database: any } {
         });
       }
 
-      // ORDER BY rank ASC + LIMIT
+      // ORDER BY rank ASC + LIMIT（scope 模式下 LIMIT 在过滤后应用，与真实 SQL 一致）
       results.sort((a, b) => a.rank - b.rank);
       return results.slice(0, limit);
     }

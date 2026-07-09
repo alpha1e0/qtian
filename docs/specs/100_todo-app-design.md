@@ -301,6 +301,9 @@ interface TodoSearchResult {
   /** 相关度分数（BM25） */
   rank: number;
 }
+// 说明：项目内搜索（scope 模式）返回结构不变，仅 type 仅可能为
+//       'todo_item' | 'document'（详见 §7.7）。category_path 语义不变，
+//       仍为 item/document 所属 category 面包屑。
 
 /**
  * 搜索历史条目（用于 UI 搜索下拉/搜索历史列表）
@@ -837,7 +840,7 @@ class TodoTaskService {
 'qtian:todo:restore-label'          // (id) → TodoLabel  恢复（Phase 4 补全，回收站 UI 必需）
 
 // ===== 全文搜索 =====
-'qtian:todo:search'                 // (query, limit?) → TodoSearchResult[]  内部 UPSERT 搜索历史
+'qtian:todo:search'                 // (query, limit?, scope?: { todoListId }) → TodoSearchResult[]  内部 UPSERT 搜索历史；scope 限定在指定 todo_list 内（见 §7.7）
 'qtian:todo:list-search-history'    // (limit?) → TodoSearchHistory[]
 'qtian:todo:delete-search-history'  // (id) → void
 'qtian:todo:clear-search-history'   // () → void
@@ -871,8 +874,9 @@ class TodoTaskService {
 - **分词**：**应用层 jieba 预分词**，写入 FTS 的 title/body 为空格分隔的 token 字符串；FTS5 tokenizer 设为 `unicode61`（仅按空白切分已分好的 token）。
 - **同步**：**Service 层显式同步**（不用触发器，因 SQLite 无法调用 Node jieba）。封装在 `TodoSearchService.syncFts()`，各 Service 在事务内调用。
 - **查询**：`TodoSearchService.search()` 将用户输入 jieba 分词后拼装为 FTS5 query，使用 `bm25()` 排序、`snippet()` 高亮。
-- **过滤**：不支持 category/label 过滤；自动排除软删除实体（FTS 同步时已移除）。
-- **历史**：每次 `search()` 调用 UPSERT 一条 `todo_search_history` 记录。
+- **过滤**：不支持 category/label 维度过滤；自动排除软删除实体（FTS 同步时已移除）。
+  另提供 **项目内搜索（scope 过滤）**：当用户选中某个 `todo_list` 时，可把搜索范围限定在该项目内的 `todo_item` + `todo_document`（详见 §7.7）。
+- **历史**：每次 `search()` 调用 UPSERT 一条 `todo_search_history` 记录。scope 模式不记录 scope 维度，与全局模式共用同一历史表。
 - **结果交互**：点击结果跳转到对应视图（category/todo_list/todo_item），UI 通过事件高亮目标实体。
 
 ### 7.2 jieba 集成方案
@@ -969,6 +973,50 @@ LIMIT ?;
 
 应用层根据返回的 `(entity_type, entity_id)` 二次查询主表补全 title（snippet 已截断）+ category_path（递归查询 parent_id 链）。
 
+#### 7.3.1 项目内搜索（scope 模式）SQL 样例
+
+全局模式 SQL 不变（12 参数）。scope 模式在 `WHERE todo_fts MATCH ?` 后追加 `AND (...scope 谓词...)`，**用单条 SQL 的 `entity_id IN (子查询)` 谓词过滤**（非应用层 enrichRow 过滤），保证 `LIMIT` 在过滤后仍准确：
+
+```sql
+SELECT entity_type, entity_id,
+  snippet(todo_fts, 2, ?, ?, ?, ?) AS title_snippet,
+  snippet(todo_fts, 3, ?, ?, ?, ?) AS body_snippet,
+  bm25(todo_fts, ?, ?) AS rank
+FROM todo_fts
+WHERE todo_fts MATCH ?
+  AND (
+    (entity_type = 'todo_item'
+     AND entity_id IN (SELECT id FROM todo_item WHERE todo_list_id = ? AND deleted_at IS NULL))
+    OR
+    (entity_type = 'document'
+     AND entity_id IN (
+       SELECT id FROM todo_document
+       WHERE deleted_at IS NULL AND (
+         todo_list_id = ?
+         OR todo_item_id IN (SELECT id FROM todo_item WHERE todo_list_id = ? AND deleted_at IS NULL)
+       )))
+  )
+ORDER BY rank
+LIMIT ?
+```
+
+参数布局（前 11 个与全局模式完全对齐）：
+
+| 索引 | 全局模式 | scope 模式 |
+|------|---------|-----------|
+| 0–3 | snippet(title) | snippet(title) |
+| 4–7 | snippet(body) | snippet(body) |
+| 8–9 | bm25 权重 | bm25 权重 |
+| 10 | MATCH 表达式 | MATCH 表达式 |
+| 11 | LIMIT | scope listId（item 子查询） |
+| 12 | — | scope listId（document 直接） |
+| 13 | — | scope listId（document 经 item） |
+| 14 | — | LIMIT |
+
+> **关键约束**：`todo_item.todo_list_id` NOT NULL 直接指向所属 list，一次 `WHERE todo_list_id = X` 拿到全部层级条目（无需递归）。
+> `todo_document` 双路径归属：`todo_list_id = X` 或 `todo_item_id ∈ (该 list 下的 item)`。
+> mock DB（`todo-mock-db.ts`）通过 `params.length`（12 vs 15）区分两种模式，LIMIT 在 scope 模式下取 `params[14]`。
+
 ### 7.4 搜索历史交互
 
 - 用户在搜索框输入并按回车 → 调用 `qtian:todo:search` → 后端 UPSERT `todo_search_history`
@@ -984,6 +1032,8 @@ LIMIT ?;
 | `todo_list` | 左侧栏选中其所属 category，中间展示该待办项目 | 待办项目标题闪烁 |
 | `todo_item` | 左侧栏选中其所属 category + list，中间滚动到该 item 并展开 | item 行闪烁、自动展开 |
 | `document` | 打开文档编辑器（弹出或切换右侧详情为编辑模式） | 文档名闪烁 |
+
+> scope 模式仅返回 `todo_item` / `document`，跳转逻辑完全复用上表（item 滚动高亮 / document 打开抽屉），不会因当前 list 与命中 item 不同 list 而需要切换——scope 结果本就限定在当前选中项目内。
 
 跳转通过 IPC 推送的 `navigate` 事件 + 路由参数实现，统一在 `TodoAppPage.vue` 处理。
 
@@ -1033,6 +1083,35 @@ LIMIT ?;
 
 - `TodoSearchService` / `TodoTokenizer` 测试**不 mock better-sqlite3**，用真实 `:memory:` 库 + 真实 jieba（vitest 模块级 mock 互不影响）
 - 其他 Service 测试保持现状（`todo-mock-db`），仅新增 `transaction(fn)` 兼容
+- scope 模式测试用 `todo-mock-db`：覆盖命中/隔离/document 双路径/类型限制/LIMIT 准确/向后兼容
+
+### 7.7 项目内搜索（Scope Search）
+
+#### 7.7.1 背景
+
+用户选中某个"待办项目"（todo_list）时，希望把搜索范围**限定在当前项目内**，只搜该项目下的 `todo_item` + `todo_document`，快速定位项目内部内容。
+
+#### 7.7.2 入口与 UX
+
+- **入口**：复用顶部 `TodoSearchBar`，新增"全部 / 当前项目"范围切换按钮（分段按钮，带 `aria-label="切换搜索范围"`）。
+- **范围**：仅当前 todo_list 下的 `todo_item` + `todo_document`。
+- 行为：
+  - `currentListId` 为 null（未选项目 / 选中分类）时，强制 `searchScope = 'all'`，禁用"当前项目"选项。
+  - `currentListId` 切换到新的非空 id 时，默认重置为 `current`（"选中项目时默认切到当前项目"）。
+  - scope 变化且当前有非空 keyword 时，重新触发防抖搜索。
+  - placeholder：`all` → 现有文案；`current` → `在「{listName}」中搜索`。
+
+#### 7.7.3 后端实现
+
+- 类型：`TodoSearchScope = { todoListId: number }`（见 `types.ts`）。
+- `TodoSearchService.search(query, limit?, scope?)`：有 scope 时走 §7.3.1 的 scope SQL 模板（15 参数），否则走全局模式（12 参数）。
+- `enrichRow` 不改动：scope 模式复用现有补全逻辑，`category_path` 保持原语义（item/document 所属 category 面包屑）。
+
+#### 7.7.4 非目标（v1 不做）
+
+- 搜索历史不记录 scope 维度；scope 模式与全局模式共用历史表。点击历史条目按当前 scope 重新搜索。
+- 不新增 item 父链面包屑字段。
+- 不新增 IPC 频道，复用 `qtian:todo:search`（增加第三个可选参数 `scope`）。
 
 ## 8 Todo 驱动 AI 任务设计
 

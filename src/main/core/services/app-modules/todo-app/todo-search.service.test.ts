@@ -80,6 +80,24 @@ describe('TodoSearchService', () => {
     return r.lastRowid;
   }
 
+  /**
+   * 插入 todo_document 主表行，返回分配的 id。
+   * todo_list_id 与 todo_item_id 不可同时非 null（schema 约定）；
+   * 测试中通过传参控制归属路径。
+   */
+  function insertDocument(
+    name: string,
+    opts: { todoListId?: number | null; itemId?: number | null } = {},
+  ): number {
+    const now = Date.now();
+    const r = db.insert(
+      `INSERT INTO todo_document (name, content, todo_list_id, todo_item_id, created_at, updated_at, deleted_at)
+       VALUES (?, '', ?, ?, ?, ?, NULL)`,
+      [name, opts.todoListId ?? null, opts.itemId ?? null, now, now],
+    );
+    return r.lastRowid;
+  }
+
   // =========================================================================
   // syncFts
   // =========================================================================
@@ -395,6 +413,145 @@ describe('TodoSearchService', () => {
       expect(svc.search('工作')).toHaveLength(0);
       svc.syncFts('todo_item', itemId, { title: '工作', body: '' });
       expect(svc.search('工作').length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  // =========================================================================
+  // 项目内搜索（scope）— §7.7
+  // =========================================================================
+
+  describe('项目内搜索 (scope)', () => {
+    // mock DB 各表独立自增，todo_item.id 与 todo_document.id 可能数值相同，
+    // 故用 (type, id) 复合键判定，避免跨表 ID 冲突导致的假失败。
+    const hasResult = (
+      results: { type: string; id: number }[],
+      type: string,
+      id: number,
+    ): boolean => results.some((r) => r.type === type && r.id === id);
+
+    it('scope 命中当前 list 下的 item / document', () => {
+      const listA = insertList('项目A');
+      const listB = insertList('项目B');
+      const itemA = insertItem('需求文档撰写', listA);
+      const itemB = insertItem('需求文档评审', listB);
+      const docA = insertDocument('项目A设计说明', { todoListId: listA });
+      svc.syncFts('todo_item', itemA, { title: '需求文档撰写', body: '' });
+      svc.syncFts('todo_item', itemB, { title: '需求文档评审', body: '' });
+      svc.syncFts('document', docA, { title: '项目A设计说明', body: '需求文档' });
+
+      const results = svc.search('需求', 30, { todoListId: listA });
+      expect(hasResult(results, 'todo_item', itemA)).toBe(true);
+      expect(hasResult(results, 'document', docA)).toBe(true);
+      expect(hasResult(results, 'todo_item', itemB)).toBe(false);
+    });
+
+    it('隔离：其他 list 的 item / document 被排除', () => {
+      const listA = insertList('项目A');
+      const listB = insertList('项目B');
+      const itemA = insertItem('共享关键词', listA);
+      const itemB = insertItem('共享关键词', listB);
+      const docB = insertDocument('共享关键词文档', { todoListId: listB });
+      svc.syncFts('todo_item', itemA, { title: '共享关键词', body: '' });
+      svc.syncFts('todo_item', itemB, { title: '共享关键词', body: '' });
+      svc.syncFts('document', docB, { title: '共享关键词文档', body: '' });
+
+      const results = svc.search('共享', 30, { todoListId: listA });
+      expect(hasResult(results, 'todo_item', itemA)).toBe(true);
+      expect(hasResult(results, 'todo_item', itemB)).toBe(false);
+      expect(hasResult(results, 'document', docB)).toBe(false);
+    });
+
+    it('document 双路径：list 直接关联与 item 间接关联均命中', () => {
+      const listA = insertList('项目A');
+      const itemInA = insertItem('条目占位', listA);
+      // 路径1：document 直接关联 list
+      const docDirect = insertDocument('双路径直接', { todoListId: listA });
+      // 路径2：document 关联 list 下的 item
+      const docViaItem = insertDocument('双路径间接', { itemId: itemInA });
+      svc.syncFts('document', docDirect, { title: '双路径直接', body: '目标词' });
+      svc.syncFts('document', docViaItem, { title: '双路径间接', body: '目标词' });
+
+      const results = svc.search('目标', 30, { todoListId: listA });
+      expect(hasResult(results, 'document', docDirect)).toBe(true);
+      expect(hasResult(results, 'document', docViaItem)).toBe(true);
+    });
+
+    it('document 经其他 list 的 item 关联时不命中', () => {
+      const listA = insertList('项目A');
+      const listB = insertList('项目B');
+      const itemInB = insertItem('B 的条目', listB);
+      // document 关联到 listB 的 item，scope=listA 时应排除
+      const docViaForeignItem = insertDocument('外项目文档', { itemId: itemInB });
+      svc.syncFts('document', docViaForeignItem, { title: '外项目文档', body: '目标词' });
+
+      const results = svc.search('目标', 30, { todoListId: listA });
+      expect(hasResult(results, 'document', docViaForeignItem)).toBe(false);
+    });
+
+    it('类型限制：scope 模式不返回 category / todo_list', () => {
+      const cat = insertCategory('工作分类');
+      const listA = insertList('项目A');
+      const listInCat = insertList('项目B', cat);
+      const itemA = insertItem('工作条目', listA);
+      svc.syncFts('category', cat, { title: '工作分类', body: '' });
+      svc.syncFts('todo_list', listInCat, { title: '项目B', body: '' });
+      svc.syncFts('todo_item', itemA, { title: '工作条目', body: '' });
+
+      const results = svc.search('工作', 30, { todoListId: listA });
+      const types = new Set(results.map((r) => r.type));
+      expect(types.has('todo_item')).toBe(true);
+      expect(types.has('category')).toBe(false);
+      expect(types.has('todo_list')).toBe(false);
+    });
+
+    it('LIMIT 准确：scope 过滤后再 slice，不因全局总数虚高', () => {
+      const listA = insertList('项目A');
+      const listB = insertList('项目B');
+      // listA 命中 2 条，listB 命中 5 条（同关键词），LIMIT=3 应只返回 listA 的 2 条
+      const aIds = [insertItem('关键词A1', listA), insertItem('关键词A2', listA)];
+      for (let i = 0; i < 5; i += 1) {
+        const bid = insertItem(`关键词B${i}`, listB);
+        svc.syncFts('todo_item', bid, { title: `关键词B${i}`, body: '' });
+      }
+      aIds.forEach((id) => svc.syncFts('todo_item', id, { title: '', body: '关键词' }));
+
+      const results = svc.search('关键词', 3, { todoListId: listA });
+      expect(results).toHaveLength(2);
+      aIds.forEach((id) => expect(hasResult(results, 'todo_item', id)).toBe(true));
+    });
+
+    it('向后兼容：不传 scope 等价全局搜索', () => {
+      const listA = insertList('项目A');
+      const listB = insertList('项目B');
+      const itemA = insertItem('兼容测试', listA);
+      const itemB = insertItem('兼容测试', listB);
+      svc.syncFts('todo_item', itemA, { title: '兼容测试', body: '' });
+      svc.syncFts('todo_item', itemB, { title: '兼容测试', body: '' });
+
+      // 不传 scope：两个项目的 item 都应能命中（全局）
+      const globalResults = svc.search('兼容');
+      expect(hasResult(globalResults, 'todo_item', itemA)).toBe(true);
+      expect(hasResult(globalResults, 'todo_item', itemB)).toBe(true);
+
+      // 传 scope=listA：只命中 A
+      const scopedResults = svc.search('兼容', 30, { todoListId: listA });
+      expect(hasResult(scopedResults, 'todo_item', itemA)).toBe(true);
+      expect(hasResult(scopedResults, 'todo_item', itemB)).toBe(false);
+    });
+
+    it('软删除的 item 不在 scope 命中范围内', () => {
+      const listA = insertList('项目A');
+      const itemActive = insertItem('活跃条目关键词', listA);
+      const itemDeleted = insertItem('已删条目关键词', listA);
+      svc.syncFts('todo_item', itemActive, { title: '活跃条目关键词', body: '' });
+      svc.syncFts('todo_item', itemDeleted, { title: '已删条目关键词', body: '' });
+      // 模拟软删除：主表置 deleted_at + FTS 移除
+      db.execute(`UPDATE todo_item SET deleted_at = ? WHERE id = ?`, [Date.now(), itemDeleted]);
+      svc.syncFts('todo_item', itemDeleted, null);
+
+      const results = svc.search('关键词', 30, { todoListId: listA });
+      expect(hasResult(results, 'todo_item', itemActive)).toBe(true);
+      expect(hasResult(results, 'todo_item', itemDeleted)).toBe(false);
     });
   });
 });

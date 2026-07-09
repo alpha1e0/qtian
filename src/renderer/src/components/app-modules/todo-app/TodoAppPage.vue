@@ -2,7 +2,11 @@
   <div class="todo-app-page">
     <!-- 顶部搜索栏（Phase 3）：横跨三栏上方 -->
     <div class="search-bar-row">
-      <TodoSearchBar @jump-to-result="handleJumpToResult" />
+      <TodoSearchBar
+        :current-list-id="selectedListId"
+        :current-list-name="selectedListName"
+        @jump-to-result="handleJumpToResult"
+      />
     </div>
 
     <!-- 三栏布局：左导航 / 中待办项目 / 右详情 -->

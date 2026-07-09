@@ -251,7 +251,8 @@ const api = {
     getConfig: () => ipcRenderer.invoke(IPC_CHANNELS.TODO_GET_CONFIG),
 
     // 全文搜索（Phase 3）
-    search: (query, limit) => ipcRenderer.invoke(IPC_CHANNELS.TODO_SEARCH, query, limit),
+    search: (query, limit, scope) =>
+      ipcRenderer.invoke(IPC_CHANNELS.TODO_SEARCH, query, limit, scope),
     listSearchHistory: (limit) =>
       ipcRenderer.invoke(IPC_CHANNELS.TODO_LIST_SEARCH_HISTORY, limit),
     deleteSearchHistory: (id) =>

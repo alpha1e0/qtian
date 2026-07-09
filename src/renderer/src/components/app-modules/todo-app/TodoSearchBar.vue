@@ -1,5 +1,29 @@
 <template>
   <div class="todo-search-bar">
+    <!-- 范围切换：全部 / 当前项目（仅选中 todo_list 时可用） -->
+    <div
+      class="scope-toggle"
+      role="group"
+      aria-label="切换搜索范围"
+    >
+      <button
+        type="button"
+        class="scope-btn"
+        :class="{ active: activeScope === 'all' }"
+        :aria-pressed="activeScope === 'all'"
+        @click="setScope('all')"
+      >全部</button>
+      <button
+        type="button"
+        class="scope-btn"
+        :class="{ active: activeScope === 'current' }"
+        :disabled="!canUseCurrentScope"
+        :aria-pressed="activeScope === 'current'"
+        :title="canUseCurrentScope ? '在当前项目中搜索' : '请先选中一个待办项目'"
+        @click="setScope('current')"
+      >当前项目</button>
+    </div>
+
     <!--
       使用单向 :visible 绑定（非 v-model:visible）：
       Element Plus 的 popover 内部 onClickOutside 仅在 `controlled = false` 时生效，
@@ -24,7 +48,7 @@
           v-model="keyword"
           class="search-input"
           size="small"
-          placeholder="搜索分类 / 待办项目 / 待办条目 / 文档"
+          :placeholder="inputPlaceholder"
           clearable
           @focus="handleFocus"
           @blur="handleBlur"
@@ -135,6 +159,18 @@ export default {
   name: 'TodoSearchBar',
   components: { Search, Clock, Close, Folder, Document, Files, Memo },
   emits: ['jump-to-result'],
+  props: {
+    /** 当前选中的 todo_list ID（null 表示未选项目/选中分类） */
+    currentListId: {
+      type: Number,
+      default: null,
+    },
+    /** 当前选中 todo_list 的名称（用于 placeholder 展示） */
+    currentListName: {
+      type: String,
+      default: '',
+    },
+  },
   data() {
     return {
       keyword: '',
@@ -152,7 +188,30 @@ export default {
       loading: false,
       // popover 宽度（与 input 对齐；响应式调整）
       popoverWidth: 420,
+      // 搜索范围意图：'all'（全局）| 'current'（当前项目）；实际生效值见 activeScope
+      searchScope: 'all',
     };
+  },
+  computed: {
+    /** 是否允许使用"当前项目"范围（必须选中了 todo_list） */
+    canUseCurrentScope() {
+      return this.currentListId !== null;
+    },
+    /**
+     * 实际生效的搜索范围：
+     * - 未选中项目时强制回退 'all'（即使 searchScope 意图为 current）
+     * - 传给 runSearch / placeholder 使用
+     */
+    activeScope() {
+      return this.canUseCurrentScope ? this.searchScope : 'all';
+    },
+    /** 动态 placeholder：scope=current 时展示项目名 */
+    inputPlaceholder() {
+      if (this.activeScope === 'current' && this.currentListName) {
+        return `在「${this.currentListName}」中搜索`;
+      }
+      return '搜索分类 / 待办项目 / 待办条目 / 文档';
+    },
   },
   watch: {
     keyword(val) {
@@ -165,6 +224,36 @@ export default {
         return;
       }
       this.scheduleSearch(trimmed);
+    },
+    /**
+     * 选中项目变化时调整范围意图：
+     * - 切到新的非空项目 → 默认置 'current'（"选中项目时默认切到当前项目"）
+     * - 变为 null（选中分类/根节点）→ 回退 'all'
+     *
+     * 同时直接重触发搜索：从 list A 切到 list B 且 scope 已是 'current' 时，
+     * searchScope 值不变不会触发其 watcher，但结果已过期需刷新。
+     * scheduleSearch 自带防抖去重，与 searchScope watcher 叠加不会重复搜索。
+     */
+    currentListId(newVal, oldVal) {
+      if (newVal !== null && newVal !== oldVal) {
+        this.searchScope = 'current';
+      } else if (newVal === null) {
+        this.searchScope = 'all';
+      }
+      const trimmed = (this.keyword || '').trim();
+      if (trimmed.length > 0) {
+        this.scheduleSearch(trimmed);
+      }
+    },
+    /**
+     * scope 变化且当前有非空 keyword 时，重新触发防抖搜索，
+     * 让结果立即跟随范围切换刷新。
+     */
+    searchScope() {
+      const trimmed = (this.keyword || '').trim();
+      if (trimmed.length > 0) {
+        this.scheduleSearch(trimmed);
+      }
     },
   },
   beforeUnmount() {
@@ -185,7 +274,12 @@ export default {
     async runSearch(query) {
       this.loading = true;
       try {
-        this.results = await window.todoApp.search(query);
+        // scope=current 且已选中项目时构造 scope 参数；否则传 undefined 走全局搜索
+        const scope =
+          this.activeScope === 'current' && this.canUseCurrentScope
+            ? { todoListId: this.currentListId }
+            : undefined;
+        this.results = await window.todoApp.search(query, undefined, scope);
         this.activeIndex = this.results.length > 0 ? 0 : -1;
         this.popoverVisible = true;
       } catch (err) {
@@ -194,6 +288,13 @@ export default {
       } finally {
         this.loading = false;
       }
+    },
+    /** 设置搜索范围（点击分段按钮触发） */
+    setScope(scope) {
+      if (scope === 'current' && !this.canUseCurrentScope) {
+        return; // 未选中项目时禁用，防御性拦截
+      }
+      this.searchScope = scope;
     },
     async loadHistory() {
       try {
@@ -343,12 +444,64 @@ export default {
 <style scoped>
 .todo-search-bar {
   width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/*
+ * 范围切换分段按钮：紧凑的双段控制
+ * 风格与搜索输入的靛底描边呼应，未选中时透明低饱和
+ */
+.scope-toggle {
+  display: inline-flex;
+  flex-shrink: 0;
+  background: rgba(99, 102, 241, 0.06);
+  border: 1px solid rgba(99, 102, 241, 0.14);
+  border-radius: 10px;
+  padding: 2px;
+}
+
+.scope-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-on-dark-muted, #5c5b72);
+  font-size: 12px;
+  line-height: 1;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.scope-btn:hover:not(:disabled):not(.active) {
+  color: var(--text-on-dark-secondary, #8b8aa0);
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.scope-btn.active {
+  background: var(--accent, #6366f1);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(99, 102, 241, 0.32);
+}
+
+.scope-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 /*
  * 搜索输入：编辑级"档案室卡片"质感
  * 用毛玻璃 + 微微的靛底描边替代默认深灰填充
  */
+.search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .search-input :deep(.el-input__wrapper) {
   background: rgba(99, 102, 241, 0.04);
   box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.10) inset;

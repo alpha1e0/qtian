@@ -11,6 +11,7 @@ import {
   TodoItemPriority,
   TodoTrashEntityType,
   TodoListExportBundle,
+  TodoSearchScope,
 } from '@/core/services/app-modules/todo-app/types';
 import { parseQuickItemInput } from '@/core/services/app-modules/todo-app/todo-quick-input';
 
@@ -288,10 +289,15 @@ export function registerTodoAppHandlers(todoAppService: TodoAppService): void {
   });
 
   // ===== 全文搜索（Phase 3） =====
-  ipcMain.handle(IPC_CHANNELS.TODO_SEARCH, async (_e, query: string, limit?: number) => {
-    logger.info(`Search: query='${query}'`);
-    return search.search(query, limit);
-  });
+  ipcMain.handle(
+    IPC_CHANNELS.TODO_SEARCH,
+    async (_e, query: string, limit?: number, scope?: TodoSearchScope) => {
+      logger.info(
+        `Search: query='${query}'${scope ? `, scope=list:${scope.todoListId}` : ''}`,
+      );
+      return search.search(query, limit, scope);
+    },
+  );
 
   ipcMain.handle(IPC_CHANNELS.TODO_LIST_SEARCH_HISTORY, async (_e, limit?: number) => {
     return search.listSearchHistory(limit);

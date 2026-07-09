@@ -5,6 +5,7 @@ import {
   TodoFtsEntityType,
   TodoSearchResult,
   TodoSearchHistory,
+  TodoSearchScope,
 } from './types';
 
 const logger = createLogger('TodoSearchService');
@@ -27,6 +28,55 @@ const SNIPPET_MARK_CLOSE = '</mark>';
 const SNIPPET_ELLIPSIS = '...';
 /** 列表历史默认返回上限 */
 const DEFAULT_HISTORY_LIMIT = 10;
+
+/**
+ * 全局搜索 SQL 模板（12 参数）。
+ * 参数布局：snippet(title) 4 + snippet(body) 4 + bm25 2 + MATCH 1 + LIMIT 1。
+ */
+const GLOBAL_SEARCH_SQL = `SELECT
+    entity_type,
+    entity_id,
+    snippet(todo_fts, 2, ?, ?, ?, ?) AS title_snippet,
+    snippet(todo_fts, 3, ?, ?, ?, ?) AS body_snippet,
+    bm25(todo_fts, ?, ?) AS rank
+ FROM todo_fts
+ WHERE todo_fts MATCH ?
+ ORDER BY rank
+ LIMIT ?`;
+
+/**
+ * 项目内搜索（scope）SQL 模板（15 参数）。
+ *
+ * 参数布局（前 11 与全局完全对齐，详见 §7.3.1）：
+ *   0–3 snippet(title) / 4–7 snippet(body) / 8–9 bm25 权重 / 10 MATCH /
+ *   11 scope listId(item) / 12 scope listId(document 直接) /
+ *   13 scope listId(document 经 item) / 14 LIMIT
+ *
+ * scope 谓词用 `entity_id IN (子查询)` 在单条 SQL 内过滤，保证 LIMIT 在过滤后准确；
+ * document 双路径：`todo_list_id = X` OR `todo_item_id ∈ (list 下的 item)`。
+ */
+const SCOPE_SEARCH_SQL = `SELECT
+    entity_type,
+    entity_id,
+    snippet(todo_fts, 2, ?, ?, ?, ?) AS title_snippet,
+    snippet(todo_fts, 3, ?, ?, ?, ?) AS body_snippet,
+    bm25(todo_fts, ?, ?) AS rank
+ FROM todo_fts
+ WHERE todo_fts MATCH ?
+   AND (
+     (entity_type = 'todo_item'
+      AND entity_id IN (SELECT id FROM todo_item WHERE todo_list_id = ? AND deleted_at IS NULL))
+     OR
+     (entity_type = 'document'
+      AND entity_id IN (
+        SELECT id FROM todo_document
+        WHERE deleted_at IS NULL AND (
+          todo_list_id = ?
+          OR todo_item_id IN (SELECT id FROM todo_item WHERE todo_list_id = ? AND deleted_at IS NULL)
+        )))
+   )
+ ORDER BY rank
+ LIMIT ?`;
 /**
  * 前缀 token 中需剔除的 FTS5 操作符 / 控制字符。
  *
@@ -132,9 +182,14 @@ export class TodoSearchService {
    *
    * @param query - 用户原始输入
    * @param limit - 返回上限（默认 30）
+   * @param scope - 可选；限定在指定 todo_list 内搜索（仅 todo_item + document），不传为全局搜索
    * @returns 命中结果数组（按相关度升序）
    */
-  search(query: string, limit: number = DEFAULT_SEARCH_LIMIT): TodoSearchResult[] {
+  search(
+    query: string,
+    limit: number = DEFAULT_SEARCH_LIMIT,
+    scope?: TodoSearchScope,
+  ): TodoSearchResult[] {
     const trimmed = (query ?? '').trim();
     const ftsQuery = this.buildFtsQuery(trimmed);
 
@@ -146,33 +201,31 @@ export class TodoSearchService {
       return [];
     }
 
+    // 前缀参数：snippet(title/body) + bm25 + MATCH（全局与 scope 共用）
+    const baseParams = [
+      SNIPPET_MARK_OPEN,
+      SNIPPET_MARK_CLOSE,
+      SNIPPET_ELLIPSIS,
+      SNIPPET_TITLE_TOKENS,
+      SNIPPET_MARK_OPEN,
+      SNIPPET_MARK_CLOSE,
+      SNIPPET_ELLIPSIS,
+      SNIPPET_BODY_TOKENS,
+      BM25_TITLE_WEIGHT,
+      BM25_BODY_WEIGHT,
+      ftsQuery,
+    ];
+
+    // scope 模式：追加 listId ×3 + LIMIT；全局模式：追加 LIMIT
+    const params = scope
+      ? [...baseParams, scope.todoListId, scope.todoListId, scope.todoListId, limit]
+      : [...baseParams, limit];
+
     let rows: FtsRow[] = [];
     try {
       rows = this.db.query<FtsRow>(
-        `SELECT
-            entity_type,
-            entity_id,
-            snippet(todo_fts, 2, ?, ?, ?, ?) AS title_snippet,
-            snippet(todo_fts, 3, ?, ?, ?, ?) AS body_snippet,
-            bm25(todo_fts, ?, ?) AS rank
-         FROM todo_fts
-         WHERE todo_fts MATCH ?
-         ORDER BY rank
-         LIMIT ?`,
-        [
-          SNIPPET_MARK_OPEN,
-          SNIPPET_MARK_CLOSE,
-          SNIPPET_ELLIPSIS,
-          SNIPPET_TITLE_TOKENS,
-          SNIPPET_MARK_OPEN,
-          SNIPPET_MARK_CLOSE,
-          SNIPPET_ELLIPSIS,
-          SNIPPET_BODY_TOKENS,
-          BM25_TITLE_WEIGHT,
-          BM25_BODY_WEIGHT,
-          ftsQuery,
-          limit,
-        ],
+        scope ? SCOPE_SEARCH_SQL : GLOBAL_SEARCH_SQL,
+        params,
       );
     } catch (err) {
       logger.error('FTS search failed', err);
