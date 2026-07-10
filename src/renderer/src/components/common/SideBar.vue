@@ -27,9 +27,10 @@
         v-for="item in bottomItems"
         :key="item.key"
         class="sidebar-btn"
-        :class="{ 'is-active': isActive(item) }"
+        :class="{ 'is-active': isActive(item), 'is-spinning': item.key === 'sync' && isSyncing }"
         :aria-label="item.aria"
         :title="item.aria"
+        :disabled="item.key === 'sync' && isSyncing"
         @click="handleSelect(item.key)"
       >
         <el-icon :size="20"><component :is="item.icon" /></el-icon>
@@ -40,7 +41,7 @@
 
 <script>
 import { markRaw } from 'vue';
-import { ChatDotRound, ChatRound, Tickets, Document, Setting, SwitchButton } from '@element-plus/icons-vue';
+import { ChatDotRound, ChatRound, Tickets, Document, Setting, Refresh, SwitchButton } from '@element-plus/icons-vue';
 import iconUrl from '../../assets/icon.png';
 
 /**
@@ -67,6 +68,13 @@ export default {
       required: true,
       validator: (v) => ['ai-assistant', 'todo-app', 'note-app'].includes(v),
     },
+    /**
+     * 数据同步进行中 —— 控制同步按钮的旋转动效与禁用态
+     */
+    isSyncing: {
+      type: Boolean,
+      default: false,
+    },
   },
   emits: ['select'],
   data() {
@@ -80,6 +88,7 @@ export default {
       ],
       bottomItems: [
         { key: 'settings', icon: markRaw(Setting), label: '设置', aria: '打开设置' },
+        { key: 'sync', icon: markRaw(Refresh), label: '同步', aria: '数据同步' },
         { key: 'quit', icon: markRaw(SwitchButton), label: '退出', aria: '退出应用' },
       ],
     };
@@ -176,5 +185,23 @@ export default {
   height: 20px;
   border-radius: 0 2px 2px 0;
   background: var(--accent);
+}
+
+/* 同步进行中：Refresh 图标旋转动效 */
+.sidebar-btn.is-spinning .el-icon {
+  animation: sidebar-spin 1s linear infinite;
+}
+
+.sidebar-btn:disabled {
+  cursor: progress;
+}
+
+@keyframes sidebar-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

@@ -41,6 +41,10 @@ export class WPath {
   /** note-app 数据库文件路径（独立 note.db） */
   readonly noteDbPath: string;
   readonly configPath: string;
+  /** 数据同步工作目录（workspace/.sync，存放本地同步 meta 缓存） */
+  readonly syncDir: string;
+  /** 本地同步 meta 缓存路径（workspace/.sync/meta.json） */
+  readonly syncMetaPath: string;
 
   // Legacy property aliases for backward compatibility
   /** @deprecated Use currentDirectory instead */
@@ -158,6 +162,11 @@ export class WPath {
     // Configuration and data files
     // Configuration file: qtian.json (unified config file name)
     this.configPath = path.join(this.workspace, 'qtian.json');
+
+    // 数据同步工作目录（存放本地 meta 缓存）
+    this.syncDir = path.join(this.workspace, '.sync');
+    this.ensureDirectory(this.syncDir);
+    this.syncMetaPath = path.join(this.syncDir, 'meta.json');
   }
 
   /**
@@ -270,6 +279,26 @@ export interface NoteAppConfigData {
 }
 
 /**
+ * WebDAV 同步配置（对应 qtian.json 的 global.webdav 段）
+ *
+ * 注意：需求文档里的 `webdava` 是 `webdav` 的笔误，实现以 `webdav` 为准。
+ */
+export interface WebdavConfigData {
+  url?: string;
+  account_name?: string;
+  account_password?: string;
+  /** 远端根目录名（同步内容将放在 `<url>/<folder>/qtian-sync/` 下） */
+  folder?: string;
+}
+
+/**
+ * 全局配置（对应 qtian.json 的 global 段）
+ */
+export interface GlobalConfigData {
+  webdav?: WebdavConfigData;
+}
+
+/**
  * Application configuration
  */
 export interface ConfigData {
@@ -280,6 +309,26 @@ export interface ConfigData {
   todo_app?: TodoAppConfigData;
   /** Note 应用配置 */
   note_app?: NoteAppConfigData;
+  /** 全局配置（WebDAV 同步等） */
+  global?: GlobalConfigData;
+}
+
+/**
+ * WebDAV 同步配置（内存 camelCase 形式，对应 qtian.json 的 global.webdav）
+ */
+export interface WebdavConfig {
+  url: string;
+  accountName: string;
+  accountPassword: string;
+  /** 远端根目录名 */
+  folder: string;
+}
+
+/**
+ * 全局配置（内存 camelCase 形式）
+ */
+export interface GlobalConfig {
+  webdav: WebdavConfig;
 }
 
 export class Config {
@@ -306,6 +355,8 @@ export class Config {
     defaultSort: string;
     maxCategoryDepth: number;
   };
+  /** 全局配置（WebDAV 同步等），未配置时 webdav 字段为空字符串 */
+  global: GlobalConfig;
 
   constructor() {
     this.aiAssistant = {
@@ -326,6 +377,14 @@ export class Config {
       defaultCategoryId: null,
       defaultSort: 'updated_at',
       maxCategoryDepth: 4,
+    };
+    this.global = {
+      webdav: {
+        url: '',
+        accountName: '',
+        accountPassword: '',
+        folder: '',
+      },
     };
   }
 
@@ -362,6 +421,15 @@ export class Config {
         this.noteApp.defaultCategoryId = cfgObj.note_app.default_category_id ?? null;
         this.noteApp.defaultSort = cfgObj.note_app.default_sort ?? 'updated_at';
         this.noteApp.maxCategoryDepth = cfgObj.note_app.max_category_depth ?? 4;
+      }
+
+      // 全局配置（WebDAV 同步），解析 snake_case JSON 为 camelCase 内存字段
+      if (cfgObj.global?.webdav) {
+        const w = cfgObj.global.webdav;
+        this.global.webdav.url = w.url ?? '';
+        this.global.webdav.accountName = w.account_name ?? '';
+        this.global.webdav.accountPassword = w.account_password ?? '';
+        this.global.webdav.folder = w.folder ?? '';
       }
     } catch (err) {
       throw new Error(`Cannot read config file '${cfgPath}': ${err}`);

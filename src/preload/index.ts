@@ -320,6 +320,17 @@ const api = {
     getConfig: () => ipcRenderer.invoke(IPC_CHANNELS.NOTE_GET_CONFIG),
   },
 
+  // 数据同步（WebDAV）API
+  sync: {
+    getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.SYNC_GET_STATUS),
+    syncUpload: () => ipcRenderer.invoke(IPC_CHANNELS.SYNC_UPLOAD),
+    syncDownload: () => ipcRenderer.invoke(IPC_CHANNELS.SYNC_DOWNLOAD),
+    syncAuto: () => ipcRenderer.invoke(IPC_CHANNELS.SYNC_AUTO),
+    testConnection: () => ipcRenderer.invoke(IPC_CHANNELS.SYNC_TEST_CONNECTION),
+    getConfig: () => ipcRenderer.invoke(IPC_CHANNELS.SYNC_GET_CONFIG),
+    saveConfig: (cfg) => ipcRenderer.invoke(IPC_CHANNELS.SYNC_SAVE_CONFIG, cfg),
+  },
+
   // Generic IPC invoke (for channels not covered by namespaced APIs)
   invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
 
@@ -380,3 +391,4 @@ contextBridge.exposeInMainWorld('aiAssistant', api.ai);
 contextBridge.exposeInMainWorld('task', api.task);
 contextBridge.exposeInMainWorld('todoApp', api.todoApp);
 contextBridge.exposeInMainWorld('noteApp', api.noteApp);
+contextBridge.exposeInMainWorld('sync', api.sync);

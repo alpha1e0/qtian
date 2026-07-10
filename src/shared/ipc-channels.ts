@@ -197,6 +197,15 @@ export const IPC_CHANNELS = {
 
   // Config
   NOTE_GET_CONFIG: 'qtian:note:get-config',
+
+  // 数据同步（WebDAV）频道
+  SYNC_GET_STATUS: 'qtian:sync:get-status',
+  SYNC_UPLOAD: 'qtian:sync:upload',
+  SYNC_DOWNLOAD: 'qtian:sync:download',
+  SYNC_AUTO: 'qtian:sync:auto',
+  SYNC_TEST_CONNECTION: 'qtian:sync:test-connection',
+  SYNC_GET_CONFIG: 'qtian:sync:get-config',
+  SYNC_SAVE_CONFIG: 'qtian:sync:save-config',
 } as const;
 
 /**

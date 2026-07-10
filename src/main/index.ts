@@ -15,6 +15,7 @@ import { registerAllHandlers } from './core/ipc/handlers';
 import { bootstrapTaskSystem } from './core/services/task/task-bootstrap';
 import { bootstrapTodoApp } from './core/services/app-modules/todo-app/todo-app-bootstrap';
 import { bootstrapNoteApp } from './core/services/app-modules/note-app/note-app-bootstrap';
+import { bootstrapSync } from './core/services/sync/sync-bootstrap';
 import { VERSION } from './core/common/constants';
 import { createLogger, LogLevel } from './core/utils/logger';
 import { registerLocalResourceProtocol } from './core/utils/local-resource-protocol';
@@ -228,6 +229,14 @@ app.on('ready', async () => {
     bootstrapNoteApp();
   } catch (err) {
     logger.error('Failed to bootstrap note app', err);
+  }
+
+  // 引导数据同步模块（WebDAV，依赖 todo/note 的 DBManager）
+  // 失败不阻断启动（同步功能可在下次启动时再次装配）
+  try {
+    bootstrapSync();
+  } catch (err) {
+    logger.error('Failed to bootstrap sync service', err);
   }
 
   if (isDevelopment && !process.env.IS_TEST) {

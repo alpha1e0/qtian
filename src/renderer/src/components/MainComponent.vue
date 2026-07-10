@@ -1,6 +1,6 @@
 <template>
   <div class="main-layout">
-    <SideBar :active-mode="activeMode" @select="handleSidebarSelect" />
+    <SideBar :active-mode="activeMode" :is-syncing="isSyncing" @select="handleSidebarSelect" />
     <div class="main-pane">
       <CustomTitleBar :title="titleBarTitle" />
       <component
@@ -17,6 +17,7 @@
 </template>
 
 <script>
+import { ElMessage } from 'element-plus';
 import AiAssistantPage from './ai-assistant/AiAssistantPage.vue';
 import TodoAppPage from './app-modules/todo-app/TodoAppPage.vue';
 import NoteAppPage from './app-modules/note-app/NoteAppPage.vue';
@@ -57,6 +58,8 @@ export default {
       pendingAgentId: '',
       pendingLlmConfig: '',
       pendingHistoryId: '',
+      /** 数据同步进行中（控制 SideBar 同步按钮旋转动效） */
+      isSyncing: false,
     };
   },
 
@@ -128,6 +131,9 @@ export default {
         case 'settings':
           this.openSettings();
           break;
+        case 'sync':
+          this.handleSync();
+          break;
         case 'quit':
           this.quitApp();
           break;
@@ -153,6 +159,58 @@ export default {
     // TODO(settings): 后续随设置面板实现补全，当前仅占位
     openSettings() {
       console.info('设置面板尚未实现');
+    },
+
+    /**
+     * 数据同步（WebDAV）
+     *
+     * 流程：检查配置 → 未配置提示 → 已配置执行 syncAuto → 旋转动效 + 结果提示。
+     * 同步进行中忽略重复点击（按钮已禁用，此处双保险）。
+     */
+    async handleSync() {
+      if (this.isSyncing) return;
+
+      // 后端未装配 sync API 时降级提示（如构建未包含同步模块）
+      if (!window.sync) {
+        ElMessage.warning('同步功能未就绪');
+        return;
+      }
+
+      // 1. 检查 WebDAV 配置
+      let cfg;
+      try {
+        cfg = await window.sync.getConfig();
+      } catch (err) {
+        console.error('读取同步配置失败', err);
+        ElMessage.error('读取同步配置失败');
+        return;
+      }
+      if (!cfg) {
+        ElMessage.warning('请先配置 WebDAV 同步（设置 → 数据同步）');
+        return;
+      }
+
+      // 2. 执行同步（旋转动效期间禁用按钮）
+      this.isSyncing = true;
+      try {
+        const result = await window.sync.syncAuto();
+        if (result.success) {
+          if (result.warnings && result.warnings.some((w) => w.includes('无变化'))) {
+            ElMessage.info('已是最新，无需同步');
+          } else {
+            const dirText = result.direction === 'upload' ? '上传' : '下载';
+            ElMessage.success(`同步成功（${dirText} ${result.fileCount} 项）`);
+          }
+        } else {
+          const errMsg = (result.errors && result.errors[0]) || '同步失败';
+          ElMessage.error(errMsg);
+        }
+      } catch (err) {
+        console.error('同步异常', err);
+        ElMessage.error(err?.message || '同步失败');
+      } finally {
+        this.isSyncing = false;
+      }
     },
 
     /**

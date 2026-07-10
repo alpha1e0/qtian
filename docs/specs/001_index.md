@@ -25,6 +25,8 @@
 | Note 应用需求 | Note 应用（Markdown 文档 + 分类 + 标签 + 全文搜索）需求 | ./110_note-app-req.md |
 | Note 应用设计 | Note 应用补充设计（后端 Service + FTS5 + 回收站 + Sidebar 集成） | ./110_note-app-design.md |
 | 主窗口外壳设计 | 主窗口 TitleBar 与 SideBar 重构（纯 UI） | ./003_main-window-shell-design.md |
+| 数据同步需求 | WebDAV 联网同步（workspace 数据 + meta.json 时间判定）需求 | ./010_data-sync-req.md |
+| 数据同步设计 | WebDAV 同步后端设计（WebDAV 客户端 + SQLite online backup + SyncService） | ./010_data-sync-design.md |
 
 
 **注意**： AI助手包含 **快捷模式（quick-mode）** 和 **普通模式（normal-mode）**，二者运行在**独立的 `BrowserWindow`** 中：

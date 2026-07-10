@@ -77,6 +77,15 @@ export class NoteAppService {
     return this.config;
   }
 
+  /**
+   * 暴露内部 NoteDb 实例（供数据同步模块执行 backup/restore）。
+   *
+   * 调用方：SyncService 通过此方法拿到 live DB，执行 checkpoint + backupTo / restoreFrom。
+   */
+  getDb(): NoteDb {
+    return this.db;
+  }
+
   /** 关闭数据库连接 */
   close(): void {
     this.db.close();

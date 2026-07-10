@@ -1,5 +1,90 @@
 # Changelog
 
+## [1.0.0] 2026-07-10（数据同步 SideBar 触发按钮）
+
+**User**: 在左侧图标工具栏"打开设置"和"退出应用"之间加一个 Refresh 图标，点击后：未配置 webdav 提示配置，已配置进行同步，Refresh 动效，成功后提示
+
+**Summary**:
+
+在主窗口 SideBar 底部「设置」与「退出」之间新增数据同步触发按钮（Element Plus `Refresh` 图标）。SideBar 新增 `isSyncing` prop 控制旋转动效与禁用态，业务逻辑在 `MainComponent.handleSync`：未配置时 `ElMessage.warning` 提示，已配置时调 `window.sync.syncAuto()`，同步期间图标 1s 线性旋转 + 按钮禁用防重复点击，结果按成功/无变化/失败分别提示。
+
+### 修改文件
+
+| 文件 | 改动 |
+|------|------|
+| `src/renderer/src/components/common/SideBar.vue` | 导入 `Refresh` 图标；`bottomItems` 在 settings 与 quit 之间插入 `{ key: 'sync' }`；新增 `isSyncing` prop 控制旋转动效（`is-spinning` 类，`@keyframes sidebar-spin`）+ 按钮禁用态 |
+| `src/renderer/src/components/MainComponent.vue` | 导入 `ElMessage`；新增 `isSyncing` data 字段；新增 `handleSync`（检查配置→syncAuto→结果提示）；`handleSidebarSelect` 增加 `'sync'` 分支；`:is-syncing` 传入 SideBar |
+| `docs/specs/010_data-sync-design.md` | §1 补充同步触发入口说明（SideBar Refresh 按钮 + handleSync 流程） |
+
+### 设计决策
+
+- **SideBar 保持纯展示**：新增 `isSyncing` prop 而非在 SideBar 内直接调 IPC，维持「SideBar 仅 emit('select')，业务逻辑在 MainComponent」的既有架构。
+- **防重复点击双保险**：按钮 `:disabled` 属性 + `handleSync` 内 `if (this.isSyncing) return`，避免同步期间重复触发。
+- **noop 单独提示**：syncAuto 返回无变化时用 `ElMessage.info('已是最新')`，区别于真正同步的 success 提示。
+- **未配置降级**：`window.sync` 未挂载（构建未含同步模块）时降级提示，不崩溃。
+
+### 测试
+
+- 生产构建：`electron-vite build` 成功（renderer 1759 模块）
+
+---
+
+## [1.0.0] 2026-07-10（数据同步 WebDAV 后端优先实现）
+
+**User**: 实现需求 `docs/specs/010_data-sync-req.md`：通过 WebDAV 把工作区数据（assistant 配置、todo/note 的 SQLite 库与附件）同步到云端，用 `meta.json` 记录最后同步时间以判断新旧，SQLite 备份必须使用 online backup API。
+
+**Summary**:
+
+新增数据同步模块后端（不含前端 UI，设置页留到下一阶段）。通过 WebDAV 把 workspace 的 assistant 配置目录、todo/note 的 SQLite 库与附件目录同步到云端 `<folder>/qtian-sync/`，用远端 `meta.json` + 本地 `.sync/meta.json` 缓存记录同步时间，以「整体方向 + 最新优先」策略判定上传/下载/无操作/冲突。SQLite 备份使用 `better-sqlite3` 的 `backup()` online backup API（不直接拷盘文件）；restore 采用 close → copyFileSync → reopen → 恢复 WAL pragma → 删 -wal/-shm。所有同步操作仅手动触发（不做定时/启动自动同步）。新增 59 个单测覆盖决策矩阵、上传/下载流程、WebDAV 客户端、配置 IO、DB backup/restore。
+
+### 新增文件
+
+| 文件 | 说明 |
+|------|------|
+| `docs/specs/010_data-sync-design.md` | 设计文档（数据流、meta 结构、决策矩阵、关键签名、文件清单、测试策略、风险） |
+| `src/main/core/common/config-io.ts` | 原子写 `qtian.json` 的 `global.webdav` 段（写 .tmp → rename，保留其他段） |
+| `src/main/core/common/config-io.test.ts` | 配置 IO 单测（11 个：空文件/已有段混写/清空/无残留/异常路径/往返） |
+| `src/main/core/database/db-manager.test.ts` | backup/restore 单测（6 个：文件级 mock 覆盖 close→copy→reopen→pragma→删 sidecar） |
+| `src/main/core/services/sync/sync-types.ts` | 类型 + 常量（版本号、远端根目录名、SyncDirection/SyncStatus/SyncResult/RemoteMeta/LocalMeta） |
+| `src/main/core/services/sync/sync-tracked-paths.ts` | tracked 路径定义（assistant 4 目录 + todo/note 各 DB+attach） |
+| `src/main/core/services/sync/webdav-client.ts` | WebDAV 客户端（PROPFIND/GET/PUT/MKCOL/DELETE/HEAD + 正则解析 multistatus + 注入 transport） |
+| `src/main/core/services/sync/webdav-client.test.ts` | 客户端单测（24 个：auth header/PROPFIND 解析/MKCOL 405 容错/各方法/URL 拼接/错误） |
+| `src/main/core/services/sync/sync-service.ts` | 编排核心（getStatus 决策矩阵 + syncUpload/syncDownload/syncAuto + DI） |
+| `src/main/core/services/sync/sync-service.test.ts` | 决策矩阵 + 上传/下载流程单测（18 个：8 种决策分支 + 上传写 manifest + 下载按 manifest 还原+裁剪 + meta 持久化往返） |
+| `src/main/core/services/sync/sync-bootstrap.ts` | 单例 + `bootstrapSync()`/`getSyncService()` + 设备 ID 持久化 |
+| `src/main/core/ipc/handlers/sync.handler.ts` | IPC handler 注册（getStatus/upload/download/auto/testConnection/getConfig/saveConfig） |
+| `tests/e2e/smoke/sync-ipc.spec.ts` | IPC 接线冒烟（window.sync 挂载/getConfig 返回 null/getStatus 带 direction/testConnection 不崩） |
+
+### 修改文件
+
+| 文件 | 改动 |
+|------|------|
+| `src/main/core/common/context.ts` | 新增 `WebdavConfig`/`GlobalConfig` 接口；`ConfigData.global?`；`Config.global.webdav`（camelCase + initConfig 解析 snake_case JSON）；`WPath` 新增 `syncDir`/`syncMetaPath`（workspace/.sync） |
+| `src/main/core/database/db-manager.ts` | 新增 `checkpoint()`（wal_checkpoint TRUNCATE）/ `backupTo(destPath)`（SQLite online backup）/ `restoreFrom(srcPath)`（close→copy→reopen→pragma→删 sidecar） |
+| `src/main/core/services/app-modules/todo-app/todo-app.service.ts` | 新增 `getDb(): TodoDb`（供同步模块访问 live DB） |
+| `src/main/core/services/app-modules/note-app/note-app.service.ts` | 新增 `getDb(): NoteDb` |
+| `src/shared/ipc-channels.ts` | 新增 `SYNC_GET_STATUS`/`SYNC_UPLOAD`/`SYNC_DOWNLOAD`/`SYNC_AUTO`/`SYNC_TEST_CONNECTION`/`SYNC_GET_CONFIG`/`SYNC_SAVE_CONFIG` 频道 |
+| `src/main/index.ts` | `bootstrapNoteApp()` 之后调用 `bootstrapSync()`（try/catch，失败不阻断启动） |
+| `src/preload/index.ts` | 新增 `api.sync` 命名空间 + `contextBridge.exposeInMainWorld('sync', api.sync)` |
+| `docs/specs/001_index.md` | 注册「数据同步需求」「数据同步设计」两行 |
+
+### 设计决策
+
+- **整体方向 + 最新优先冲突策略**：把同步内容视为整体；两端都变时较新时间戳一方覆盖另一方并告警。简单、可预测，避免复杂的按文件合并。决策矩阵 8 种分支：远端无 meta→upload / 本地无 meta→download / 都未变→noop / 仅 local→upload / 仅 remote→download / 冲突 local 更新→推荐 upload / 冲突 remote 更新→推荐 download / 未配置→error。
+- **SQLite online backup（不拷盘文件）**：WAL 模式下直接 copy .db 文件会得到不一致快照，必须用 `db.backup()` API。restore 走 close→copyFileSync→reopen 因 `@types/better-sqlite3` 的 `backup()` 仅声明文件路径重载；在原 DBManager 实例重赋值 `this.db`，下游 Service 持有 DBManager 引用仍可用。
+- **DB 变更检测先 checkpoint**：计算 `localNewestMtime` 前先 `wal_checkpoint(TRUNCATE)` 使 .db 文件成为单一时间源，避免 WAL 边界问题。
+- **依赖注入便于测试**：`WebdavClient` 接受可注入的 transport 函数；`SyncService` 通过构造参数接收 workspace 路径、DB 引用、webdav 配置 provider、设备 ID、客户端工厂，避免依赖全局 mock 的 `wpath`/`config`。
+- **仅手动触发**：不做定时/启动自动同步，降低误覆盖风险。
+- **PROPFIND 解析不引入 XML 库**：用最小正则提取 href 与 collection 标记，解析失败降级返回空 + 告警。
+- **配置写原子性**：qtian.json 先写 .tmp 再 fs.rename，仅修改 global.webdav 段，其余段保留。
+
+### 测试
+
+- 全量单测回归：1215/1215 通过（新增 59 个）
+- 生产构建：`electron-vite build` 成功（main 88 模块 / preload 2 模块 / renderer 1759 模块）
+
+---
+
 ## [1.0.0] 2026-07-10（note-app Phase 2 前端 UI 改为两栏布局 + 内联编辑器 + AI 任务浮动按钮）
 
 **User**: 前端实现有问题，不符合设计：搜索框、侧边栏参考 todo-app，布局和 todo-app 不一样，是左右两列，右边为编辑区域，不需要提供最右侧的 detail 栏；AI 任务通过右下角悬浮图标实现
