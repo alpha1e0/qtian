@@ -40,7 +40,7 @@
 
 <script>
 import { markRaw } from 'vue';
-import { ChatDotRound, ChatRound, Tickets, Setting, SwitchButton } from '@element-plus/icons-vue';
+import { ChatDotRound, ChatRound, Tickets, Document, Setting, SwitchButton } from '@element-plus/icons-vue';
 import iconUrl from '../../assets/icon.png';
 
 /**
@@ -60,12 +60,12 @@ export default {
   props: {
     /**
      * 当前激活模式，决定哪个按钮高亮
-     * @type {'ai-assistant' | 'todo-app'}
+     * @type {'ai-assistant' | 'todo-app' | 'note-app'}
      */
     activeMode: {
       type: String,
       required: true,
-      validator: (v) => ['ai-assistant', 'todo-app'].includes(v),
+      validator: (v) => ['ai-assistant', 'todo-app', 'note-app'].includes(v),
     },
   },
   emits: ['select'],
@@ -76,6 +76,7 @@ export default {
         { key: 'ai-assistant', icon: markRaw(ChatDotRound), label: 'AI 助手', aria: '切换到 AI 助手' },
         { key: 'quick-mode', icon: markRaw(ChatRound), label: '快捷模式', aria: '唤起快捷模式窗口' },
         { key: 'todo-app', icon: markRaw(Tickets), label: '待办', aria: '切换到待办应用' },
+        { key: 'note-app', icon: markRaw(Document), label: '笔记', aria: '切换到笔记应用' },
       ],
       bottomItems: [
         { key: 'settings', icon: markRaw(Setting), label: '设置', aria: '打开设置' },
@@ -86,7 +87,7 @@ export default {
   methods: {
     /**
      * 判断按钮是否处于激活态
-     * activeMode 仅可能为 'ai-assistant' / 'todo-app'，
+     * activeMode 仅可能为 'ai-assistant' / 'todo-app' / 'note-app'，
      * 因此 quick-mode / settings 天然返回 false。
      * @param {{key: string}} item
      * @returns {boolean}
@@ -96,7 +97,7 @@ export default {
     },
     /**
      * 点击分发 —— Options API 模板上下文中没有 emit，必须经 methods 走 this.$emit
-     * @param {string} key - 'ai-assistant' | 'quick-mode' | 'todo-app' | 'settings'
+     * @param {string} key - 'ai-assistant' | 'quick-mode' | 'todo-app' | 'note-app' | 'settings'
      */
     handleSelect(key) {
       this.$emit('select', key);

@@ -1,5 +1,79 @@
 # Changelog
 
+## [1.0.0] 2026-07-10（note-app Phase 2 前端 UI 改为两栏布局 + 内联编辑器 + AI 任务浮动按钮）
+
+**User**: 前端实现有问题，不符合设计：搜索框、侧边栏参考 todo-app，布局和 todo-app 不一样，是左右两列，右边为编辑区域，不需要提供最右侧的 detail 栏；AI 任务通过右下角悬浮图标实现
+
+**Summary**:
+
+将 note-app 前端从三栏布局（sidebar + doc list + detail）重构为两栏布局（sidebar + inline editor）。左侧导航栏保留分类树（含 doc 叶子节点）/ 标签 / 收藏三 tab；右侧直接为内联文档编辑面板（标题 + 分类 + 标签 + 摘要 + Vditor 一体化），不再有中间文档列表和右侧详情面板。右下角新增浮动 AI 任务按钮，点击展开弹出框编辑 task_prompt。
+
+### 改动
+
+| 文件 | 变化 |
+|------|------|
+| `NoteAppPage.vue` | 重写：三栏 → 两栏（sidebar + editor）；新增 mergedTree computed（category + doc 叶子节点 + 虚拟"无分类"节点）；新增 loadAllDocs + buildMergedTree |
+| `NoteDocEditor.vue` | 重写：从 el-drawer 抽屉改为内联面板；整合标题/分类级联/标签/摘要/时间戳元数据区 + Vditor 编辑器；保留 30s 自动保存 + Ctrl+S 手动保存 + 图片上传 |
+| `NoteAiTaskButton.vue` | **新增**：右下角浮动 AI 任务按钮（gradient circle + 展开面板编辑 task_prompt） |
+| `NoteDocList.vue` | **删除**（中间面板不再需要） |
+| `NoteDocDetail.vue` | **删除**（右侧详情面板不再需要，元数据整合进 NoteDocEditor） |
+| `110_note-app-design.md` | Phase 2 描述更新为两栏布局 + 11 个组件 |
+
+### 设计决策
+
+- **两栏而非三栏**：笔记应用的编辑体验是核心，中间文档列表（卡片式）增加了点击层级（选分类 → 选文档 → 看详情 → 打开编辑器），两栏直接「选文档即编辑」，更接近 Notion / Obsidian 的使用体感。
+- **mergedTree 含 doc 叶子节点**：与 todo-app 一致，category 作为分支，doc 作为叶子，虚拟"无分类"节点收纳 category_id=null 的文档，保证所有文档在树中可达。
+- **内联编辑器取代抽屉**：抽屉模式是"临时覆盖"的交互，而笔记编辑是长时间沉浸的，内联面板让编辑区成为主工作区。
+- **浮动 AI 任务按钮**：Phase 2 仅落库 task_prompt，不接 TaskManager；浮动入口不占用编辑区空间，Phase 3 接入时只需在按钮 click 时增加 createTask 调用。
+
+### 测试
+
+- 全量单测回归：1156/1156 通过
+- 生产构建：`electron-vite build` 成功（renderer 1756 模块转换）
+
+---
+
+## [1.0.0] 2026-07-10（note-app Phase 2 前端 UI 三栏布局 + Vditor 编辑器）
+
+**User**: 继续开发 note-app 需求（Phase 2 前端 UI：三栏布局 + Vditor Markdown 编辑器 + 分类/标签/收藏三个 tab）
+
+**Summary**:
+
+基于 Phase 1 后端（已完成 6 个 Service + 100 个单测 + Sidebar 占位），完成 Phase 2 前端 UI 全量组件。三栏布局（搜索栏 + 左侧导航树 + 中文档列表 + 右文档详情），复用 Aurora Library 视觉基调与 todo-app 一致。Vditor Markdown 编辑器以 el-drawer 抽屉承载（覆盖 75% 宽度），支持自动保存（30s）+ Ctrl+S 手动保存 + 图片上传。包含 12 个前端组件文件，全部独立于 todo-app（无跨模块代码引用）。
+
+### 新增文件
+
+| 文件 | 说明 |
+|------|------|
+| `constants.ts` | 前端共享常量（字段长度限制、debounce 时间等） |
+| `NoteAppPage.vue` | 主页面三栏布局（替换 Phase 1 占位） |
+| `NoteSearchBar.vue` | 顶部搜索栏（debounce + 结果 popover + 搜索历史） |
+| `NoteSidebar.vue` | 左侧面板（分类/标签/收藏三 tab + 回收站入口） |
+| `NoteCategoryTree.vue` | 分类树（含右键菜单 + 新建/重命名/删除） |
+| `NoteLabelCloud.vue` | 标签云 |
+| `NoteDocList.vue` | 中间面板文档列表（卡片式 + 收藏 toggle） |
+| `NoteDocDetail.vue` | 右侧文档详情（失焦自动保存 + 标签编辑 + 正文预览） |
+| `NoteDocEditor.vue` | Vditor Markdown 编辑器抽屉 |
+| `NoteContextMenu.vue` | 通用右键菜单（teleport to body + 视口翻转） |
+| `NoteCreateDialog.vue` | 统一新建/重命名对话框 |
+| `NoteTrashDialog.vue` | 回收站对话框（跨表聚合 + 恢复/彻底删除/清空） |
+
+### 交互特性
+
+- **分类树**：递归树展示 category（含 doc_count 徽章），支持新建根/子分类、新建文档、重命名、删除
+- **标签 tab**：分栏布局（上半标签云 + 下半标签关联文档列表）
+- **收藏 tab**：扁平卡片列表
+- **搜索**：300ms debounce + FTS5 全文搜索 + snippet 高亮 + 搜索历史
+- **文档详情**：标题/摘要/AI任务描述失焦自动保存，标签多选 allow-create
+- **Vditor 编辑器**：IR 模式、图片上传、字数统计、Ctrl+S 保存
+
+### 测试
+
+- 全量单测回归：1156/1156 通过（note-app 6 文件 100 个测试全绿）
+- 生产构建：`electron-vite build` 成功（renderer 1758 模块转换）
+
+---
+
 ## [1.0.0] 2026-07-06（TodoItemDetail 文档独立 tab + 列表化 + 行内删除）
 
 **User**: todo-app，待办条目详情中 TodoItemDetail.vue，当前"文档"放在"基本信息"中，优化为：1. 文档放到单独 tab（名称"文档"）；2. 放弃标签云，使用列表展示；3. 文档 Item 点击进入编辑页；4. 文档 Item 右侧增加删除按钮，点击弹框确认删除。

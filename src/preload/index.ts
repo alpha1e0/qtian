@@ -272,6 +272,54 @@ const api = {
       ipcRenderer.invoke(IPC_CHANNELS.TODO_LIST_TASKS_BY_ITEM, itemId),
   },
 
+  // Note 应用 API（Phase 1：数据层 + 搜索 + 回收站）
+  noteApp: {
+    // Category
+    getCategoryTree: () => ipcRenderer.invoke(IPC_CHANNELS.NOTE_GET_CATEGORY_TREE),
+    createCategory: (data) => ipcRenderer.invoke(IPC_CHANNELS.NOTE_CREATE_CATEGORY, data),
+    updateCategory: (id, patch) => ipcRenderer.invoke(IPC_CHANNELS.NOTE_UPDATE_CATEGORY, id, patch),
+    deleteCategory: (id) => ipcRenderer.invoke(IPC_CHANNELS.NOTE_DELETE_CATEGORY, id),
+    restoreCategory: (id) => ipcRenderer.invoke(IPC_CHANNELS.NOTE_RESTORE_CATEGORY, id),
+
+    // Doc
+    listDocs: (categoryId) => ipcRenderer.invoke(IPC_CHANNELS.NOTE_LIST_DOCS, categoryId),
+    getDoc: (id) => ipcRenderer.invoke(IPC_CHANNELS.NOTE_GET_DOC, id),
+    createDoc: (data) => ipcRenderer.invoke(IPC_CHANNELS.NOTE_CREATE_DOC, data),
+    updateDoc: (id, patch) => ipcRenderer.invoke(IPC_CHANNELS.NOTE_UPDATE_DOC, id, patch),
+    deleteDoc: (id) => ipcRenderer.invoke(IPC_CHANNELS.NOTE_DELETE_DOC, id),
+    restoreDoc: (id) => ipcRenderer.invoke(IPC_CHANNELS.NOTE_RESTORE_DOC, id),
+    toggleFavorite: (id) => ipcRenderer.invoke(IPC_CHANNELS.NOTE_TOGGLE_FAVORITE, id),
+    listFavorites: () => ipcRenderer.invoke(IPC_CHANNELS.NOTE_LIST_FAVORITES),
+    listDocsByLabel: (labelId) => ipcRenderer.invoke(IPC_CHANNELS.NOTE_LIST_DOCS_BY_LABEL, labelId),
+    saveAttachment: (buffer, ext) =>
+      ipcRenderer.invoke(IPC_CHANNELS.NOTE_SAVE_ATTACHMENT, buffer, ext),
+    saveAttachmentFromPath: (filePath) =>
+      ipcRenderer.invoke(IPC_CHANNELS.NOTE_SAVE_ATTACHMENT_FROM_PATH, filePath),
+
+    // Label
+    listLabels: () => ipcRenderer.invoke(IPC_CHANNELS.NOTE_LIST_LABELS),
+    createLabel: (data) => ipcRenderer.invoke(IPC_CHANNELS.NOTE_CREATE_LABEL, data),
+    updateLabel: (id, patch) => ipcRenderer.invoke(IPC_CHANNELS.NOTE_UPDATE_LABEL, id, patch),
+    deleteLabel: (id) => ipcRenderer.invoke(IPC_CHANNELS.NOTE_DELETE_LABEL, id),
+    restoreLabel: (id) => ipcRenderer.invoke(IPC_CHANNELS.NOTE_RESTORE_LABEL, id),
+
+    // Search
+    search: (query, limit) => ipcRenderer.invoke(IPC_CHANNELS.NOTE_SEARCH, query, limit),
+    listSearchHistory: (limit) =>
+      ipcRenderer.invoke(IPC_CHANNELS.NOTE_LIST_SEARCH_HISTORY, limit),
+    deleteSearchHistory: (id) =>
+      ipcRenderer.invoke(IPC_CHANNELS.NOTE_DELETE_SEARCH_HISTORY, id),
+    clearSearchHistory: () => ipcRenderer.invoke(IPC_CHANNELS.NOTE_CLEAR_SEARCH_HISTORY),
+
+    // Trash
+    listTrash: () => ipcRenderer.invoke(IPC_CHANNELS.NOTE_LIST_TRASH),
+    purgeTrash: (type, id) => ipcRenderer.invoke(IPC_CHANNELS.NOTE_PURGE_TRASH, type, id),
+    emptyTrash: () => ipcRenderer.invoke(IPC_CHANNELS.NOTE_EMPTY_TRASH),
+
+    // Config
+    getConfig: () => ipcRenderer.invoke(IPC_CHANNELS.NOTE_GET_CONFIG),
+  },
+
   // Generic IPC invoke (for channels not covered by namespaced APIs)
   invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
 
@@ -331,3 +379,4 @@ contextBridge.exposeInMainWorld('api', api);
 contextBridge.exposeInMainWorld('aiAssistant', api.ai);
 contextBridge.exposeInMainWorld('task', api.task);
 contextBridge.exposeInMainWorld('todoApp', api.todoApp);
+contextBridge.exposeInMainWorld('noteApp', api.noteApp);

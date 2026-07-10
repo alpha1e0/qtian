@@ -155,6 +155,48 @@ export const IPC_CHANNELS = {
   // Todo 驱动 AI 任务（Phase 5）
   TODO_CREATE_TASK_FROM_ITEM: 'qtian:todo:create-task-from-item',
   TODO_LIST_TASKS_BY_ITEM: 'qtian:todo:list-tasks-by-item',
+
+  // Note 应用频道（Phase 1：后端 + 单测 + 最小集成）
+  // Category
+  NOTE_GET_CATEGORY_TREE: 'qtian:note:get-category-tree',
+  NOTE_CREATE_CATEGORY: 'qtian:note:create-category',
+  NOTE_UPDATE_CATEGORY: 'qtian:note:update-category',
+  NOTE_DELETE_CATEGORY: 'qtian:note:delete-category',
+  NOTE_RESTORE_CATEGORY: 'qtian:note:restore-category',
+
+  // Doc
+  NOTE_LIST_DOCS: 'qtian:note:list-docs',
+  NOTE_GET_DOC: 'qtian:note:get-doc',
+  NOTE_CREATE_DOC: 'qtian:note:create-doc',
+  NOTE_UPDATE_DOC: 'qtian:note:update-doc',
+  NOTE_DELETE_DOC: 'qtian:note:delete-doc',
+  NOTE_RESTORE_DOC: 'qtian:note:restore-doc',
+  NOTE_TOGGLE_FAVORITE: 'qtian:note:toggle-favorite',
+  NOTE_LIST_FAVORITES: 'qtian:note:list-favorites',
+  NOTE_LIST_DOCS_BY_LABEL: 'qtian:note:list-docs-by-label',
+  NOTE_SAVE_ATTACHMENT: 'qtian:note:save-attachment',
+  NOTE_SAVE_ATTACHMENT_FROM_PATH: 'qtian:note:save-attachment-from-path',
+
+  // Label
+  NOTE_LIST_LABELS: 'qtian:note:list-labels',
+  NOTE_CREATE_LABEL: 'qtian:note:create-label',
+  NOTE_UPDATE_LABEL: 'qtian:note:update-label',
+  NOTE_DELETE_LABEL: 'qtian:note:delete-label',
+  NOTE_RESTORE_LABEL: 'qtian:note:restore-label',
+
+  // Search
+  NOTE_SEARCH: 'qtian:note:search',
+  NOTE_LIST_SEARCH_HISTORY: 'qtian:note:list-search-history',
+  NOTE_DELETE_SEARCH_HISTORY: 'qtian:note:delete-search-history',
+  NOTE_CLEAR_SEARCH_HISTORY: 'qtian:note:clear-search-history',
+
+  // Trash
+  NOTE_LIST_TRASH: 'qtian:note:list-trash',
+  NOTE_PURGE_TRASH: 'qtian:note:purge-trash',
+  NOTE_EMPTY_TRASH: 'qtian:note:empty-trash',
+
+  // Config
+  NOTE_GET_CONFIG: 'qtian:note:get-config',
 } as const;
 
 /**

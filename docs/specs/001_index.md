@@ -22,6 +22,8 @@
 | Todo 应用需求 | Todo 应用（含 FTS5 搜索、文档系统、Todo 驱动 AI 任务）需求 | ./100_todo-app-req.md |
 | Todo 应用设计 | Todo 应用补充设计 | ./100_todo-app-design.md |
 | Todo 导入导出需求 | 待办项目 JSON 导入/导出（备份、迁移、共享）需求 | ./101_todo-app-import-export-req.md |
+| Note 应用需求 | Note 应用（Markdown 文档 + 分类 + 标签 + 全文搜索）需求 | ./110_note-app-req.md |
+| Note 应用设计 | Note 应用补充设计（后端 Service + FTS5 + 回收站 + Sidebar 集成） | ./110_note-app-design.md |
 | 主窗口外壳设计 | 主窗口 TitleBar 与 SideBar 重构（纯 UI） | ./003_main-window-shell-design.md |
 
 

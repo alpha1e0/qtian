@@ -14,6 +14,7 @@ import { config, wpath } from './core/common/context';
 import { registerAllHandlers } from './core/ipc/handlers';
 import { bootstrapTaskSystem } from './core/services/task/task-bootstrap';
 import { bootstrapTodoApp } from './core/services/app-modules/todo-app/todo-app-bootstrap';
+import { bootstrapNoteApp } from './core/services/app-modules/note-app/note-app-bootstrap';
 import { VERSION } from './core/common/constants';
 import { createLogger, LogLevel } from './core/utils/logger';
 import { registerLocalResourceProtocol } from './core/utils/local-resource-protocol';
@@ -220,6 +221,13 @@ app.on('ready', async () => {
     bootstrapTodoApp();
   } catch (err) {
     logger.error('Failed to bootstrap todo app', err);
+  }
+
+  // 引导 note-app 模块（建表 + 装配 Service + 注册 IPC handlers）
+  try {
+    bootstrapNoteApp();
+  } catch (err) {
+    logger.error('Failed to bootstrap note app', err);
   }
 
   if (isDevelopment && !process.env.IS_TEST) {

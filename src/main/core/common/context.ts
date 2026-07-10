@@ -34,6 +34,12 @@ export class WPath {
   readonly appModulesTodoAttachDir: string;
   /** todo-app 数据库文件路径（独立 todo.db） */
   readonly todoDbPath: string;
+  /** note-app 工作目录（workspace/app_modules/note_app） */
+  readonly appModulesNoteDir: string;
+  /** note-app 附件目录（workspace/app_modules/note_app/attach） */
+  readonly appModulesNoteAttachDir: string;
+  /** note-app 数据库文件路径（独立 note.db） */
+  readonly noteDbPath: string;
   readonly configPath: string;
 
   // Legacy property aliases for backward compatibility
@@ -142,6 +148,13 @@ export class WPath {
     this.ensureDirectory(this.appModulesTodoAttachDir);
     this.todoDbPath = path.join(this.appModulesTodoDir, 'todo.db');
 
+    // note-app 工作目录
+    this.appModulesNoteDir = path.join(this.appModulesDir, 'note_app');
+    this.ensureDirectory(this.appModulesNoteDir);
+    this.appModulesNoteAttachDir = path.join(this.appModulesNoteDir, 'attach');
+    this.ensureDirectory(this.appModulesNoteAttachDir);
+    this.noteDbPath = path.join(this.appModulesNoteDir, 'note.db');
+
     // Configuration and data files
     // Configuration file: qtian.json (unified config file name)
     this.configPath = path.join(this.workspace, 'qtian.json');
@@ -183,6 +196,18 @@ export class WPath {
       ? process.cwd()
       : (process.resourcesPath || process.cwd());
     return path.join(basePath, 'data', 'todo-app.sql');
+  }
+
+  /**
+   * Get note-app SQL file path (data/note-app.sql)
+   * 与 getTodoAppSqlFile() 采用相同的环境判定逻辑
+   */
+  getNoteAppSqlFile(): string {
+    const isDevOrTest = process.env.NODE_ENV === 'development' || process.env.IS_TEST === 'true';
+    const basePath = isDevOrTest
+      ? process.cwd()
+      : (process.resourcesPath || process.cwd());
+    return path.join(basePath, 'data', 'note-app.sql');
   }
 
   /**
@@ -233,6 +258,18 @@ export interface TodoAppConfigData {
 }
 
 /**
+ * Note 应用配置（对应 qtian.json 的 note_app 段）
+ */
+export interface NoteAppConfigData {
+  /** 默认选中的 category id（null 表示根） */
+  default_category_id?: number | null;
+  /** 默认排序：created_at | updated_at */
+  default_sort?: string;
+  /** 递归层级上限 */
+  max_category_depth?: number;
+}
+
+/**
  * Application configuration
  */
 export interface ConfigData {
@@ -241,6 +278,8 @@ export interface ConfigData {
   tavily_api_key?: string;
   /** Todo 应用配置 */
   todo_app?: TodoAppConfigData;
+  /** Note 应用配置 */
+  note_app?: NoteAppConfigData;
 }
 
 export class Config {
@@ -261,6 +300,12 @@ export class Config {
     maxCategoryDepth: number;
     maxTodoItemDepth: number;
   };
+  /** Note 应用配置 */
+  noteApp: {
+    defaultCategoryId: number | null;
+    defaultSort: string;
+    maxCategoryDepth: number;
+  };
 
   constructor() {
     this.aiAssistant = {
@@ -276,6 +321,11 @@ export class Config {
       showCompleted: true,
       maxCategoryDepth: 4,
       maxTodoItemDepth: 4,
+    };
+    this.noteApp = {
+      defaultCategoryId: null,
+      defaultSort: 'updated_at',
+      maxCategoryDepth: 4,
     };
   }
 
@@ -305,6 +355,13 @@ export class Config {
         this.todoApp.showCompleted = cfgObj.todo_app.show_completed ?? true;
         this.todoApp.maxCategoryDepth = cfgObj.todo_app.max_category_depth ?? 4;
         this.todoApp.maxTodoItemDepth = cfgObj.todo_app.max_todo_item_depth ?? 4;
+      }
+
+      // Note app config
+      if (cfgObj.note_app) {
+        this.noteApp.defaultCategoryId = cfgObj.note_app.default_category_id ?? null;
+        this.noteApp.defaultSort = cfgObj.note_app.default_sort ?? 'updated_at';
+        this.noteApp.maxCategoryDepth = cfgObj.note_app.max_category_depth ?? 4;
       }
     } catch (err) {
       throw new Error(`Cannot read config file '${cfgPath}': ${err}`);

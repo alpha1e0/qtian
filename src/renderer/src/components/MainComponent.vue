@@ -19,6 +19,7 @@
 <script>
 import AiAssistantPage from './ai-assistant/AiAssistantPage.vue';
 import TodoAppPage from './app-modules/todo-app/TodoAppPage.vue';
+import NoteAppPage from './app-modules/note-app/NoteAppPage.vue';
 import CustomTitleBar from './common/TitleBar.vue';
 import SideBar from './common/SideBar.vue';
 
@@ -43,6 +44,7 @@ export default {
   components: {
     AiAssistantPage,
     TodoAppPage,
+    NoteAppPage,
     CustomTitleBar,
     SideBar,
   },
@@ -61,17 +63,21 @@ export default {
   computed: {
     /**
      * 当前激活模式，决定 SideBar 哪个按钮高亮
-     * @returns {'ai-assistant' | 'todo-app'}
+     * @returns {'ai-assistant' | 'todo-app' | 'note-app'}
      */
     activeMode() {
-      return this.currentComponent === 'TodoAppPage' ? 'todo-app' : 'ai-assistant';
+      if (this.currentComponent === 'TodoAppPage') return 'todo-app';
+      if (this.currentComponent === 'NoteAppPage') return 'note-app';
+      return 'ai-assistant';
     },
     /**
      * TitleBar 动态功能名
      * @returns {string}
      */
     titleBarTitle() {
-      return this.currentComponent === 'TodoAppPage' ? '待办' : 'AI 助手';
+      if (this.currentComponent === 'TodoAppPage') return '待办';
+      if (this.currentComponent === 'NoteAppPage') return '笔记';
+      return 'AI 助手';
     },
     /**
      * 仅在切换到 AiAssistantPage 时传递初始消息
@@ -102,7 +108,7 @@ export default {
   methods: {
     /**
      * SideBar 选择统一入口
-     * @param {string} key - 'ai-assistant' | 'quick-mode' | 'todo-app' | 'settings' | 'quit'
+     * @param {string} key - 'ai-assistant' | 'quick-mode' | 'todo-app' | 'note-app' | 'settings' | 'quit'
      */
     handleSidebarSelect(key) {
       switch (key) {
@@ -112,6 +118,9 @@ export default {
           break;
         case 'todo-app':
           this.currentComponent = 'TodoAppPage';
+          break;
+        case 'note-app':
+          this.currentComponent = 'NoteAppPage';
           break;
         case 'quick-mode':
           this.openQuickWindow();
