@@ -70,19 +70,25 @@ function buildWebPreferences(): Electron.WebPreferences {
   };
 }
 
+/** 生产模式下快捷窗口加载的 HTML 文件路径 */
+const QUICK_WINDOW_PROD_FILE = path.join(__dirname, '../renderer/index.html');
+
 /**
- * 构造快捷窗口的 dev/prod URL（带 ?window=quick 参数）
+ * 构造开发模式下快捷窗口的 URL（带 ?window=quick 参数）
+ *
+ * 仅在 `ELECTRON_RENDERER_URL` 存在时调用；否则 `new URL('')` 会抛
+ * `Invalid URL`，进而让 `qtian:quick-window-open` IPC 整体 reject，
+ * 快捷窗口无法创建 → 前端表现为空白页面。
  */
-function buildQuickWindowUrl(): { devUrl: string; prodFile: string; prodQuery: Record<string, string> } {
-  const devBase = process.env.ELECTRON_RENDERER_URL || '';
+function buildQuickWindowDevUrl(): string {
+  const devBase = process.env.ELECTRON_RENDERER_URL;
+  if (!devBase) {
+    throw new Error('ELECTRON_RENDERER_URL is not set; cannot build dev URL for quick window');
+  }
   // 用 URL API 避免末尾斜杠/已有 query 造成的拼接问题
   const devUrlObj = new URL(devBase);
   devUrlObj.searchParams.set('window', QUICK_WINDOW_QUERY_VALUE);
-  return {
-    devUrl: devUrlObj.toString(),
-    prodFile: path.join(__dirname, '../renderer/index.html'),
-    prodQuery: { window: QUICK_WINDOW_QUERY_VALUE },
-  };
+  return devUrlObj.toString();
 }
 
 export class WindowManager {
@@ -161,11 +167,14 @@ export class WindowManager {
       webPreferences: buildWebPreferences(),
     });
 
-    const { devUrl, prodFile, prodQuery } = buildQuickWindowUrl();
     if (isDevelopment && process.env.ELECTRON_RENDERER_URL) {
-      await quickWindow.loadURL(devUrl);
+      // dev 模式：从 vite dev server 加载，附加 ?window=quick
+      await quickWindow.loadURL(buildQuickWindowDevUrl());
     } else {
-      await quickWindow.loadFile(prodFile, { query: prodQuery });
+      // 生产模式：loadFile 加载本地 HTML，用 query 让 App.vue 路由到快捷窗口
+      await quickWindow.loadFile(QUICK_WINDOW_PROD_FILE, {
+        query: { window: QUICK_WINDOW_QUERY_VALUE },
+      });
     }
 
     // 快捷窗口关闭始终拦截为 hide，保留对话状态

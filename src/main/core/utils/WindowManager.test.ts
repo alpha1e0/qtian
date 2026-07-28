@@ -136,6 +136,22 @@ describe('WindowManager', () => {
       const created = await windowManager.createQuickWindow();
       expect(windowManager.getQuickWindow()).toBe(created);
     });
+
+    // 回归：生产模式下 ELECTRON_RENDERER_URL 为空，不应抛 "Invalid URL"
+    it('should fall back to loadFile with ?window=quick when ELECTRON_RENDERER_URL is unset (production)', async () => {
+      // 模拟打包后场景：无 dev server URL，NODE_ENV=production
+      delete process.env.ELECTRON_RENDERER_URL;
+      process.env.NODE_ENV = 'production';
+
+      await windowManager.createQuickWindow();
+
+      const instance = createdWindows[0];
+      expect(instance.loadURL).not.toHaveBeenCalled();
+      expect(instance.loadFile).toHaveBeenCalledTimes(1);
+      const [filePath, options] = instance.loadFile.mock.calls[0];
+      expect(filePath).toMatch(/index\.html$/);
+      expect(options).toEqual({ query: { window: 'quick' } });
+    });
   });
 
   describe('showQuickWindow', () => {
