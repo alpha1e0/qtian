@@ -4,7 +4,7 @@
 {
   extraResources: [
     {
-      from: 'backend/data',
+      from: 'data',
       to: 'data',
     },
     {
