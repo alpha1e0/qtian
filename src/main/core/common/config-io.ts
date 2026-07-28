@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { createLogger } from '@/core/utils/logger';
+import { DEFAULT_CONFIG_DATA } from './context';
 import type { WebdavConfig } from './context';
 
 const logger = createLogger('ConfigIO');
@@ -106,4 +107,34 @@ export function readGlobalWebdavConfig(configPath: string): WebdavConfig | null 
   }
 
   return { url, accountName, accountPassword, folder };
+}
+
+/**
+ * 首次启动时创建默认 qtian.json。
+ *
+ * 行为：
+ * - 文件已存在：不覆盖，仅记录 info 日志（保护用户已有配置）
+ * - 文件不存在：基于 {@link DEFAULT_CONFIG_DATA} 原子写入（`.tmp` + `fs.rename`），
+ *   保证中途崩溃不会留下半写的配置文件
+ *
+ * 前置条件：父目录（workspace）必须已存在（由 `WPath` 构造函数保证）。
+ *
+ * @param configPath - qtian.json 完整路径
+ * @returns `true` 表示创建了文件；`false` 表示文件已存在未创建
+ */
+export function createDefaultConfigFile(configPath: string): boolean {
+  // 防御式：文件已存在则不覆盖，避免破坏用户已有配置
+  if (fs.existsSync(configPath)) {
+    logger.info(`Config already exists at '${path.basename(configPath)}', skip creating default`);
+    return false;
+  }
+
+  // 原子写：先写 .tmp，再 rename，避免崩溃留下半写文件
+  const tmpPath = configPath + TMP_SUFFIX;
+  const jsonStr = JSON.stringify(DEFAULT_CONFIG_DATA, null, 2);
+  fs.writeFileSync(tmpPath, jsonStr, 'utf-8');
+  fs.renameSync(tmpPath, configPath);
+
+  logger.info(`Default config created at '${path.basename(configPath)}'`);
+  return true;
 }

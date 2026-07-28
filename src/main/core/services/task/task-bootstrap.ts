@@ -48,7 +48,7 @@ export function bootstrapTaskSystem(): TaskManager {
     new AiConfigService(),
     new AiHistoryService(),
     {
-      getTavilyApiKey: () => config.tavilyApiKey,
+      getTavilyApiKey: () => config.aiAssistant.tavilyApiKey,
     },
   );
   taskManager.registerExecutor(agentExecutor);

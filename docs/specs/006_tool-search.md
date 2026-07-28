@@ -106,7 +106,7 @@ curl -X POST https://api.tavily.com/search \
 
 **Tavily API key获取**
 
-从 `qtian.json` 中参数 `tavily_api_key`获取
+从 `qtian.json` 中参数 `ai_assistant.tavily_api_key` 获取
 
 ### 4.3 工具接口定义
 
@@ -227,16 +227,18 @@ web-search-tool/
 注册位置：
 - `src/main/core/services/tools/index.ts` 导出
 - `src/main/core/ipc/handlers/ai-assistant.handler.ts` `buildTools()` 中按 `web_search` 名称注册
-- API key 注入：`new WebSearchTool(() => config.tavilyApiKey)`
+- API key 注入：`new WebSearchTool(() => config.aiAssistant.tavilyApiKey)`
 
 ### 4.9 配置文件扩展
 
-`qtian.json` 增加顶层 `tavily_api_key` 字段：
+`qtian.json` 的 `ai_assistant` 段增加 `tavily_api_key` 字段：
 
 ```json
 {
-  "ai_assistant": { ... },
-  "tavily_api_key": "tvly-xxxxxxxxx"
+  "ai_assistant": {
+    "default_agent": "default",
+    "tavily_api_key": "tvly-xxxxxxxxx"
+  }
 }
 ```
 

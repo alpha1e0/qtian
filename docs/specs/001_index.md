@@ -70,10 +70,18 @@
     "default_llm_config": "default",
     "max_tool_rounds": 30,
     "context_compress_threshold": 0.75,
-    "tool_timeout_ms": 30000
+    "tool_timeout_ms": 30000,
+    "tavily_api_key": "tvly-xxxxxxxxx"
   }
 }
 ```
+
+**首次启动行为**：应用启动时检测 `qtian.json` 是否存在：
+
+- 不存在（首次启动）：基于 `DEFAULT_CONFIG_DATA` 常量（定义于 `src/main/core/common/context.ts`）创建默认配置文件，配置加载使用 `Config` 类构造函数内置的内存默认值；用户后续可编辑该文件调整配置
+- 已存在：按文件内容解析加载；解析失败时回退到内存默认值并提示用户
+
+实现见 `createDefaultConfigFile()`（`src/main/core/common/config-io.ts`），采用 `.tmp` + `fs.rename` 原子写入以避免崩溃留下半写文件。
 
 ## 4. 测试基础设施
 

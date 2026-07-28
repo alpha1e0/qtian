@@ -9,8 +9,10 @@
 import './startup-log';
 
 import { app, protocol, BrowserWindow, ipcMain, dialog } from 'electron';
+import * as fs from 'fs';
 
 import { config, wpath } from './core/common/context';
+import { createDefaultConfigFile } from './core/common/config-io';
 import { registerAllHandlers } from './core/ipc/handlers';
 import { bootstrapTaskSystem } from './core/services/task/task-bootstrap';
 import { bootstrapTodoApp } from './core/services/app-modules/todo-app/todo-app-bootstrap';
@@ -165,10 +167,25 @@ function registerWindowControlHandlers(wm: WindowManager) {
 
 /**
  * Read configuration file
+ *
+ * 首次启动检测：若 qtian.json 不存在，使用 {@link createDefaultConfigFile} 基于默认配置
+ * 创建文件。`Config` 构造函数已设置默认内存值，创建后无需再次 initConfig。
  */
 async function readConfig(): Promise<void> {
   // Use unified config path from wpath: {workspace}/qtian.json
   const configPath = wpath.configPath;
+
+  // 首次启动：qtian.json 不存在则创建默认配置
+  if (!fs.existsSync(configPath)) {
+    logger.info(`qtian.json not found at '${configPath}', creating default config`);
+    try {
+      createDefaultConfigFile(configPath);
+    } catch (err) {
+      logger.error('Failed to create default qtian.json', err);
+      error('错误', '创建默认 qtian.json 配置文件失败！');
+    }
+    return;
+  }
 
   try {
     await config.initConfig(configPath);

@@ -173,14 +173,14 @@ function askUserViaIpc(
  *
  * 委托给共享的 buildBuiltInTools，注入 AI 助手侧的依赖提供者：
  * - ask_human → 通过 IPC 向当前渲染器发问
- * - web_search → 读取全局 config 的 Tavily Key
+ * - web_search → 读取 ai_assistant.tavily_api_key
  * @param toolNames - Agent 中配置的工具名称列表
  * @returns 工具实例数组
  */
 function buildTools(toolNames: string[]): ITool[] {
   return buildBuiltInTools(toolNames, {
     askUserViaIpc,
-    getTavilyApiKey: () => config.tavilyApiKey,
+    getTavilyApiKey: () => config.aiAssistant.tavilyApiKey,
   });
 }
 

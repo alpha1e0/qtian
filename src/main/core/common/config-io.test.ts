@@ -3,7 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
-import { writeGlobalWebdavConfig, readGlobalWebdavConfig } from './config-io';
+import { writeGlobalWebdavConfig, readGlobalWebdavConfig, createDefaultConfigFile } from './config-io';
+import { Config, DEFAULT_CONFIG_DATA } from './context';
 import type { WebdavConfig } from './context';
 
 /**
@@ -131,5 +132,111 @@ describe('config-io', () => {
     };
     writeGlobalWebdavConfig(configPath, cfg);
     expect(readGlobalWebdavConfig(configPath)).toEqual(cfg);
+  });
+});
+
+/**
+ * createDefaultConfigFile 单测：首次启动 qtian.json 不存在时的默认配置生成。
+ *
+ * 验证：文件不存在时创建 / 文件已存在不覆盖 / 原子写不残留 .tmp /
+ * 写入结果可被 Config.initConfig 正确解析（与 DEFAULT_CONFIG_DATA 往返一致）。
+ */
+describe('createDefaultConfigFile', () => {
+  let tmpDir: string;
+  let configPath: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qtian-default-config-'));
+    configPath = path.join(tmpDir, 'qtian.json');
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('文件不存在时创建默认 qtian.json 并返回 true', () => {
+    const created = createDefaultConfigFile(configPath);
+
+    expect(created).toBe(true);
+    expect(fs.existsSync(configPath)).toBe(true);
+
+    const parsed = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    // 完整结构等价于 DEFAULT_CONFIG_DATA
+    expect(parsed).toEqual(DEFAULT_CONFIG_DATA);
+  });
+
+  it('默认配置包含所有期望字段（防御式断言）', () => {
+    createDefaultConfigFile(configPath);
+    const parsed = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+
+    expect(parsed.ai_assistant.default_agent).toBe('default');
+    expect(parsed.ai_assistant.default_llm_config).toBe('default');
+    expect(parsed.ai_assistant.max_tool_rounds).toBe(10);
+    expect(parsed.ai_assistant.tool_timeout_ms).toBe(30000);
+    expect(parsed.ai_assistant.tavily_api_key).toBe('');
+    expect(parsed.todo_app.default_category_id).toBeNull();
+    expect(parsed.todo_app.default_sort).toBe('created_at');
+    expect(parsed.todo_app.show_completed).toBe(true);
+    expect(parsed.todo_app.max_category_depth).toBe(4);
+    expect(parsed.todo_app.max_todo_item_depth).toBe(4);
+    expect(parsed.note_app.default_sort).toBe('updated_at');
+    expect(parsed.note_app.max_category_depth).toBe(4);
+    expect(parsed.global.webdav.url).toBe('');
+    expect(parsed.global.webdav.account_name).toBe('');
+    expect(parsed.global.webdav.account_password).toBe('');
+    expect(parsed.global.webdav.folder).toBe('');
+  });
+
+  it('文件已存在时不覆盖且返回 false', () => {
+    const userCustom = { ai_assistant: { default_agent: 'my-agent' }, extra: '保留' };
+    fs.writeFileSync(configPath, JSON.stringify(userCustom), 'utf-8');
+
+    const created = createDefaultConfigFile(configPath);
+
+    expect(created).toBe(false);
+    const parsed = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    expect(parsed).toEqual(userCustom);
+  });
+
+  it('原子写入：不残留 .tmp 文件', () => {
+    createDefaultConfigFile(configPath);
+
+    const files = fs.readdirSync(tmpDir);
+    expect(files).toContain('qtian.json');
+    expect(files.some((f) => f.endsWith('.tmp'))).toBe(false);
+  });
+
+  it('写入的默认配置可被 Config.initConfig 正确解析（往返一致性）', async () => {
+    createDefaultConfigFile(configPath);
+
+    const cfg = new Config();
+    await cfg.initConfig(configPath);
+
+    // 内存默认值与从磁盘加载结果一致（DEFAULT_CONFIG_DATA 单一数据源保证）
+    expect(cfg.aiAssistant).toEqual({
+      defaultAgent: 'default',
+      defaultLlmConfig: 'default',
+      maxToolRounds: 10,
+      toolTimeoutMs: 30000,
+      tavilyApiKey: '',
+    });
+    expect(cfg.todoApp).toEqual({
+      defaultCategoryId: null,
+      defaultSort: 'created_at',
+      showCompleted: true,
+      maxCategoryDepth: 4,
+      maxTodoItemDepth: 4,
+    });
+    expect(cfg.noteApp).toEqual({
+      defaultCategoryId: null,
+      defaultSort: 'updated_at',
+      maxCategoryDepth: 4,
+    });
+    expect(cfg.global.webdav).toEqual({
+      url: '',
+      accountName: '',
+      accountPassword: '',
+      folder: '',
+    });
   });
 });

@@ -249,6 +249,8 @@ export interface AiAssistantConfig {
   max_tool_rounds?: number;
   /** 工具执行默认超时时间 (ms) */
   tool_timeout_ms?: number;
+  /** Tavily 搜索 API Key (供 WebSearchTool 使用) */
+  tavily_api_key?: string;
 }
 
 /**
@@ -303,8 +305,6 @@ export interface GlobalConfigData {
  */
 export interface ConfigData {
   ai_assistant?: AiAssistantConfig;
-  /** Tavily 搜索 API Key (供 WebSearchTool 使用) */
-  tavily_api_key?: string;
   /** Todo 应用配置 */
   todo_app?: TodoAppConfigData;
   /** Note 应用配置 */
@@ -312,6 +312,43 @@ export interface ConfigData {
   /** 全局配置（WebDAV 同步等） */
   global?: GlobalConfigData;
 }
+
+/**
+ * 默认配置（snake_case JSON 形式，对应首次启动生成的 qtian.json 内容）
+ *
+ * 作为单一数据源：首次启动检测到 qtian.json 不存在时，由
+ * `createDefaultConfigFile()` 写入磁盘。`Config` 构造函数中的内存默认值
+ * 需与之保持一致（由 config-io.test.ts 的往返一致性测试保证）。
+ */
+export const DEFAULT_CONFIG_DATA: ConfigData = {
+  ai_assistant: {
+    default_agent: 'default',
+    default_llm_config: 'default',
+    max_tool_rounds: 10,
+    tool_timeout_ms: 30000,
+    tavily_api_key: '',
+  },
+  todo_app: {
+    default_category_id: null,
+    default_sort: 'created_at',
+    show_completed: true,
+    max_category_depth: 4,
+    max_todo_item_depth: 4,
+  },
+  note_app: {
+    default_category_id: null,
+    default_sort: 'updated_at',
+    max_category_depth: 4,
+  },
+  global: {
+    webdav: {
+      url: '',
+      account_name: '',
+      account_password: '',
+      folder: '',
+    },
+  },
+};
 
 /**
  * WebDAV 同步配置（内存 camelCase 形式，对应 qtian.json 的 global.webdav）
@@ -338,9 +375,9 @@ export class Config {
     defaultLlmConfig: string;
     maxToolRounds: number;
     toolTimeoutMs: number;
+    /** Tavily 搜索 API Key (供 WebSearchTool 使用) */
+    tavilyApiKey: string;
   };
-  /** Tavily 搜索 API Key (供 WebSearchTool 使用) */
-  tavilyApiKey: string;
   /** Todo 应用配置 */
   todoApp: {
     defaultCategoryId: number | null;
@@ -364,8 +401,8 @@ export class Config {
       defaultLlmConfig: 'default',
       maxToolRounds: 10,
       toolTimeoutMs: 30000,
+      tavilyApiKey: '',
     };
-    this.tavilyApiKey = '';
     this.todoApp = {
       defaultCategoryId: null,
       defaultSort: 'created_at',
@@ -402,10 +439,8 @@ export class Config {
         this.aiAssistant.defaultLlmConfig = cfgObj.ai_assistant.default_llm_config ?? 'default';
         this.aiAssistant.maxToolRounds = cfgObj.ai_assistant.max_tool_rounds ?? 10;
         this.aiAssistant.toolTimeoutMs = cfgObj.ai_assistant.tool_timeout_ms ?? 30000;
+        this.aiAssistant.tavilyApiKey = cfgObj.ai_assistant.tavily_api_key ?? '';
       }
-
-      // Tavily API key
-      this.tavilyApiKey = cfgObj.tavily_api_key ?? '';
 
       // Todo app config
       if (cfgObj.todo_app) {
