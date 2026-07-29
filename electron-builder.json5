@@ -13,6 +13,9 @@
     }
   ],
   win: {
+    // electron-builder 默认查找 build/icon.ico；项目未提供 build 目录，需显式指定
+    // 同时用作 NSIS 安装程序图标（installerIcon / uninstallerIcon 默认回退到 win.icon）
+    icon: 'public/icon.png',
     target: ['nsis'],
     artifactName: '${productName}-${version}-setup.${ext}'
   },
