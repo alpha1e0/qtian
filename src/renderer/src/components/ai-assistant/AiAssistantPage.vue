@@ -28,7 +28,7 @@
       />
       <!-- 未选择历史时的提示 -->
       <div class="placeholder-inner" v-else>
-        <el-empty description="请新建对话或选择已有对话" />
+        <el-empty description="直接输入消息即可开始新对话，或在左侧选择已有对话" />
       </div>
       <!-- 输入区域 -->
       <ChatInput
@@ -156,23 +156,12 @@ export default {
   },
   methods: {
     /**
-     * 处理从首页传入的初始消息：选择默认 Agent、创建对话并发送消息
+     * 处理从首页传入的初始消息：直接发送即可，
+     * 未选对话时由 handleSendMessage 自动新建（标题取自消息内容）
      * @param {string} message - 用户输入的初始消息
      */
     async handleInitialMessage(message) {
       if (!message || this.agents.length === 0) return;
-
-      // 使用已选中的 Agent（可能来自首页传入的 initialAgentId）
-      if (!this.selectedAgent) {
-        this.selectedAgent = this.agents[0];
-      }
-      await this.loadHistorySummaries();
-
-      // 创建新对话，以消息内容作为标题（截取前 20 个字符）
-      const title = message.length > 10 ? message.substring(0, 10) + '...' : message;
-      await this.handleCreateHistory(title);
-
-      // 发送初始消息
       await this.handleSendMessage(message);
     },
 
@@ -261,6 +250,7 @@ export default {
         await this.initChat();
       } catch (err) {
         console.error('创建对话失败:', err);
+        ElMessage.error('创建对话失败');
       }
     },
     async loadHistorySummaries() {
@@ -328,6 +318,14 @@ export default {
     async handleSendMessage(message) {
       if (!message.trim()) return;
 
+      // 未选择对话时自动新建：用户直接输入问题无需先手动"新建对话"，
+      // 否则 AI_CHAT_MESSAGE 因主进程会话未注册报 Chat session not initialized
+      if (!this.selectedHistory) {
+        await this.handleCreateHistory(this.makeHistoryTitle(message));
+        // 创建失败（如无可用 Agent）时中止，避免以空 historyId 继续发送
+        if (!this.selectedHistory) return;
+      }
+
       // 乐观更新：立即显示用户消息，无需等待 IPC 往返
       this.messages.push({
         role: 'user',
@@ -346,6 +344,14 @@ export default {
         this.isChatting = false;
         console.error('发送消息失败:', err);
       }
+    },
+    /**
+     * 由消息内容生成对话标题：超 10 字截断加省略号
+     * @param {string} message - 消息内容
+     * @returns {string} 对话标题
+     */
+    makeHistoryTitle(message) {
+      return message.length > 10 ? message.substring(0, 10) + '...' : message;
     },
     async handleRegenerate() {
       this.isChatting = true;

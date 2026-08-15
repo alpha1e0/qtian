@@ -1032,3 +1032,14 @@ AiAssistantPage
         ├── llmConfigs, selectedLlmConfig
         └── emits: send-message, agent-change, llm-change, stop-chat
 ```
+
+### 13.4 隐式新建对话（未选对话直接发送）
+
+**问题**：进入 AI 助手后未点“新建对话”直接发送消息，`AI_CHAT_MESSAGE` 在主进程 `activeChats` 中找不到对应会话，报 `Chat session not initialized`。
+
+**方案**：`AiAssistantPage.handleSendMessage` 在发送前检查 `selectedHistory`：
+
+- 为空 → 以消息内容生成标题（超 10 字截断加 `...`），复用 `handleCreateHistory`（内部完成历史创建 + `initChat` 注册会话），成功后再做乐观更新与 `chatMessage`
+- 创建失败（如无可用 Agent）→ 中止发送，避免继续以空 historyId 触发未初始化错误
+- `handleInitialMessage`（首页携带初始消息进入）复用同一自动新建逻辑，不重复创建
+- 覆盖场景：首次进入直接提问、切换 Agent 后（`selectedHistory` 被清空）直接提问、删除当前对话后直接提问
