@@ -187,6 +187,10 @@ export default {
     },
     onTreeContextMenu(event, data) {
       if (!data) return;
+      // 虚拟"无分类"节点（id=0，category_id=null 的文档聚合）禁用右键菜单：
+      // 不 preventDefault、不弹空菜单，直接 return 让浏览器默认 contextmenu 触发，
+      // 避免对不可操作的虚拟节点执行删除/重命名等导致后端 FK 约束报错。
+      if (data.__type === 'category' && data.id === 0) return;
       event.preventDefault();
       event.stopPropagation();
       this.ctxMenu.x = event.clientX;
@@ -196,6 +200,8 @@ export default {
       this.ctxMenu.visible = true;
     },
     buildMenuItems(data) {
+      // 虚拟"无分类"节点不应暴露任何操作项
+      if (data.__type === 'category' && data.id === 0) return [];
       if (data.__type === 'category') {
         return [
           { command: 'create-sub-category', label: '新建子分类', icon: this.icons.folderAdd },
