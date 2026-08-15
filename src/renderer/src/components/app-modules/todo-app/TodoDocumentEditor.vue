@@ -60,7 +60,22 @@
         class="doc-name-input"
       />
 
-      <div ref="editorRef" class="vditor-container" />
+      <!--
+        编辑器区域：外层 wrapper 承载 v-loading 遮罩（不能直接挂在 vditor 容器上，
+        vditor 构造会接管容器内部 DOM，遮罩会被冲掉）。
+        容器带 :key="docId"：切换文档时强制替换整个元素——vditor 的构造/init 是
+        异步链（CDN 拉 i18n + lute 脚本），上次会话若在 init 未完成时关闭抽屉，
+        迟到的 init 仍会把旧文档渲染进容器（"僵尸" DOM），仅清空状态无法根治，
+        必须连同容器元素一起换掉。
+        遮罩条件覆盖完整加载窗口：IPC 拉取（isLoadingDoc）+ vditor 异步 init（loaded）。
+      -->
+      <div
+        class="vditor-wrapper"
+        v-loading="isLoadingDoc || !loaded"
+        element-loading-text="文档加载中..."
+      >
+        <div :key="docId ?? 'new'" ref="editorRef" class="vditor-container" />
+      </div>
 
       <!-- 文本替换对话框 -->
       <el-dialog
@@ -166,6 +181,8 @@ export default {
       contentLength: 0,
       autoSaveTimerId: null,
       isLoadingDoc: false,
+      /** 加载请求序号：快速连续切换文档时只应用最后一次请求的响应，防旧响应晚到覆盖 */
+      loadSeq: 0,
       replacementVisible: false,
       replacementForm: { source: '', dst: '' },
     };
@@ -199,16 +216,15 @@ export default {
     },
     /**
      * docId 变化（用户在抽屉已打开时点击另一个文档 chip）：
-     * - 抽屉已开：调 loadDocument，内部对已有 vditor 直接 setValue 切换内容；
-     *   无需 destroy/re-init（vditor 实例复用，避免抖动与潜在 race）
+     * - 抽屉已开：走 switchDocument —— 销毁旧 vditor + 重拉内容 + 在替换后的
+     *   新容器元素上重建。不能只 setValue 复用实例：vditor init 是异步
+     *   （CDN 拉 i18n/lute），上一个实例若在 init 未完成时被关闭会成为
+     *   "僵尸"，其 DOM 仍渲染旧文档，必须连同容器元素（模板 :key）一起替换。
      * - 抽屉未开：什么都不做，content 由 visible watch 在打开时拉取
-     *
-     * 注意：原实现在此处调 initEditor 会与 visible 同 tick 触发时拿到空 ref，
-     * 已移除（详见 visible watch 注释）。
      */
     docId() {
       if (this.visible) {
-        this.loadDocument();
+        this.switchDocument();
       }
     },
   },
@@ -225,42 +241,73 @@ export default {
     this.destroyEditor();
   },
   methods: {
-    /** 加载已有文档内容；新建时给默认值 */
+    /**
+     * 抽屉打开状态下切换文档：销毁旧实例 → 拉取新内容 → 等待 :key 替换后的
+     * 新容器元素 → 重新初始化 vditor。
+     * 全程 loaded=false（destroyEditor 置位），v-loading 遮罩持续覆盖，
+     * 用户只看到 loading，不会看到旧文档残留或半初始化状态。
+     */
+    async switchDocument() {
+      this.destroyEditor();
+      await this.loadDocument();
+      // 等待 :key 变化触发元素替换、$refs.editorRef 指向新元素
+      await this.$nextTick();
+      // 加载期间用户可能已关闭抽屉
+      if (!this.visible || !this.$refs.editorRef) return;
+      await this.initEditor();
+    },
+    /**
+     * 加载已有文档内容；新建时给默认值。
+     *
+     * 防旧内容闪现：请求发出前先同步清空标题 / 内容 / 已就绪的 vditor ——
+     * 否则 IPC 往返窗口内编辑器仍显示上一篇文档。
+     * 防乱序覆盖：loadSeq 序号守卫，快速连续切换时丢弃晚到的旧响应。
+     */
     async loadDocument() {
-      if (this.docId) {
-        this.isLoadingDoc = true;
-        try {
-          const doc = await window.todoApp.getDocument(this.docId);
-          if (doc) {
-            this.docName = doc.name;
-            this.currentContent = doc.content || '';
-            // 若 vditor 已初始化（切换文档场景），同步值
-            if (this.vditor) {
-              this.vditor.setValue(this.currentContent || '');
-            }
-          }
-        } catch (err) {
-          ElMessage.error('加载文档失败');
-          console.error(err);
-        } finally {
-          this.isLoadingDoc = false;
-        }
-      } else {
+      this.docName = '';
+      this.currentContent = '';
+      // 仅对"已就绪"的实例 setValue：vditor 构造后内部 init 未完成时
+      // setValue 会因内部状态缺失抛错，此时由 after 回调兜底同步 currentContent
+      if (this.vditor && this.loaded) {
+        this.vditor.setValue('');
+      }
+      if (!this.docId) {
         this.docName = '新文档';
-        this.currentContent = '';
-        if (this.vditor) {
-          this.vditor.setValue('');
+        return;
+      }
+      this.isLoadingDoc = true;
+      const requestSeq = ++this.loadSeq;
+      try {
+        const doc = await window.todoApp.getDocument(this.docId);
+        // 已发起更新的加载请求，本次响应作废
+        if (requestSeq !== this.loadSeq) return;
+        if (doc) {
+          this.docName = doc.name;
+          this.currentContent = doc.content || '';
+          // 已就绪实例直接同步值；未就绪时由 initEditor 的 value/after 兜底同步
+          if (this.vditor && this.loaded) {
+            this.vditor.setValue(this.currentContent || '');
+          }
+        }
+      } catch (err) {
+        ElMessage.error('加载文档失败');
+        console.error(err);
+      } finally {
+        if (requestSeq === this.loadSeq) {
+          this.isLoadingDoc = false;
         }
       }
     },
     /**
      * 抽屉完全展开后初始化 vditor（此时容器已有真实尺寸）。
      * 重复调用幂等：已初始化时跳过。
-     * 双重保护：等待 $nextTick 确保 DOM 已提交 + 校验 editorRef 存在，
-     * 避免任何边界时序下以 undefined 元素构造 vditor。
+     * 先 await loadDocument 确保 currentContent 就绪再构造 —— vditor 的
+     * value 只在构造时刻读取一次，之后依赖 after 回调二次同步，晚到内容
+     * 会以 setValue 追加一次可见跳变，先就绪可让首屏即最终内容。
      */
     async onDrawerOpened() {
       if (this.vditor) return;
+      await this.loadDocument();
       await this.$nextTick();
       if (!this.$refs.editorRef) {
         console.warn('TodoDocumentEditor: editorRef missing on @opened, skip init');
@@ -279,16 +326,15 @@ export default {
     },
     /**
      * 销毁 vditor 实例并清理状态。
-     * 防御性校验 element 仍挂在 DOM 上：vditor 在 element 被外层 innerHTML 清空
-     * 后调用 destroy 会抛 "Cannot read properties of undefined (reading 'element')"，
-     * 此处先校验再调 destroy，失败仅告警不阻塞（保留 this.vditor = null 让下次开兜底重建）。
+     * 始终尝试 destroy（内部会解绑全局监听）：元素即使已脱离 DOM，对其做
+     * innerHTML 还原等操作也无害；真正的风险是内部 init 未完成时内部状态
+     * 缺失、destroy 抛错 —— 此时实例连同容器元素一起被丢弃（:key 替换 /
+     * 组件卸载），残留 DOM 不可见，仅告警不阻塞。
      */
     destroyEditor() {
       if (this.vditor) {
         try {
-          if (this.vditor.element && this.vditor.element.isConnected) {
-            this.vditor.destroy();
-          }
+          this.vditor.destroy();
         } catch (err) {
           console.warn('vditor destroy failed', err);
         }
@@ -304,6 +350,14 @@ export default {
       if (!this.$refs.editorRef || !this.$refs.editorRef.isConnected) {
         console.warn('TodoDocumentEditor: editorRef unavailable, skip init');
         return;
+      }
+      // 防御性清空容器：残留的"僵尸" vditor DOM（init 未完成即关闭抽屉、
+      // 迟到的 init 渲染结果）会污染新实例，并被误存为 originalInnerHTML
+      // 在下次 destroy 时还原成旧文档。对干净容器此操作为幂等 no-op。
+      if (this.$refs.editorRef.innerHTML.trim() || this.$refs.editorRef.classList.contains('vditor')) {
+        this.$refs.editorRef.innerHTML = '';
+        this.$refs.editorRef.classList.remove('vditor');
+        this.$refs.editorRef.removeAttribute('style');
       }
 
       this.vditor = new Vditor(this.$refs.editorRef, {
@@ -371,9 +425,13 @@ export default {
           handler: (files) => this.handleUpload(files),
         },
         after: () => {
-          // 同步初始内容到编辑器，避免 value 未生效
-          this.vditor.setValue(this.currentContent || '');
-          this.loaded = true;
+          // 同步初始内容到编辑器，避免 value 未生效。
+          // init 等待期间组件可能已销毁实例（快速关闭/切换文档），需判空；
+          // loaded 置位同时是 v-loading 遮罩的解除条件
+          if (this.vditor) {
+            this.vditor.setValue(this.currentContent || '');
+            this.loaded = true;
+          }
         },
       });
     },
@@ -655,7 +713,24 @@ export default {
 }
 
 /*
- * vditor 容器：占据剩余高度。
+ * vditor 外层 wrapper：接管 flex 剩余高度并承载 v-loading 遮罩（遮罩需 position:relative 宿主）。
+ * 内层容器铺满 wrapper，高度链保持 flex column + height:100% 不变。
+ */
+.vditor-wrapper {
+  position: relative;
+  flex: 1;
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 遮罩用不透明底色：半透明遮罩下旧内容残影仍可见，起不到遮蔽作用 */
+.vditor-wrapper :deep(.el-loading-mask) {
+  background-color: var(--surface-card, #ffffff);
+}
+
+/*
+ * vditor 容器：占据 wrapper 剩余高度。
  * height:100% 依赖父容器有明确高度，因此上面 .todo-doc-editor 用 flex column + height:100%。
  */
 .vditor-container {

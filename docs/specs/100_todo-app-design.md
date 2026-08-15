@@ -1347,6 +1347,13 @@ TodoTaskService.createTaskFromItem(itemId, { agentName, llmConfigName, extraProm
 - **条目行内删除**：`TodoItemRow` hover 时显示删除图标按钮，点击后由 `TodoAppPage` 弹确认框（文案"移至回收站"），确认后调用 `deleteTodoItem` IPC（递归软删除子条目 + 关联文档），并在删除当前选中条目时回退右侧详情到所属 list-detail。
 - **搜索体验**：聚焦搜索框显示最近搜索；点击结果跳转到对应视图并高亮。
 - **条目筛选**：tree-toolbar 右侧「筛选」图标按钮点击后弹出对话框，含优先级 el-select（`multiple`，选项：紧急 urgent / 重要 important / 普通 normal / 提示 hint）与状态 el-select（`multiple`，选项：初始 init / 进行中 in_progress / 已完成 done / 已放弃 abandoned）。每个维度默认空数组 = "所有"（不限制）；勾选多个值时取并集（节点 priority/status 命中任一所选值即视为匹配）。点击「确定」应用筛选，「取消」放弃草稿，「重置」清空草稿为空数组（即"所有"）。两个 select 均启用 `collapse-tags` + `collapse-tags-tooltip`，避免 tag 撑爆对话框。筛选以 `filteredItemTree` computed 在前端对 `itemTree` 递归过滤：节点自身匹配或任一后代匹配则保留，匹配后子树按过滤后的结构渲染；任一维度数组非空即视为筛选激活，筛选按钮显示 accent 强调并以 title="筛选（已启用）" 提示。筛选为前端本地过滤，不调用新 IPC，`listId` 切换不清空筛选状态（便于跨项目比对同类条目）。
+- **文档抽屉无旧内容闪现**：`TodoDocumentEditor` 抽屉在切换 / 重新打开关联文档时不得出现上一篇文档内容残影。关键机制（根因：vditor 构造后内部 init 为异步链——需从 CDN 拉取 i18n / lute 脚本后才渲染 `value` 并触发 `after`；若抽屉在 init 未完成时关闭，迟到的 init 仍会把旧文档渲染进容器，形成"僵尸" DOM）：
+    - `loadDocument` 发起 IPC 请求前先同步清空 `docName` / `currentContent`，并仅对**已就绪**（`loaded`，即 `after` 已触发）的实例 `setValue('')`——对未就绪实例调用 setValue 会因内部状态缺失抛错，改由 `after` 回调兜底同步。
+    - 编辑器容器 `div` 绑定 `:key="docId"`：切换文档时 Vue 整体替换容器元素，僵尸 DOM 随旧元素一起移除；配套 `docId` watch 走 `switchDocument`（销毁旧实例 → 重拉内容 → `nextTick` 后在新元素上重建），不再复用实例仅 `setValue`。
+    - `initEditor` 构造前防御性清空容器（`innerHTML = ''` + 移除 `vditor` class），防止同文档重开路径下僵尸 DOM 被新实例误存为 `originalInnerHTML`、在下次 `destroy` 时被还原回旧文档。
+    - 加载遮罩覆盖完整窗口：`v-loading="isLoadingDoc || !loaded"`（IPC 拉取 + vditor 异步 init），且遮罩底色为不透明 `--surface-card`，半透明遮罩下残影仍可见。
+    - `loadSeq` 请求序号守卫：快速连续切换文档时仅应用最后一次请求的响应，防止旧响应晚到覆盖新文档内容或提前关闭 loading。
+    - `onDrawerOpened` 先 `await loadDocument()` 再构造 vditor，保证构造时 `value` 即最终内容，避免晚到内容引发二次可见跳变。
 - **标签 tab 分栏视图**：标签 tab 默认仅显示标签云（无标题文案）；点击某个标签后，tab 内垂直分栏为上下两段——上段为标签云（自然高度，上限为侧栏可视区一半，超出时内部滚动；不足则剩余空间全部让给下段），下段列出该标签关联的待办项目卡片（来自 `listTodoListsByLabel(labelId)`，无章节标题，溢出时仅下段内部滚动）。卡片左键点击 → 切换到该 list（中间面板加载 item 树，右侧切到 list-detail）；卡片右键弹出与分类 tab 中 todo_list 节点一致的菜单（导出待办项目 / 重命名待办项目 / 删除待办项目），命令路由经 sidebar emit 到父组件复用既有 handler。中间面板不再承担"标签关联项目"展示（移除 TodoListPanel 的 `labelId` prop 与对应分支）。
 - **新建 / 重命名对话框统一化**：4 种新建 + 2 种重命名入口（根分类 / 子分类 / 待办项目 / 待办条目 / 重命名分类 / 重命名待办项目）共享同一个模态对话框组件 `TodoCreateDialog.vue`，替换原 `ElMessageBox.prompt` 单行输入弹框。对话框按 `mode` 渲染不同字段集合：
     - `root-category` / `child-category`：仅名称；`child-category` 模式标题区显示副标题"在 \<parentName\> 下新建"。
