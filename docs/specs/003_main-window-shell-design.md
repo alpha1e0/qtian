@@ -290,7 +290,38 @@ TitleBar 现有的「最小化 / 最大化 / 关闭」按钮已具备 `aria-labe
 
 ---
 
-## 6. 已知限制与后续工作
+## 6. 最大化按钮的平台化行为（2026-08 修订）
+
+### 6.1 问题
+
+frameless 主窗口的自定义「最大化」按钮在 macOS 上不符合平台预期：
+
+- macOS 用户预期最大化 = 原生绿键行为，即**进入全屏并切换到新的桌面空间**；
+- 旧实现统一走 `win.maximize()`（铺满工作区），在小屏 Mac 上普通尺寸（`workArea - 40px`）
+  与最大化尺寸仅差约 40px，视觉上几乎无变化，用户感知为「点了没反应」；
+- 主进程从不发送 `window-maximize-state-changed`，TitleBar 图标状态只能靠点击后回查，
+  存在竞态（如窗口被 macOS 窗口还原置为 maximized 时，首次点击实际执行的是还原）。
+
+### 6.2 方案
+
+「最大化」按钮语义按平台区分，统一抽象为**展开态（expanded）**切换：
+
+| 平台 | 点击「最大化」 | 展开态判定 |
+|---|---|---|
+| macOS | `setFullScreen` 进入/退出全屏（同原生绿键，切换到新空间） | `isFullScreen()` |
+| Windows / Linux | `maximize()` / `unmaximize()`（铺满/还原工作区） | `isMaximized()` |
+
+实现要点：
+
+1. `WindowManager.ts` 新增 `toggleWindowExpandState(win)`（平台分支）与
+   `isWindowExpanded(win)`（展开态判定），供 IPC 层复用并保证可单测；
+2. 主进程在窗口 `maximize / unmaximize / enter-full-screen / leave-full-screen`
+   事件时主动推送 `window-maximize-state-changed`（payload 为展开态布尔值），
+   TitleBar 图标不再依赖点击后回查；
+3. preload 新增 `isFullScreen()`；TitleBar 初始化与点击回查均以
+   `isMaximized() || isFullScreen()` 作为展开态。
+
+## 7. 已知限制与后续工作
 
 | 项 | 说明 | 优先级 |
 |---|---|---|

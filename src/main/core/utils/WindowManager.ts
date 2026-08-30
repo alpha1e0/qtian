@@ -41,6 +41,17 @@ export const QUICK_WINDOW_QUERY_VALUE = 'quick';
 /** 跨窗口导航 IPC 通道：快捷窗口 → 主进程 → 主窗口 */
 export const QUICK_TO_NORMAL_NAVIGATE_CHANNEL = 'qtian:quick-to-normal-navigate';
 
+/**
+ * 窗口展开态变化通知通道：主进程 → 渲染层（TitleBar 图标依赖）
+ *
+ * 历史遗留命名：payload 为「展开态」布尔值（macOS=全屏，Win/Linux=最大化），
+ * 渲染层 TitleBar.vue 一直监听此通道，保持通道名兼容。
+ */
+export const WINDOW_EXPAND_STATE_CHANNEL = 'window-maximize-state-changed';
+
+/** 触发展开态推送的窗口事件（覆盖两个平台的全部展开态入口） */
+const EXPAND_STATE_EVENTS = ['maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen'] as const;
+
 const isDevelopment = process.env.NODE_ENV !== 'production';
 
 /** 标志位：区分"隐藏到托盘"和"真正退出"，由外部 setQuitting 控制 */
@@ -68,6 +79,42 @@ function buildWebPreferences(): Electron.WebPreferences {
     nodeIntegration: process.env.ELECTRON_NODE_INTEGRATION === 'true',
     contextIsolation: process.env.ELECTRON_NODE_INTEGRATION !== 'true',
   };
+}
+
+/**
+ * 判断窗口是否处于「展开态」
+ *
+ * 跨平台语义统一（spec 003 §6）：
+ * - macOS：全屏（同原生绿键行为，切换到新桌面空间）
+ * - Windows/Linux：最大化（铺满工作区）
+ *
+ * @param win - 目标窗口
+ * @returns 是否处于展开态；已销毁窗口返回 false
+ */
+export function isWindowExpanded(win: BrowserWindow): boolean {
+  if (win.isDestroyed()) return false;
+  return process.platform === 'darwin' ? win.isFullScreen() : win.isMaximized();
+}
+
+/**
+ * 切换窗口「展开态」（最大化按钮的跨平台实现）
+ *
+ * - macOS：setFullScreen 进/出全屏。旧实现统一走 maximize()，在小屏 Mac 上
+ *   普通尺寸与最大化仅差约 40px，用户感知为「点击无反应」，且不符合
+ *   「最大化到新空间」的平台预期，故改为全屏。
+ * - Windows/Linux：最大化 / 还原（保持 Windows 惯例）。
+ *
+ * @param win - 目标窗口；已销毁时静默返回
+ */
+export function toggleWindowExpandState(win: BrowserWindow): void {
+  if (win.isDestroyed()) return;
+  if (process.platform === 'darwin') {
+    win.setFullScreen(!win.isFullScreen());
+  } else if (win.isMaximized()) {
+    win.unmaximize();
+  } else {
+    win.maximize();
+  }
 }
 
 /** 生产模式下快捷窗口加载的 HTML 文件路径 */
@@ -138,6 +185,17 @@ export class WindowManager {
         logger.info('Main window hidden to system tray');
       }
     });
+
+    // 展开态变化时主动推送渲染层：TitleBar 图标依赖此事件，
+    // 旧实现从未发送，图标只能靠点击后回查，存在状态竞态
+    const sendExpandState = (): void => {
+      if (!mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(WINDOW_EXPAND_STATE_CHANNEL, isWindowExpanded(mainWindow));
+      }
+    };
+    for (const eventName of EXPAND_STATE_EVENTS) {
+      mainWindow.on(eventName, sendExpandState);
+    }
 
     this.windows.set(WINDOW_TYPE.MAIN, mainWindow);
     logger.info('Main window created');

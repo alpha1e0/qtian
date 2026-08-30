@@ -59,19 +59,27 @@ export default {
     };
   },
   async mounted() {
-    this.isMaximized = await window.electron.isMaximized();
+    await this.refreshExpandState();
     window.electron.ipcRendererOn('window-maximize-state-changed', this.onMaximizeStateChanged);
   },
   unmounted() {
     window.electron.ipcRendererOff('window-maximize-state-changed', this.onMaximizeStateChanged);
   },
   methods: {
+    /**
+     * 回查展开态：最大化(Win/Linux) 或 全屏(macOS，主进程也会主动推送，
+     * 此处回查兜底首次渲染与事件丢失场景，见 spec 003 §6.2）
+     */
+    async refreshExpandState() {
+      this.isMaximized =
+        (await window.electron.isMaximized()) || (await window.electron.isFullScreen());
+    },
     async handleMinimize() {
       await window.electron.minimizeWindow();
     },
     async handleMaximize() {
       await window.electron.maximizeWindow();
-      this.isMaximized = await window.electron.isMaximized();
+      await this.refreshExpandState();
     },
     async handleClose() {
       await window.electron.closeWindow();

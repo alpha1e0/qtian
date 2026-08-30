@@ -25,6 +25,11 @@ interface MockWindowInstance {
   isMinimized: ReturnType<typeof vi.fn>;
   restore: ReturnType<typeof vi.fn>;
   isDestroyed: ReturnType<typeof vi.fn>;
+  maximize: ReturnType<typeof vi.fn>;
+  unmaximize: ReturnType<typeof vi.fn>;
+  isMaximized: ReturnType<typeof vi.fn>;
+  setFullScreen: ReturnType<typeof vi.fn>;
+  isFullScreen: ReturnType<typeof vi.fn>;
   webContents: { send: ReturnType<typeof vi.fn> };
 }
 
@@ -43,6 +48,11 @@ function createMockWindowInstance(): MockWindowInstance {
     isMinimized: vi.fn().mockReturnValue(false),
     restore: vi.fn(),
     isDestroyed: vi.fn().mockReturnValue(false),
+    maximize: vi.fn(),
+    unmaximize: vi.fn(),
+    isMaximized: vi.fn().mockReturnValue(false),
+    setFullScreen: vi.fn(),
+    isFullScreen: vi.fn().mockReturnValue(false),
     webContents: { send: vi.fn() },
   };
 }
@@ -75,6 +85,14 @@ vi.mock('./logger', () => ({
 describe('WindowManager', () => {
   let WindowManager: typeof import('./WindowManager').WindowManager;
   let windowManager: import('./WindowManager').WindowManager;
+  let isWindowExpanded: typeof import('./WindowManager').isWindowExpanded;
+  let toggleWindowExpandState: typeof import('./WindowManager').toggleWindowExpandState;
+
+  // 保存原始 process.platform，平台分支测试后恢复
+  const originalPlatform = process.platform;
+  const setPlatform = (platform: NodeJS.Platform): void => {
+    Object.defineProperty(process, 'platform', { value: platform });
+  };
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -86,6 +104,8 @@ describe('WindowManager', () => {
 
     const mod = await import('./WindowManager');
     WindowManager = mod.WindowManager;
+    isWindowExpanded = mod.isWindowExpanded;
+    toggleWindowExpandState = mod.toggleWindowExpandState;
     windowManager = new WindowManager();
     // 重置模块级 isQuitting 标志（destroyAll 等测试可能将其置为 true）
     windowManager.setQuitting(false);
@@ -93,6 +113,7 @@ describe('WindowManager', () => {
 
   afterEach(() => {
     delete process.env.ELECTRON_RENDERER_URL;
+    setPlatform(originalPlatform);
   });
 
   describe('createQuickWindow', () => {
@@ -284,6 +305,132 @@ describe('WindowManager', () => {
 
       expect(mockEvent.preventDefault).toHaveBeenCalled();
       expect(instance.hide).toHaveBeenCalled();
+    });
+
+    // 展开态推送：TitleBar 图标依赖（旧实现从未发送，见 spec 003 §6）
+    it('should forward expand state to renderer on maximize/fullscreen events', async () => {
+      await windowManager.createMainWindow();
+      const instance = createdWindows[0];
+
+      // 注册了 4 个展开态事件
+      const expandEvents = instance.on.mock.calls
+        .map((call: any[]) => call[0])
+        .filter((name: string) =>
+          ['maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen'].includes(name)
+        );
+      expect(expandEvents).toHaveLength(4);
+
+      // 触发 enter-full-screen（macOS 展开态入口）
+      setPlatform('darwin');
+      instance.isFullScreen.mockReturnValue(true);
+      const handler = instance.on.mock.calls.find(
+        (call: any[]) => call[0] === 'enter-full-screen'
+      )?.[1] as () => void;
+      handler();
+
+      expect(instance.webContents.send).toHaveBeenCalledWith(
+        'window-maximize-state-changed',
+        true
+      );
+    });
+
+    it('should not forward expand state after window destroyed', async () => {
+      await windowManager.createMainWindow();
+      const instance = createdWindows[0];
+      setPlatform('darwin');
+      instance.isDestroyed.mockReturnValue(true);
+
+      const handler = instance.on.mock.calls.find(
+        (call: any[]) => call[0] === 'enter-full-screen'
+      )?.[1] as () => void;
+
+      expect(() => handler()).not.toThrow();
+      expect(instance.webContents.send).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('isWindowExpanded', () => {
+    it('should use isFullScreen on macOS', () => {
+      setPlatform('darwin');
+      const win = createMockWindowInstance();
+      win.isFullScreen.mockReturnValue(true);
+      win.isMaximized.mockReturnValue(false);
+
+      expect(isWindowExpanded(win as unknown as Electron.BrowserWindow)).toBe(true);
+    });
+
+    it('should use isMaximized on Windows', () => {
+      setPlatform('win32');
+      const win = createMockWindowInstance();
+      win.isFullScreen.mockReturnValue(true);
+      win.isMaximized.mockReturnValue(false);
+
+      expect(isWindowExpanded(win as unknown as Electron.BrowserWindow)).toBe(false);
+    });
+
+    it('should return false for destroyed window', () => {
+      setPlatform('darwin');
+      const win = createMockWindowInstance();
+      win.isDestroyed.mockReturnValue(true);
+      win.isFullScreen.mockReturnValue(true);
+
+      expect(isWindowExpanded(win as unknown as Electron.BrowserWindow)).toBe(false);
+    });
+  });
+
+  describe('toggleWindowExpandState', () => {
+    it('should enter fullscreen on macOS when not fullscreen', () => {
+      setPlatform('darwin');
+      const win = createMockWindowInstance();
+      win.isFullScreen.mockReturnValue(false);
+
+      toggleWindowExpandState(win as unknown as Electron.BrowserWindow);
+
+      expect(win.setFullScreen).toHaveBeenCalledWith(true);
+      expect(win.maximize).not.toHaveBeenCalled();
+    });
+
+    it('should leave fullscreen on macOS when fullscreen', () => {
+      setPlatform('darwin');
+      const win = createMockWindowInstance();
+      win.isFullScreen.mockReturnValue(true);
+
+      toggleWindowExpandState(win as unknown as Electron.BrowserWindow);
+
+      expect(win.setFullScreen).toHaveBeenCalledWith(false);
+    });
+
+    it('should maximize on Windows when not maximized', () => {
+      setPlatform('win32');
+      const win = createMockWindowInstance();
+      win.isMaximized.mockReturnValue(false);
+
+      toggleWindowExpandState(win as unknown as Electron.BrowserWindow);
+
+      expect(win.maximize).toHaveBeenCalled();
+      expect(win.setFullScreen).not.toHaveBeenCalled();
+    });
+
+    it('should unmaximize on Windows when maximized', () => {
+      setPlatform('win32');
+      const win = createMockWindowInstance();
+      win.isMaximized.mockReturnValue(true);
+
+      toggleWindowExpandState(win as unknown as Electron.BrowserWindow);
+
+      expect(win.unmaximize).toHaveBeenCalled();
+    });
+
+    it('should do nothing for destroyed window', () => {
+      setPlatform('darwin');
+      const win = createMockWindowInstance();
+      win.isDestroyed.mockReturnValue(true);
+
+      toggleWindowExpandState(win as unknown as Electron.BrowserWindow);
+
+      expect(win.setFullScreen).not.toHaveBeenCalled();
+      expect(win.maximize).not.toHaveBeenCalled();
+      expect(win.unmaximize).not.toHaveBeenCalled();
     });
   });
 });

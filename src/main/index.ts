@@ -24,7 +24,7 @@ import { createLogger, LogLevel } from './core/utils/logger';
 import { registerLocalResourceProtocol } from './core/utils/local-resource-protocol';
 import { TrayManager } from './core/utils/TrayManager';
 import { GlobalShortcutManager } from './core/utils/GlobalShortcutManager';
-import { WindowManager, getNormalWindowSize } from './core/utils/WindowManager';
+import { WindowManager, getNormalWindowSize, toggleWindowExpandState } from './core/utils/WindowManager';
 
 const logger = createLogger('background', LogLevel.INFO);
 
@@ -64,14 +64,10 @@ function registerWindowControlHandlers(wm: WindowManager) {
     BrowserWindow.fromWebContents(event.sender)?.minimize();
   });
 
+  // 「最大化」按钮：跨平台展开态切换（macOS=全屏，Win/Linux=最大化，见 spec 003 §6）
   ipcMain.handle('qtian:window-maximize', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
-    if (!win) return;
-    if (win.isMaximized()) {
-      win.unmaximize();
-    } else {
-      win.maximize();
-    }
+    if (win) toggleWindowExpandState(win);
   });
 
   ipcMain.handle('qtian:window-close', (event) => {
@@ -110,6 +106,12 @@ function registerWindowControlHandlers(wm: WindowManager) {
   ipcMain.handle('qtian:window-is-maximized', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     return win?.isMaximized() ?? false;
+  });
+
+  // macOS 展开态为全屏，TitleBar 初始化需同时查询（spec 003 §6.2）
+  ipcMain.handle('qtian:window-is-fullscreen', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    return win?.isFullScreen() ?? false;
   });
 
   ipcMain.handle('qtian:window-normal-size', () => {
