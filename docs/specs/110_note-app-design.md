@@ -368,6 +368,10 @@ config.noteApp = {
   - 右下角浮动 AI 任务按钮（NoteAiTaskButton，编辑 task_prompt）
 - 合并树：category 分支节点 + doc 叶子节点（参考 todo-app 模式），含虚拟"无分类"节点
 - Vditor Markdown 编辑器（内联面板，30s 自动保存 + Ctrl+S 手动保存 + 图片上传）
+- 切换文档自动保存：`NoteDocEditor` 以 `:key="doc-{id}"` 挂载，切换文档即销毁重建。
+  组件内用 `lastSavedContent` 追踪脏状态，`beforeUnmount`（及 docId 变更）时若内容
+  有变化则在销毁编辑器前静默写库（不弹 toast），无变化不写库（避免无谓更新
+  updated_at 影响默认排序）。
 - 文档元数据编辑（标题 / 分类级联选择 / 标签多选 / 摘要），失焦自动保存
 - 分类/标签/收藏三个 tab
 - 文档右键菜单（NoteContextMenu，teleport to body + 视口翻转）

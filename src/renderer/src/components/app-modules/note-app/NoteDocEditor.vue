@@ -113,6 +113,8 @@ export default {
       vditor: null,
       docTitle: '',
       currentContent: '',
+      /** 最近一次已持久化的内容，用于切换文档时脏检查（无变化不写库） */
+      lastSavedContent: '',
       saving: false,
       saveStatus: 'idle',
       saveTimer: null,
@@ -127,7 +129,11 @@ export default {
     };
   },
   watch: {
-    docId() {
+    /**
+     * docId 变更（未重建组件的场景）时，先把旧文档未保存的修改静默写库再加载新文档
+     */
+    docId(newVal, oldVal) {
+      this.flushPendingSave(oldVal);
       this.loadDoc();
     },
   },
@@ -138,6 +144,8 @@ export default {
   beforeUnmount() {
     document.removeEventListener('keydown', this.handleKeyDown);
     this.stopAutoSave();
+    // 切换/关闭文档前，先把未保存的修改写库（须在销毁编辑器前读取内容）
+    this.flushPendingSave();
     this.destroyEditor();
     if (this.saveTimer) clearTimeout(this.saveTimer);
   },
@@ -161,6 +169,7 @@ export default {
         }
         this.docTitle = doc.title || '';
         this.currentContent = doc.content || '';
+        this.lastSavedContent = this.currentContent;
 
         // 先销毁旧编辑器（切换文档时），再等 DOM 更新后初始化新编辑器
         this.destroyEditor();
@@ -317,11 +326,34 @@ export default {
       this.setSaving();
       try {
         await window.noteApp.updateDoc(this.docId, { content });
+        this.lastSavedContent = content;
         this.setSaved();
       } catch (err) {
         this.setError();
         throw err;
       }
+    },
+
+    /**
+     * 静默保存未持久化的修改（切换文档/组件销毁时调用）。
+     *
+     * 与手动保存的区别：不弹 toast、不改保存状态 UI（组件随即销毁）；
+     * 内容无变化时不写库（脏检查：与 lastSavedContent 比较），
+     * 避免无谓更新 updated_at 影响默认排序。
+     * 异步 fire-and-forget，失败仅记录日志（不阻塞组件卸载）。
+     * @param {number} [docIdOverride] - 待保存的文档 id，缺省为当前 docId
+     *   （docId watch 场景下传旧值）
+     */
+    flushPendingSave(docIdOverride) {
+      const targetDocId = docIdOverride ?? this.docId;
+      if (!targetDocId || !this.vditor) return;
+      const content = this.vditor.getValue();
+      if (content === this.lastSavedContent) return;
+      window.noteApp.updateDoc(targetDocId, { content }).then(() => {
+        this.lastSavedContent = content;
+      }).catch((err) => {
+        console.error('flush pending save failed:', err);
+      });
     },
 
     // ====================================================================
