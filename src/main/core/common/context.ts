@@ -7,6 +7,22 @@ import { createLogger } from '@/core/utils/logger';
 const logger = createLogger('Context');
 
 /**
+ * 计算默认工作空间路径（未设置 QTIAN_WORKSPACE 时使用）
+ *
+ * - Windows: `%LOCALAPPDATA%/Qtian/workspace`
+ * - macOS/Linux: `~/.qtian/workspace`
+ *
+ * @param userDirectory - 用户主目录（os.homedir()）
+ * @param localAppData - Windows 的 LOCALAPPDATA 环境变量（其他平台为 undefined）
+ * @returns 默认工作空间完整路径
+ */
+export function resolveDefaultWorkspacePath(userDirectory: string, localAppData?: string): string {
+  return localAppData
+    ? path.join(localAppData, 'Qtian', 'workspace')
+    : path.join(userDirectory, '.qtian', 'workspace');
+}
+
+/**
  * Application paths and directories management
  */
 export class WPath {
@@ -85,11 +101,7 @@ export class WPath {
 
     // Get workspace from environment variable or use default
     const envWorkspace = process.env.QTIAN_WORKSPACE;
-    // Windows: %LOCALAPPDATA%/Qtian/workspace; fallback to home/.qtian on other platforms
-    const localAppData = process.env.LOCALAPPDATA;
-    const defaultWorkspace = localAppData
-      ? path.join(localAppData, 'Qtian', 'workspace')
-      : path.join(this.userDirectory, '.qtian');
+    const defaultWorkspace = resolveDefaultWorkspacePath(this.userDirectory, process.env.LOCALAPPDATA);
 
     if (envWorkspace) {
       // Try to use QTIAN_WORKSPACE, fall back to default if directory can't be opened

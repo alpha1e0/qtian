@@ -56,7 +56,7 @@
 		qtian.exe          # 应用主程序
 ```
 
-工作目录默认为：`%LocalAppData%/Qtian/workspace`（Windows），如果设置了环境变量 `QTIAN_WORKSPACE`则优先使用环境变量中的目录为工作目录
+工作目录默认为：`%LocalAppData%/Qtian/workspace`（Windows）、`~/.qtian/workspace`（macOS/Linux），如果设置了环境变量 `QTIAN_WORKSPACE`则优先使用环境变量中的目录为工作目录
 
 
 ### 4.2 全局配置设计
