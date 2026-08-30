@@ -41,6 +41,12 @@ assistant/                        # 助手根目录
         └── {memoryId}.json       # 单条记忆
 ```
 
+**首次启动默认文件**：与 qtian.json 的 `createDefaultConfigFile()` 一致，启动时若
+`agent/default.md` 不存在则自动创建默认 Agent（`createDefaultAgentFile()`，见
+`services/agent/default-agent.ts`）；文件已存在时不覆盖（保护用户修改），幂等可重入。
+默认 Agent 保证 Agent 列表非空，使快捷模式首次打开即可自动选中并直接对话，
+避免 `init-chat` 因 Agent 名称为空而报错。
+
 ### 2.2 源码目录结构
 
 ```

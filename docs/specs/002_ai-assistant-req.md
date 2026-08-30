@@ -70,6 +70,8 @@ assistant/          # 助手根目录
 
 详细内容参考 (./004_agent-design.md)
 
+**默认Agent**：应用首次启动（工作目录初始化）时，若 `agent/default.md` 不存在，则自动创建默认Agent（name: `default`，个人综合工作助理）。文件已存在时不覆盖，保护用户修改。该默认Agent保证首次打开即可直接发起对话（快捷模式自动选中），无需手动创建。
+
 ### 4.4 Skill数据
 
 该目录用于存放skill定义文件，详细内容参考 (./005_skill-design.md)

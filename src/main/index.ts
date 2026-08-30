@@ -13,6 +13,7 @@ import * as fs from 'fs';
 
 import { config, wpath } from './core/common/context';
 import { createDefaultConfigFile } from './core/common/config-io';
+import { createDefaultAgentFile } from './core/services/agent/default-agent';
 import { registerAllHandlers } from './core/ipc/handlers';
 import { bootstrapTaskSystem } from './core/services/task/task-bootstrap';
 import { bootstrapTodoApp } from './core/services/app-modules/todo-app/todo-app-bootstrap';
@@ -226,6 +227,14 @@ app.on('ready', async () => {
 
   // 先读取配置（todo-app 等模块依赖 config.todoApp）
   await readConfig();
+
+  // 首次启动：assistant/agent/ 下无 default.md 时创建默认 Agent，
+  // 保证 Agent 列表非空（快捷模式可直接对话）。须在窗口创建前完成。
+  try {
+    createDefaultAgentFile(wpath.assistantAgentDir);
+  } catch (err) {
+    logger.error('Failed to create default agent', err);
+  }
 
   // 引导任务系统（建表 + 崩溃恢复 + 注册执行器 + IPC handlers）
   try {
