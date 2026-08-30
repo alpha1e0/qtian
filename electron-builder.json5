@@ -20,10 +20,15 @@
     artifactName: '${productName}-${version}-setup.${ext}'
   },
   mac: {
+    // electron-builder 默认查找 build/icon.icns；项目未提供 build 目录，与 win 一致显式指定
+    // png 会自动转换为 icns（要求 ≥512x512，public/icon.png 为 2048x2048）
+    icon: 'public/icon.png',
     target: ['dmg'],
     artifactName: '${productName}-${version}.${ext}'
   },
   linux: {
+    // 同 win/mac：默认查找 build/ 下图标，需显式指定（AppImage 要求 ≥512x512 png）
+    icon: 'public/icon.png',
     target: ['AppImage'],
     artifactName: '${productName}-${version}.${ext}'
   },
